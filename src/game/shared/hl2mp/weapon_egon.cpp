@@ -461,7 +461,7 @@ void CWeaponEgon::UpdateClientBeams()
     // Smooth interpolation for beam end position
     if (m_vecLastEndPos != vec3_origin)
     {
-        float lerpFactor = gpGlobals->frametime * 15.0f;
+        float lerpFactor = gpGlobals->frametime * 25.0f;
         endPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, endPos);
     }
     m_vecLastEndPos = endPos;
