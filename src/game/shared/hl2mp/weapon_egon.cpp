@@ -139,11 +139,12 @@ private:
     // Client-only beam rendering
     CBeam *m_pClientBeam;
     CBeam *m_pClientNoise;
-    CSprite *m_pClientSprite;  // Add this back
+    CSprite *m_pClientSprite;
     Vector m_vecLastEndPos;
     float m_flNextBeamUpdateTime;
     dlight_t *m_pBeamGlow;
     bool m_bClientThinking;
+    int m_nBeamDelayFrames;  // Add frame delay counter
 #endif
 
     // State variables
@@ -236,11 +237,12 @@ CWeaponEgon::CWeaponEgon()
 #ifdef CLIENT_DLL
     m_pClientBeam = nullptr;
     m_pClientNoise = nullptr;
-    m_pClientSprite = nullptr;  // Add this back
+    m_pClientSprite = nullptr;
     m_vecLastEndPos = vec3_origin;
     m_flNextBeamUpdateTime = 0.0f;
     m_pBeamGlow = nullptr;
     m_bClientThinking = false;
+    m_nBeamDelayFrames = 0;  // Initialize frame counter
 #endif
 }
 
@@ -319,6 +321,9 @@ void CWeaponEgon::CreateClientBeams()
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
 
+    // Don't create beams immediately - wait for proper positioning data
+    m_nBeamDelayFrames = 4; // Wait 4 frames for positioning to stabilize
+
     // Create primary beam using no-depth material
     m_pClientBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::BEAM_WIDTH);
     if (m_pClientBeam)
@@ -335,6 +340,9 @@ void CWeaponEgon::CreateClientBeams()
         // Set beam type to ensure proper rendering
         m_pClientBeam->SetType(BEAM_POINTS);
         m_pClientBeam->PointsInit(startPos, endPos);
+        
+        // Hide the beam initially
+        m_pClientBeam->AddEffects(EF_NODRAW);
     }
 
     // Create noise beam using no-depth material
@@ -352,6 +360,9 @@ void CWeaponEgon::CreateClientBeams()
         // Set beam type to ensure proper rendering
         m_pClientNoise->SetType(BEAM_POINTS);
         m_pClientNoise->PointsInit(startPos, endPos);
+        
+        // Hide the beam initially
+        m_pClientNoise->AddEffects(EF_NODRAW);
     }
 
     // Create client-side flare sprite at beam end with proper initialization
@@ -372,6 +383,9 @@ void CWeaponEgon::CreateClientBeams()
         
         // Start the sprite animation/thinking
         m_pClientSprite->TurnOn();
+        
+        // Hide the sprite initially
+        m_pClientSprite->AddEffects(EF_NODRAW);
         
         // Verify the sprite was created properly
         if (m_pClientSprite->GetClientHandle() == INVALID_CLIENTENTITY_HANDLE)
@@ -409,6 +423,41 @@ void CWeaponEgon::UpdateClientBeams()
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
 
+    // Handle frame delay for initial positioning
+    if (m_nBeamDelayFrames > 0)
+    {
+        m_nBeamDelayFrames--;
+        
+        // Update positions but keep beams hidden
+        if (m_pClientBeam)
+        {
+            m_pClientBeam->SetStartPos(startPos);
+            m_pClientBeam->SetEndPos(endPos);
+        }
+
+        if (m_pClientNoise)
+        {
+            m_pClientNoise->SetStartPos(startPos);
+            m_pClientNoise->SetEndPos(endPos);
+        }
+
+        if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
+        {
+            m_pClientSprite->SetAbsOrigin(endPos);
+        }
+
+        // Update light position even when beams are hidden
+        if (m_pBeamGlow)
+        {
+            m_pBeamGlow->origin = endPos;
+            m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+        }
+        
+        // Set last position for smooth interpolation when beams become visible
+        m_vecLastEndPos = endPos;
+        return;
+    }
+
     // Smooth interpolation for beam end position
     if (m_vecLastEndPos != vec3_origin)
     {
@@ -422,6 +471,22 @@ void CWeaponEgon::UpdateClientBeams()
     {
         CreateClientBeams();
         return;
+    }
+
+    // Show the beams now that positioning has stabilized
+    if (m_pClientBeam && m_pClientBeam->IsEffectActive(EF_NODRAW))
+    {
+        m_pClientBeam->RemoveEffects(EF_NODRAW);
+    }
+    
+    if (m_pClientNoise && m_pClientNoise->IsEffectActive(EF_NODRAW))
+    {
+        m_pClientNoise->RemoveEffects(EF_NODRAW);
+    }
+    
+    if (m_pClientSprite && m_pClientSprite->IsEffectActive(EF_NODRAW))
+    {
+        m_pClientSprite->RemoveEffects(EF_NODRAW);
     }
 
     // Update beam positions
@@ -490,6 +555,7 @@ void CWeaponEgon::DestroyClientBeams()
     
     m_pBeamGlow = nullptr;
     m_vecLastEndPos = vec3_origin;
+    m_nBeamDelayFrames = 0; // Reset frame counter
 }
 
 //-----------------------------------------------------------------------------
@@ -665,6 +731,9 @@ void CWeaponEgon::StartFiring()
     m_fireState = FIRE_STARTUP;
 
 #ifdef CLIENT_DLL
+    // Reset frame delay counter for new firing sequence
+    m_nBeamDelayFrames = 4;
+    
     if (!m_bClientThinking)
     {
         SetNextClientThink(CLIENT_THINK_ALWAYS);
