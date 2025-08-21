@@ -183,6 +183,10 @@ CSprite::CSprite()
 	m_bDrawInMainRender = true;
 	m_bDrawInPortalRender = true;
 #endif
+
+#if defined( CLIENT_DLL )
+	m_spawnflags = 0;  // Initialize spawnflags for client
+#endif
 }
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -420,6 +424,31 @@ CSprite *CSprite::SpriteCreatePredictable( const char *module, int line, const c
 
 	return pSprite;
 }
+
+#if defined( CLIENT_DLL )
+//-----------------------------------------------------------------------------
+// Purpose: Client-side sprite creation
+// Input  : *pSpriteName - 
+//			&origin - 
+//			animate - 
+// Output : CSprite
+//-----------------------------------------------------------------------------
+CSprite *CSprite::SpriteCreate( const char *pSpriteName, const Vector &origin, bool animate )
+{
+	CSprite *pSprite = new CSprite();
+	if ( pSprite )
+	{
+		pSprite->SpriteInit( pSpriteName, origin );
+		pSprite->SetSolid( SOLID_NONE );
+		pSprite->SetSize( vec3_origin, vec3_origin );
+		pSprite->SetMoveType( MOVETYPE_NONE );
+		if ( animate )
+			pSprite->TurnOn();
+	}
+
+	return pSprite;
+}
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: 

@@ -142,6 +142,7 @@ private:
     // Client-only beam rendering
     CBeam *m_pClientBeam;
     CBeam *m_pClientNoise;
+    CSprite *m_pClientSprite;
     Vector m_vecLastEndPos;
     float m_flNextBeamUpdateTime;
     dlight_t *m_pBeamGlow;
@@ -243,6 +244,7 @@ CWeaponEgon::CWeaponEgon()
 #else
     m_pClientBeam = nullptr;
     m_pClientNoise = nullptr;
+    m_pClientSprite = nullptr;
     m_vecLastEndPos = vec3_origin;
     m_flNextBeamUpdateTime = 0.0f;
     m_pBeamGlow = nullptr;
@@ -361,6 +363,21 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientNoise->PointsInit(startPos, endPos);
     }
 
+    // Create client-side flare sprite at beam end
+    m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, endPos, false);
+    if (m_pClientSprite)
+    {
+        m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
+        m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
+        m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
+        
+        C_BasePlayer *pOwner = ToBasePlayer(GetOwner());
+        if (pOwner)
+        {
+            m_pClientSprite->SetOwnerEntity(pOwner);
+        }
+    }
+
     // Create dynamic light at beam end
     m_pBeamGlow = effects->CL_AllocDlight(entindex());
     if (m_pBeamGlow)
@@ -397,7 +414,7 @@ void CWeaponEgon::UpdateClientBeams()
     m_vecLastEndPos = endPos;
 
     // Create beams if they don't exist
-    if (!m_pClientBeam || !m_pClientNoise)
+    if (!m_pClientBeam || !m_pClientNoise || !m_pClientSprite)
     {
         CreateClientBeams();
         return;
@@ -414,6 +431,15 @@ void CWeaponEgon::UpdateClientBeams()
     {
         m_pClientNoise->SetStartPos(startPos);
         m_pClientNoise->SetEndPos(endPos);
+    }
+
+    // Update client sprite position and animation
+    if (m_pClientSprite)
+    {
+        m_pClientSprite->SetAbsOrigin(endPos);
+        m_pClientSprite->m_flFrame += 8.0f * gpGlobals->frametime;
+        if (m_pClientSprite->m_flFrame > m_pClientSprite->Frames())
+            m_pClientSprite->m_flFrame = 0.0f;
     }
 
     // Update dynamic light
@@ -439,6 +465,13 @@ void CWeaponEgon::DestroyClientBeams()
     {
         m_pClientNoise->Remove();
         m_pClientNoise = nullptr;
+    }
+    
+    if (m_pClientSprite)
+    {
+        // Use Remove() instead of UTIL_Remove for client-side sprites
+        m_pClientSprite->Remove();
+        m_pClientSprite = nullptr;
     }
     
     m_pBeamGlow = nullptr; // Dynamic lights are managed by the engine
@@ -802,7 +835,7 @@ void CWeaponEgon::ProcessAmmoConsumption()
     if (gpGlobals->curtime >= m_flAmmoUseTime)
     {
 #ifndef CLIENT_DLL
-        CBasePlayer *pOwner = GetPlayerOwner();
+    CBasePlayer *pOwner = GetPlayerOwner();
         if (pOwner)
         {
             pOwner->RemoveAmmo(1, m_iPrimaryAmmoType);

@@ -215,6 +215,12 @@ public:
 	DECLARE_DATADESC();
 
 	static CSprite *SpriteCreate( const char *pSpriteName, const Vector &origin, bool animate );
+#else
+	// Add client-side SpriteCreate declaration
+	static CSprite *SpriteCreate( const char *pSpriteName, const Vector &origin, bool animate );
+	
+	// Add client-side AddSpawnFlags equivalent
+	void AddSpawnFlags( int flags ) { m_spawnflags |= flags; }
 #endif
 	static CSprite *SpriteCreatePredictable( const char *module, int line, const char *pSpriteName, const Vector &origin, bool animate );
 
@@ -251,6 +257,11 @@ public:
 #endif
 
 	float		m_flDieTime;
+	
+#if defined( CLIENT_DLL )
+	// Add client-side spawnflags variable
+	int			m_spawnflags;
+#endif
 
 private:
 
