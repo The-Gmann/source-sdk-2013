@@ -330,7 +330,7 @@ void CWeaponEgon::CreateClientBeams()
     {
         m_pClientBeam->SetStartPos(startPos);
         m_pClientBeam->SetEndPos(endPos);
-        m_pClientBeam->SetBeamFlags(FBEAM_SINENOISE);
+        m_pClientBeam->SetBeamFlags(FBEAM_SINENOISE | FBEAM_FOREVER);
         m_pClientBeam->SetScrollRate(15);
         m_pClientBeam->SetBrightness(200);
         m_pClientBeam->SetColor(50, 215, 255);
@@ -351,6 +351,7 @@ void CWeaponEgon::CreateClientBeams()
     {
         m_pClientNoise->SetStartPos(startPos);
         m_pClientNoise->SetEndPos(endPos);
+        m_pClientNoise->SetBeamFlags(FBEAM_FOREVER);
         m_pClientNoise->SetScrollRate(10);
         m_pClientNoise->SetBrightness(150);
         m_pClientNoise->SetColor(50, 240, 255);
@@ -422,6 +423,16 @@ void CWeaponEgon::UpdateClientBeams()
 
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
+    
+    // Ensure minimum beam length to prevent near-plane clipping
+    Vector beamDir = endPos - startPos;
+    float beamLength = beamDir.Length();
+    
+    if (beamLength < 16.0f) // Minimum safe distance
+    {
+        beamDir.NormalizeInPlace();
+        endPos = startPos + (beamDir * 16.0f);
+    }
 
     // Handle frame delay for initial positioning
     if (m_nBeamDelayFrames > 0)
@@ -433,12 +444,16 @@ void CWeaponEgon::UpdateClientBeams()
         {
             m_pClientBeam->SetStartPos(startPos);
             m_pClientBeam->SetEndPos(endPos);
+            // Re-initialize beam points to force update
+            m_pClientBeam->PointsInit(startPos, endPos);
         }
 
         if (m_pClientNoise)
         {
             m_pClientNoise->SetStartPos(startPos);
             m_pClientNoise->SetEndPos(endPos);
+            // Re-initialize beam points to force update
+            m_pClientNoise->PointsInit(startPos, endPos);
         }
 
         if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
@@ -489,17 +504,27 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->RemoveEffects(EF_NODRAW);
     }
 
-    // Update beam positions
+    // Update beam positions with safe minimum distance and force reinit
     if (m_pClientBeam)
     {
         m_pClientBeam->SetStartPos(startPos);
         m_pClientBeam->SetEndPos(endPos);
+        // Force beam update by reinitializing points
+        m_pClientBeam->PointsInit(startPos, endPos);
+        
+        // Set beam to always visible by removing potential culling
+        m_pClientBeam->SetBeamFlags(m_pClientBeam->GetBeamFlags() | FBEAM_FOREVER);
     }
 
     if (m_pClientNoise)
     {
         m_pClientNoise->SetStartPos(startPos);
         m_pClientNoise->SetEndPos(endPos);
+        // Force beam update by reinitializing points
+        m_pClientNoise->PointsInit(startPos, endPos);
+        
+        // Set beam to always visible by removing potential culling
+        m_pClientNoise->SetBeamFlags(m_pClientNoise->GetBeamFlags() | FBEAM_FOREVER);
     }
 
     // Update sprite position and animation
