@@ -135,17 +135,15 @@ private:
     CNetworkVar(EFireState, m_fireState);
     CNetworkVar(Vector, m_vecBeamEndPos);
 
-#ifndef CLIENT_DLL
-    // Server-only effect handles
-    CNetworkHandle(CSprite, m_pSprite);
-#else
+#ifdef CLIENT_DLL
     // Client-only beam rendering
     CBeam *m_pClientBeam;
     CBeam *m_pClientNoise;
-    CSprite *m_pClientSprite;
+    CSprite *m_pClientSprite;  // Add this back
     Vector m_vecLastEndPos;
     float m_flNextBeamUpdateTime;
     dlight_t *m_pBeamGlow;
+    bool m_bClientThinking;
 #endif
 
     // State variables
@@ -160,11 +158,7 @@ private:
     void Fire();
     
     // Effect management
-#ifndef CLIENT_DLL
-    void CreateServerEffects();
-    void UpdateServerEffects(const Vector &endPoint);
-    void DestroyServerEffects();
-#else
+#ifdef CLIENT_DLL
     void CreateClientBeams();
     void UpdateClientBeams();
     void DestroyClientBeams();
@@ -239,15 +233,14 @@ CWeaponEgon::CWeaponEgon()
     m_flStartSoundDuration = EgonConstants::DEFAULT_SOUND_DURATION;
     m_bTransitionedToCharge = false;
 
-#ifndef CLIENT_DLL
-    m_pSprite = nullptr;
-#else
+#ifdef CLIENT_DLL
     m_pClientBeam = nullptr;
     m_pClientNoise = nullptr;
-    m_pClientSprite = nullptr;
+    m_pClientSprite = nullptr;  // Add this back
     m_vecLastEndPos = vec3_origin;
     m_flNextBeamUpdateTime = 0.0f;
     m_pBeamGlow = nullptr;
+    m_bClientThinking = false;
 #endif
 }
 
@@ -256,9 +249,7 @@ CWeaponEgon::CWeaponEgon()
 //-----------------------------------------------------------------------------
 CWeaponEgon::~CWeaponEgon()
 {
-#ifndef CLIENT_DLL
-    DestroyServerEffects();
-#else
+#ifdef CLIENT_DLL
     DestroyClientBeams();
 #endif
 }
@@ -319,7 +310,7 @@ Vector CWeaponEgon::GetMuzzlePosition()
 }
 
 //-----------------------------------------------------------------------------
-// Create client-side beams
+// Create client-side beams and sprite
 //-----------------------------------------------------------------------------
 void CWeaponEgon::CreateClientBeams()
 {
@@ -363,18 +354,31 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientNoise->PointsInit(startPos, endPos);
     }
 
-    // Create client-side flare sprite at beam end
+    // Create client-side flare sprite at beam end with proper initialization
     m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, endPos, false);
     if (m_pClientSprite)
     {
+        // Set sprite properties
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
         m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
         m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         
-        C_BasePlayer *pOwner = ToBasePlayer(GetOwner());
+        // Set owner for proper cleanup
+        CBasePlayer *pOwner = ToBasePlayer(GetOwner());
         if (pOwner)
         {
             m_pClientSprite->SetOwnerEntity(pOwner);
+        }
+        
+        // Start the sprite animation/thinking
+        m_pClientSprite->TurnOn();
+        
+        // Verify the sprite was created properly
+        if (m_pClientSprite->GetClientHandle() == INVALID_CLIENTENTITY_HANDLE)
+        {
+            Warning("CWeaponEgon::CreateClientBeams - Sprite created with invalid client handle\n");
+            m_pClientSprite->Remove();
+            m_pClientSprite = nullptr;
         }
     }
 
@@ -408,7 +412,7 @@ void CWeaponEgon::UpdateClientBeams()
     // Smooth interpolation for beam end position
     if (m_vecLastEndPos != vec3_origin)
     {
-        float lerpFactor = gpGlobals->frametime * 15.0f; // Smooth interpolation
+        float lerpFactor = gpGlobals->frametime * 15.0f;
         endPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, endPos);
     }
     m_vecLastEndPos = endPos;
@@ -433,13 +437,19 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientNoise->SetEndPos(endPos);
     }
 
-    // Update client sprite position and animation
-    if (m_pClientSprite)
+    // Update sprite position and animation
+    if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
     {
         m_pClientSprite->SetAbsOrigin(endPos);
-        m_pClientSprite->m_flFrame += 8.0f * gpGlobals->frametime;
-        if (m_pClientSprite->m_flFrame > m_pClientSprite->Frames())
-            m_pClientSprite->m_flFrame = 0.0f;
+        
+        // Animate the sprite frame
+        float currentFrame = m_pClientSprite->m_flFrame;
+        currentFrame += 8.0f * gpGlobals->frametime;
+        
+        if (currentFrame > m_pClientSprite->Frames())
+            currentFrame = 0.0f;
+            
+        m_pClientSprite->m_flFrame = currentFrame;
     }
 
     // Update dynamic light
@@ -451,7 +461,7 @@ void CWeaponEgon::UpdateClientBeams()
 }
 
 //-----------------------------------------------------------------------------
-// Destroy client beams
+// Destroy client beams - with safer sprite cleanup
 //-----------------------------------------------------------------------------
 void CWeaponEgon::DestroyClientBeams()
 {
@@ -467,14 +477,18 @@ void CWeaponEgon::DestroyClientBeams()
         m_pClientNoise = nullptr;
     }
     
+    // Safely remove sprite
     if (m_pClientSprite)
     {
-        // Use Remove() instead of UTIL_Remove for client-side sprites
-        m_pClientSprite->Remove();
+        // Check if it still has a valid handle before trying to remove
+        if (m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
+        {
+            m_pClientSprite->Remove();
+        }
         m_pClientSprite = nullptr;
     }
     
-    m_pBeamGlow = nullptr; // Dynamic lights are managed by the engine
+    m_pBeamGlow = nullptr;
     m_vecLastEndPos = vec3_origin;
 }
 
@@ -489,11 +503,19 @@ void CWeaponEgon::ClientThink()
     
     if (m_fireState != FIRE_OFF)
     {
-        SetNextClientThink(CLIENT_THINK_ALWAYS);
+        if (!m_bClientThinking)
+        {
+            SetNextClientThink(CLIENT_THINK_ALWAYS);
+            m_bClientThinking = true;
+        }
     }
     else
     {
-        SetNextClientThink(CLIENT_THINK_NEVER);
+        if (m_bClientThinking)
+        {
+            SetNextClientThink(CLIENT_THINK_NEVER);
+            m_bClientThinking = false;
+        }
     }
 }
 
@@ -505,13 +527,15 @@ void CWeaponEgon::OnDataChanged(DataUpdateType_t updateType)
     BaseClass::OnDataChanged(updateType);
     
     // Set up client thinking when firing state changes
-    if (m_fireState != FIRE_OFF)
+    if (m_fireState != FIRE_OFF && !m_bClientThinking)
     {
         SetNextClientThink(CLIENT_THINK_ALWAYS);
+        m_bClientThinking = true;
     }
-    else
+    else if (m_fireState == FIRE_OFF && m_bClientThinking)
     {
         SetNextClientThink(CLIENT_THINK_NEVER);
+        m_bClientThinking = false;
         DestroyClientBeams();
     }
 }
@@ -641,7 +665,11 @@ void CWeaponEgon::StartFiring()
     m_fireState = FIRE_STARTUP;
 
 #ifdef CLIENT_DLL
-    SetNextClientThink(CLIENT_THINK_ALWAYS);
+    if (!m_bClientThinking)
+    {
+        SetNextClientThink(CLIENT_THINK_ALWAYS);
+        m_bClientThinking = true;
+    }
 #endif
 }
 
@@ -660,11 +688,13 @@ void CWeaponEgon::StopFiring()
     // Reset animation and effects
     SendWeaponAnim(ACT_VM_IDLE);
     
-#ifndef CLIENT_DLL
-    DestroyServerEffects();
-#else
+#ifdef CLIENT_DLL
     DestroyClientBeams();
-    SetNextClientThink(CLIENT_THINK_NEVER);
+    if (m_bClientThinking)
+    {
+        SetNextClientThink(CLIENT_THINK_NEVER);
+        m_bClientThinking = false;
+    }
 #endif
 
     // Reset state
@@ -714,9 +744,6 @@ void CWeaponEgon::Fire()
     m_vecBeamEndPos = tr.endpos;
 
 #ifndef CLIENT_DLL
-    // Server: Update sprite effects and handle damage
-    UpdateServerEffects(tr.endpos);
-
     // Process damage at intervals
     if (gpGlobals->curtime >= m_flNextDamageTime)
     {
@@ -734,60 +761,6 @@ void CWeaponEgon::Fire()
     // Consume ammo
     ProcessAmmoConsumption();
 }
-
-#ifndef CLIENT_DLL
-//-----------------------------------------------------------------------------
-// Create server-side sprite effects only
-//-----------------------------------------------------------------------------
-void CWeaponEgon::CreateServerEffects()
-{
-    CBasePlayer *pOwner = GetPlayerOwner();
-    if (!pOwner)
-        return;
-
-    DestroyServerEffects(); // Clean up first
-
-    // Create end sprite only (beams are now client-side)
-    m_pSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, GetAbsOrigin(), false);
-    if (m_pSprite)
-    {
-        m_pSprite->SetScale(EgonConstants::SPRITE_SCALE);
-        m_pSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
-        m_pSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
-        m_pSprite->SetOwnerEntity(pOwner);
-    }
-}
-
-//-----------------------------------------------------------------------------
-// Update server effect positions
-//-----------------------------------------------------------------------------
-void CWeaponEgon::UpdateServerEffects(const Vector &endPoint)
-{
-    if (!m_pSprite)
-        CreateServerEffects();
-
-    // Update sprite position and animation
-    if (m_pSprite)
-    {
-        m_pSprite->SetAbsOrigin(endPoint);
-        m_pSprite->m_flFrame += 8.0f * gpGlobals->frametime;
-        if (m_pSprite->m_flFrame > m_pSprite->Frames())
-            m_pSprite->m_flFrame = 0.0f;
-    }
-}
-
-//-----------------------------------------------------------------------------
-// Clean up server effects
-//-----------------------------------------------------------------------------
-void CWeaponEgon::DestroyServerEffects()
-{
-    if (m_pSprite)
-    {
-        UTIL_Remove(m_pSprite);
-        m_pSprite = nullptr;
-    }
-}
-#endif // !CLIENT_DLL
 
 //-----------------------------------------------------------------------------
 // Process damage to targets
@@ -835,7 +808,7 @@ void CWeaponEgon::ProcessAmmoConsumption()
     if (gpGlobals->curtime >= m_flAmmoUseTime)
     {
 #ifndef CLIENT_DLL
-    CBasePlayer *pOwner = GetPlayerOwner();
+        CBasePlayer *pOwner = GetPlayerOwner();
         if (pOwner)
         {
             pOwner->RemoveAmmo(1, m_iPrimaryAmmoType);

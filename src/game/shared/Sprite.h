@@ -225,25 +225,31 @@ public:
 	static CSprite *SpriteCreatePredictable( const char *module, int line, const char *pSpriteName, const Vector &origin, bool animate );
 
 #if defined( CLIENT_DLL )
-	virtual float	GetRenderScale( void );
-	virtual int		GetRenderBrightness( void );
+    // Add missing InitializeAsClientEntity declaration
+    virtual bool InitializeAsClientEntity( const char *pszModelName, RenderGroup_t renderGroup );
+    
+    virtual float	GetRenderScale( void );
+    virtual int		GetRenderBrightness( void );
 
-	virtual int		DrawModel( int flags );
-	virtual const	Vector& GetRenderOrigin();
-	virtual void	GetRenderBounds( Vector &vecMins, Vector &vecMaxs );
-	virtual float	GlowBlend( CEngineSprite *psprite, const Vector& entorigin, int rendermode, int renderfx, int alpha, float *scale );
-	virtual void	GetToolRecordingState( KeyValues *msg );
+    virtual int		DrawModel( int flags );
+    virtual const	Vector& GetRenderOrigin();
+    virtual void	GetRenderBounds( Vector &vecMins, Vector &vecMaxs );
+    virtual float	GlowBlend( CEngineSprite *psprite, const Vector& entorigin, int rendermode, int renderfx, int alpha, float *scale );
+    virtual void	GetToolRecordingState( KeyValues *msg );
 
 // Only supported in TF2 right now
 #if defined( INVASION_CLIENT_DLL )
-	virtual bool	ShouldPredict( void )
-	{
-		return true;
-	}
+    virtual bool	ShouldPredict( void )
+    {
+        return true;
+    }
 #endif
 
-	virtual void	ClientThink( void );
-	virtual void	OnDataChanged( DataUpdateType_t updateType );
+    virtual void	ClientThink( void );
+    virtual void	OnDataChanged( DataUpdateType_t updateType );
+    
+    // Override Remove to properly clean up client handle
+    virtual void Remove( void );
 
 #endif
 public:

@@ -427,26 +427,70 @@ CSprite *CSprite::SpriteCreatePredictable( const char *module, int line, const c
 
 #if defined( CLIENT_DLL )
 //-----------------------------------------------------------------------------
-// Purpose: Client-side sprite creation
-// Input  : *pSpriteName - 
-//			&origin - 
-//			animate - 
-// Output : CSprite
+// Purpose: Client-side sprite creation - properly initialize client handle
 //-----------------------------------------------------------------------------
 CSprite *CSprite::SpriteCreate( const char *pSpriteName, const Vector &origin, bool animate )
 {
-	CSprite *pSprite = new CSprite();
-	if ( pSprite )
-	{
-		pSprite->SpriteInit( pSpriteName, origin );
-		pSprite->SetSolid( SOLID_NONE );
-		pSprite->SetSize( vec3_origin, vec3_origin );
-		pSprite->SetMoveType( MOVETYPE_NONE );
-		if ( animate )
-			pSprite->TurnOn();
-	}
+    // Create the sprite entity using the client entity factory
+    CSprite *pSprite = new CSprite();
+    if (!pSprite)
+        return nullptr;
 
-	return pSprite;
+    // Initialize the sprite with proper client entity registration
+    pSprite->InitializeAsClientEntity( pSpriteName, RENDER_GROUP_OPAQUE_ENTITY );
+    
+    // Set up the sprite properties
+    pSprite->SpriteInit( pSpriteName, origin );
+    pSprite->SetSolid( SOLID_NONE );
+    pSprite->SetSize( vec3_origin, vec3_origin );
+    pSprite->SetMoveType( MOVETYPE_NONE );
+    
+    // Make sure it's properly spawned on the client
+    pSprite->Spawn();
+    
+    // Add client-side thinking
+    pSprite->SetNextClientThink( CLIENT_THINK_ALWAYS );
+    
+    if ( animate )
+        pSprite->TurnOn();
+
+    return pSprite;
+}
+#endif
+
+#if defined( CLIENT_DLL )
+//-----------------------------------------------------------------------------
+// Purpose: Initialize as client entity with proper handle registration
+//-----------------------------------------------------------------------------
+bool CSprite::InitializeAsClientEntity( const char *pszModelName, RenderGroup_t renderGroup )
+{
+    // Call base class initialization
+    if ( !BaseClass::InitializeAsClientEntity( pszModelName, renderGroup ) )
+        return false;
+    
+    // Set the model name
+    SetModelName( MAKE_STRING( pszModelName ) );
+    
+    // Ensure we have a valid client handle before setting up thinking
+    if ( GetClientHandle() == INVALID_CLIENTENTITY_HANDLE )
+    {
+        Warning("CSprite::InitializeAsClientEntity - Invalid client handle after initialization\n");
+        return false;
+    }
+    
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Override Remove to safely clean up
+//-----------------------------------------------------------------------------
+void CSprite::Remove( void )
+{
+    // Stop thinking before removal
+    SetNextClientThink( CLIENT_THINK_NEVER );
+    
+    // Call base class remove
+    BaseClass::Remove();
 }
 #endif
 
