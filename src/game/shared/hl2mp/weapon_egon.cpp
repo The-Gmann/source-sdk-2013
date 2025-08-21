@@ -10,6 +10,7 @@
 //----------------------------------------
 #include "cbase.h"
 #include "beam_shared.h"
+#include "beam_flags.h"  // Add this include
 #include "in_buttons.h"
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
 #include "soundenvelope.h"
@@ -18,6 +19,17 @@
 #ifdef CLIENT_DLL
     #include "c_hl2mp_player.h"
     #include "ClientEffectPrecacheSystem.h"
+    #include "fx_line.h"
+    #include "view.h"
+    #include "materialsystem/imaterial.h"
+    #include "materialsystem/imaterialsystem.h"
+    #include "renderparm.h"
+    #include "model_types.h"
+    #include "tier0/vprof.h"
+    #include "engine/ivdebugoverlay.h"
+    #include "c_te_effect_dispatch.h"
+    #include "dlight.h"
+    #include "iefx.h"
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
@@ -33,6 +45,7 @@ namespace EgonConstants
 {
     // Sprites and models
     static const char* BEAM_SPRITE = "sprites/xbeam1.vmt";
+    static const char* BEAM_SPRITE_NODEPTH = "sprites/xbeam_nodepth.vmt";  // Add this
     static const char* FLARE_SPRITE = "sprites/xspark1.vmt";
     
     // Beam properties
@@ -69,6 +82,7 @@ ConVar sk_plr_dmg_egon("sk_plr_dmg_egon", "15", FCVAR_REPLICATED, "Egon weapon d
 #ifdef CLIENT_DLL
     CLIENTEFFECT_REGISTER_BEGIN(PrecacheEffectEgon)
         CLIENTEFFECT_MATERIAL("sprites/xbeam1")
+        CLIENTEFFECT_MATERIAL("sprites/xbeam_nodepth")  // Add this
         CLIENTEFFECT_MATERIAL("sprites/xspark1")
     CLIENTEFFECT_REGISTER_END()
 
@@ -98,6 +112,12 @@ public:
     void WeaponIdle() override;
     void ItemPostFrame() override;
 
+#ifdef CLIENT_DLL
+    void ClientThink() override;
+    void OnDataChanged(DataUpdateType_t updateType) override;
+    void ViewModelDrawn(C_BaseViewModel *pBaseViewModel) override;
+#endif
+
     // Public utility methods
     bool HasAmmo() const;
 
@@ -113,11 +133,19 @@ private:
     CNetworkVar(float, m_flAmmoUseTime);
     CNetworkVar(float, m_flNextDamageTime);
     CNetworkVar(EFireState, m_fireState);
+    CNetworkVar(Vector, m_vecBeamEndPos);
 
-    // Effect handles
-    CNetworkHandle(CBeam, m_pBeam);
-    CNetworkHandle(CBeam, m_pNoise);
+#ifndef CLIENT_DLL
+    // Server-only effect handles
     CNetworkHandle(CSprite, m_pSprite);
+#else
+    // Client-only beam rendering
+    CBeam *m_pClientBeam;
+    CBeam *m_pClientNoise;
+    Vector m_vecLastEndPos;
+    float m_flNextBeamUpdateTime;
+    dlight_t *m_pBeamGlow;
+#endif
 
     // State variables
     float m_flStartFireTime;
@@ -131,9 +159,16 @@ private:
     void Fire();
     
     // Effect management
-    void CreateEffects();
-    void UpdateEffects(const Vector &startPoint, const Vector &endPoint);
-    void DestroyEffects();
+#ifndef CLIENT_DLL
+    void CreateServerEffects();
+    void UpdateServerEffects(const Vector &endPoint);
+    void DestroyServerEffects();
+#else
+    void CreateClientBeams();
+    void UpdateClientBeams();
+    void DestroyClientBeams();
+    Vector GetMuzzlePosition();
+#endif
     
     // Damage and utility
     void ProcessDamage(const trace_t &tr, const Vector &direction);
@@ -153,16 +188,12 @@ BEGIN_NETWORK_TABLE(CWeaponEgon, DT_WeaponEgon)
     RecvPropFloat(RECVINFO(m_flAmmoUseTime)),
     RecvPropFloat(RECVINFO(m_flNextDamageTime)),
     RecvPropInt(RECVINFO(m_fireState)),
-    RecvPropEHandle(RECVINFO(m_pBeam)),
-    RecvPropEHandle(RECVINFO(m_pNoise)),
-    RecvPropEHandle(RECVINFO(m_pSprite)),
+    RecvPropVector(RECVINFO(m_vecBeamEndPos)),
 #else
     SendPropFloat(SENDINFO(m_flAmmoUseTime)),
     SendPropFloat(SENDINFO(m_flNextDamageTime)),
     SendPropInt(SENDINFO(m_fireState)),
-    SendPropEHandle(SENDINFO(m_pBeam)),
-    SendPropEHandle(SENDINFO(m_pNoise)),
-    SendPropEHandle(SENDINFO(m_pSprite)),
+    SendPropVector(SENDINFO(m_vecBeamEndPos)),
 #endif
 END_NETWORK_TABLE()
 
@@ -172,6 +203,7 @@ BEGIN_PREDICTION_DATA(CWeaponEgon)
     DEFINE_PRED_FIELD(m_flAmmoUseTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_flNextDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_fireState, FIELD_INTEGER, FTYPEDESC_INSENDTABLE),
+    DEFINE_PRED_FIELD(m_vecBeamEndPos, FIELD_VECTOR, FTYPEDESC_INSENDTABLE),
 END_PREDICTION_DATA()
 #endif
 
@@ -200,15 +232,20 @@ CWeaponEgon::CWeaponEgon()
     m_flAmmoUseTime = 0.0f;
     m_flNextDamageTime = 0.0f;
     m_fireState = FIRE_OFF;
+    m_vecBeamEndPos = vec3_origin;
     m_flStartFireTime = 0.0f;
     m_flShakeTime = 0.0f;
     m_flStartSoundDuration = EgonConstants::DEFAULT_SOUND_DURATION;
     m_bTransitionedToCharge = false;
 
 #ifndef CLIENT_DLL
-    m_pBeam = nullptr;
-    m_pNoise = nullptr;
     m_pSprite = nullptr;
+#else
+    m_pClientBeam = nullptr;
+    m_pClientNoise = nullptr;
+    m_vecLastEndPos = vec3_origin;
+    m_flNextBeamUpdateTime = 0.0f;
+    m_pBeamGlow = nullptr;
 #endif
 }
 
@@ -217,7 +254,11 @@ CWeaponEgon::CWeaponEgon()
 //-----------------------------------------------------------------------------
 CWeaponEgon::~CWeaponEgon()
 {
-    DestroyEffects();
+#ifndef CLIENT_DLL
+    DestroyServerEffects();
+#else
+    DestroyClientBeams();
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -226,6 +267,7 @@ CWeaponEgon::~CWeaponEgon()
 void CWeaponEgon::Precache()
 {
     PrecacheModel(EgonConstants::BEAM_SPRITE);
+    PrecacheModel(EgonConstants::BEAM_SPRITE_NODEPTH);  // Add this
     PrecacheModel(EgonConstants::FLARE_SPRITE);
 
     // Precache sounds and get actual duration
@@ -242,6 +284,219 @@ void CWeaponEgon::Precache()
 
     BaseClass::Precache();
 }
+
+#ifdef CLIENT_DLL
+//-----------------------------------------------------------------------------
+// Get muzzle position from attachment
+//-----------------------------------------------------------------------------
+Vector CWeaponEgon::GetMuzzlePosition()
+{
+    C_BasePlayer *pOwner = ToBasePlayer(GetOwner());
+    if (!pOwner)
+        return GetAbsOrigin();
+
+    C_BaseViewModel *pViewModel = pOwner->GetViewModel();
+    if (!pViewModel)
+        return GetAbsOrigin();
+
+    Vector muzzlePos;
+    QAngle muzzleAng;
+    
+    // Try to get muzzle attachment point from viewmodel
+    int attachment = pViewModel->LookupAttachment("muzzle");
+    if (attachment == -1)
+        attachment = pViewModel->LookupAttachment("0"); // Fallback to attachment 0
+        
+    if (attachment != -1 && pViewModel->GetAttachment(attachment, muzzlePos, muzzleAng))
+    {
+        return muzzlePos;
+    }
+    
+    // Fallback to owner's shoot position
+    return pOwner->Weapon_ShootPosition();
+}
+
+//-----------------------------------------------------------------------------
+// Create client-side beams
+//-----------------------------------------------------------------------------
+void CWeaponEgon::CreateClientBeams()
+{
+    DestroyClientBeams(); // Clean up first
+
+    Vector startPos = GetMuzzlePosition();
+    Vector endPos = m_vecBeamEndPos;
+
+    // Create primary beam using no-depth material
+    m_pClientBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::BEAM_WIDTH);
+    if (m_pClientBeam)
+    {
+        m_pClientBeam->SetStartPos(startPos);
+        m_pClientBeam->SetEndPos(endPos);
+        m_pClientBeam->SetBeamFlags(FBEAM_SINENOISE);
+        m_pClientBeam->SetScrollRate(15);
+        m_pClientBeam->SetBrightness(200);
+        m_pClientBeam->SetColor(50, 215, 255);
+        m_pClientBeam->SetNoise(0.2f);
+        m_pClientBeam->SetRenderMode(kRenderTransAdd);
+        
+        // Set beam type to ensure proper rendering
+        m_pClientBeam->SetType(BEAM_POINTS);
+        m_pClientBeam->PointsInit(startPos, endPos);
+    }
+
+    // Create noise beam using no-depth material
+    m_pClientNoise = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::NOISE_WIDTH);
+    if (m_pClientNoise)
+    {
+        m_pClientNoise->SetStartPos(startPos);
+        m_pClientNoise->SetEndPos(endPos);
+        m_pClientNoise->SetScrollRate(10);
+        m_pClientNoise->SetBrightness(150);
+        m_pClientNoise->SetColor(50, 240, 255);
+        m_pClientNoise->SetNoise(0.8f);
+        m_pClientNoise->SetRenderMode(kRenderTransAdd);
+        
+        // Set beam type to ensure proper rendering
+        m_pClientNoise->SetType(BEAM_POINTS);
+        m_pClientNoise->PointsInit(startPos, endPos);
+    }
+
+    // Create dynamic light at beam end
+    m_pBeamGlow = effects->CL_AllocDlight(entindex());
+    if (m_pBeamGlow)
+    {
+        m_pBeamGlow->origin = endPos;
+        m_pBeamGlow->radius = 128.0f;
+        m_pBeamGlow->color.r = 50;
+        m_pBeamGlow->color.g = 215;
+        m_pBeamGlow->color.b = 255;
+        m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Update client beam positions
+//-----------------------------------------------------------------------------
+void CWeaponEgon::UpdateClientBeams()
+{
+    if (m_fireState == FIRE_OFF)
+    {
+        DestroyClientBeams();
+        return;
+    }
+
+    Vector startPos = GetMuzzlePosition();
+    Vector endPos = m_vecBeamEndPos;
+
+    // Smooth interpolation for beam end position
+    if (m_vecLastEndPos != vec3_origin)
+    {
+        float lerpFactor = gpGlobals->frametime * 15.0f; // Smooth interpolation
+        endPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, endPos);
+    }
+    m_vecLastEndPos = endPos;
+
+    // Create beams if they don't exist
+    if (!m_pClientBeam || !m_pClientNoise)
+    {
+        CreateClientBeams();
+        return;
+    }
+
+    // Update beam positions
+    if (m_pClientBeam)
+    {
+        m_pClientBeam->SetStartPos(startPos);
+        m_pClientBeam->SetEndPos(endPos);
+    }
+
+    if (m_pClientNoise)
+    {
+        m_pClientNoise->SetStartPos(startPos);
+        m_pClientNoise->SetEndPos(endPos);
+    }
+
+    // Update dynamic light
+    if (m_pBeamGlow)
+    {
+        m_pBeamGlow->origin = endPos;
+        m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Destroy client beams
+//-----------------------------------------------------------------------------
+void CWeaponEgon::DestroyClientBeams()
+{
+    if (m_pClientBeam)
+    {
+        m_pClientBeam->Remove();
+        m_pClientBeam = nullptr;
+    }
+    
+    if (m_pClientNoise)
+    {
+        m_pClientNoise->Remove();
+        m_pClientNoise = nullptr;
+    }
+    
+    m_pBeamGlow = nullptr; // Dynamic lights are managed by the engine
+    m_vecLastEndPos = vec3_origin;
+}
+
+//-----------------------------------------------------------------------------
+// Client think - updates beams every frame
+//-----------------------------------------------------------------------------
+void CWeaponEgon::ClientThink()
+{
+    BaseClass::ClientThink();
+    
+    UpdateClientBeams();
+    
+    if (m_fireState != FIRE_OFF)
+    {
+        SetNextClientThink(CLIENT_THINK_ALWAYS);
+    }
+    else
+    {
+        SetNextClientThink(CLIENT_THINK_NEVER);
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Handle data changes from server
+//-----------------------------------------------------------------------------
+void CWeaponEgon::OnDataChanged(DataUpdateType_t updateType)
+{
+    BaseClass::OnDataChanged(updateType);
+    
+    // Set up client thinking when firing state changes
+    if (m_fireState != FIRE_OFF)
+    {
+        SetNextClientThink(CLIENT_THINK_ALWAYS);
+    }
+    else
+    {
+        SetNextClientThink(CLIENT_THINK_NEVER);
+        DestroyClientBeams();
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Called when viewmodel is drawn
+//-----------------------------------------------------------------------------
+void CWeaponEgon::ViewModelDrawn(C_BaseViewModel *pBaseViewModel)
+{
+    BaseClass::ViewModelDrawn(pBaseViewModel);
+    
+    // Update beams after viewmodel is drawn to ensure proper positioning
+    if (m_fireState != FIRE_OFF)
+    {
+        UpdateClientBeams();
+    }
+}
+#endif // CLIENT_DLL
 
 //-----------------------------------------------------------------------------
 // Deploy weapon
@@ -351,6 +606,10 @@ void CWeaponEgon::StartFiring()
     SendWeaponAnim(ACT_VM_PULLBACK);
     
     m_fireState = FIRE_STARTUP;
+
+#ifdef CLIENT_DLL
+    SetNextClientThink(CLIENT_THINK_ALWAYS);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -367,13 +626,21 @@ void CWeaponEgon::StopFiring()
     
     // Reset animation and effects
     SendWeaponAnim(ACT_VM_IDLE);
-    DestroyEffects();
+    
+#ifndef CLIENT_DLL
+    DestroyServerEffects();
+#else
+    DestroyClientBeams();
+    SetNextClientThink(CLIENT_THINK_NEVER);
+#endif
 
     // Reset state
     m_fireState = FIRE_OFF;
     m_bTransitionedToCharge = false;
     m_flNextPrimaryAttack = gpGlobals->curtime + EgonConstants::STARTUP_DELAY;
     SetWeaponIdleTime(gpGlobals->curtime + EgonConstants::STARTUP_DELAY);
+    
+    m_vecBeamEndPos = vec3_origin;
 }
 
 //-----------------------------------------------------------------------------
@@ -410,8 +677,12 @@ void CWeaponEgon::Fire()
     trace_t tr;
     UTIL_TraceLine(vecSrc, vecEnd, MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &tr);
 
-    // Update visual effects
-    UpdateEffects(vecSrc, tr.endpos);
+    // Update beam end position for networking
+    m_vecBeamEndPos = tr.endpos;
+
+#ifndef CLIENT_DLL
+    // Server: Update sprite effects and handle damage
+    UpdateServerEffects(tr.endpos);
 
     // Process damage at intervals
     if (gpGlobals->curtime >= m_flNextDamageTime)
@@ -420,60 +691,30 @@ void CWeaponEgon::Fire()
         m_flNextDamageTime = gpGlobals->curtime + EgonConstants::DAMAGE_INTERVAL;
     }
 
-    // Consume ammo
-    ProcessAmmoConsumption();
-
     // Impact effects for valid surfaces
     if (tr.fraction < 1.0f && !(tr.surface.flags & SURF_SKY))
     {
-#ifndef CLIENT_DLL
         UTIL_ScreenShake(tr.endpos, 5.0f, 150.0f, 0.25f, 150.0f, SHAKE_START);
-#endif
     }
+#endif
+
+    // Consume ammo
+    ProcessAmmoConsumption();
 }
 
-//-----------------------------------------------------------------------------
-// Create beam and sprite effects
-//-----------------------------------------------------------------------------
-void CWeaponEgon::CreateEffects()
-{
 #ifndef CLIENT_DLL
+//-----------------------------------------------------------------------------
+// Create server-side sprite effects only
+//-----------------------------------------------------------------------------
+void CWeaponEgon::CreateServerEffects()
+{
     CBasePlayer *pOwner = GetPlayerOwner();
     if (!pOwner)
         return;
 
-    DestroyEffects(); // Clean up first
+    DestroyServerEffects(); // Clean up first
 
-    // Create primary beam
-    m_pBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE, EgonConstants::BEAM_WIDTH);
-    if (m_pBeam)
-    {
-        m_pBeam->PointEntInit(GetAbsOrigin(), this);
-        m_pBeam->SetBeamFlags(FBEAM_SINENOISE);
-        m_pBeam->SetEndAttachment(1);
-        m_pBeam->AddSpawnFlags(SF_BEAM_TEMPORARY);
-        m_pBeam->SetOwnerEntity(pOwner);
-        m_pBeam->SetScrollRate(50);
-        m_pBeam->SetBrightness(200);
-        m_pBeam->SetColor(50, 215, 255);
-        m_pBeam->SetNoise(0.2f);
-    }
-
-    // Create noise beam
-    m_pNoise = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE, EgonConstants::NOISE_WIDTH);
-    if (m_pNoise)
-    {
-        m_pNoise->PointEntInit(GetAbsOrigin(), this);
-        m_pNoise->SetEndAttachment(1);
-        m_pNoise->AddSpawnFlags(SF_BEAM_TEMPORARY);
-        m_pNoise->SetOwnerEntity(pOwner);
-        m_pNoise->SetScrollRate(35);
-        m_pNoise->SetBrightness(200);
-        m_pNoise->SetColor(50, 240, 255);
-        m_pNoise->SetNoise(0.8f);
-    }
-
-    // Create end sprite
+    // Create end sprite only (beams are now client-side)
     m_pSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, GetAbsOrigin(), false);
     if (m_pSprite)
     {
@@ -481,65 +722,39 @@ void CWeaponEgon::CreateEffects()
         m_pSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
         m_pSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         m_pSprite->SetOwnerEntity(pOwner);
-        
-        if (m_pBeam)
-            m_pSprite->SetParent(m_pBeam);
     }
-#endif
 }
 
 //-----------------------------------------------------------------------------
-// Update effect positions
+// Update server effect positions
 //-----------------------------------------------------------------------------
-void CWeaponEgon::UpdateEffects(const Vector &startPoint, const Vector &endPoint)
+void CWeaponEgon::UpdateServerEffects(const Vector &endPoint)
 {
-#ifndef CLIENT_DLL
-    if (!m_pBeam)
-        CreateEffects();
+    if (!m_pSprite)
+        CreateServerEffects();
 
-    if (m_pBeam)
-        m_pBeam->SetStartPos(endPoint);
-
-    if (m_pNoise)
-        m_pNoise->SetStartPos(endPoint);
-
-    // Animate sprite
+    // Update sprite position and animation
     if (m_pSprite)
     {
+        m_pSprite->SetAbsOrigin(endPoint);
         m_pSprite->m_flFrame += 8.0f * gpGlobals->frametime;
         if (m_pSprite->m_flFrame > m_pSprite->Frames())
             m_pSprite->m_flFrame = 0.0f;
     }
-#endif
 }
 
 //-----------------------------------------------------------------------------
-// Clean up all effects
+// Clean up server effects
 //-----------------------------------------------------------------------------
-void CWeaponEgon::DestroyEffects()
+void CWeaponEgon::DestroyServerEffects()
 {
-#ifndef CLIENT_DLL
-    if (m_pBeam)
-    {
-        UTIL_Remove(m_pBeam);
-        m_pBeam = nullptr;
-    }
-    if (m_pNoise)
-    {
-        UTIL_Remove(m_pNoise);
-        m_pNoise = nullptr;
-    }
     if (m_pSprite)
     {
         UTIL_Remove(m_pSprite);
         m_pSprite = nullptr;
     }
-#else
-    m_pBeam = nullptr;
-    m_pNoise = nullptr;
-    m_pSprite = nullptr;
-#endif
 }
+#endif // !CLIENT_DLL
 
 //-----------------------------------------------------------------------------
 // Process damage to targets
