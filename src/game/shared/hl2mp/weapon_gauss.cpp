@@ -329,10 +329,16 @@ void CWeaponGauss::IncreaseCharge(void)
             // Play overcharge sound
             EmitSound("Weapon_Gauss.Electro2");
             
-            // Deal damage to player
-            pOwner->TakeDamage(CTakeDamageInfo(this, this, 50, DMG_SHOCK));
+            // Deal damage to player only if self damage is enabled
+            if (rb_selfgauss.GetBool())
+            {
+                // Create damage info with proper attacker (use the player as both inflictor and attacker)
+                CTakeDamageInfo dmgInfo(pOwner, pOwner, 50, DMG_SHOCK);
+                dmgInfo.SetDamagePosition(pOwner->GetAbsOrigin());
+                pOwner->TakeDamage(dmgInfo);
+            }
             
-            // Screen flash effect
+            // Screen flash effect (always show regardless of damage setting)
             color32 gaussDamage = {255, 128, 0, 128};
             UTIL_ScreenFade(pOwner, gaussDamage, 0.2f, 0.2f, FFADE_IN);
         #endif
