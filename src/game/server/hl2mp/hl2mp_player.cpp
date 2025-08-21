@@ -214,6 +214,7 @@ void CHL2MP_Player::GiveAllItems( void )
 	CBasePlayer::GiveAmmo( 32,	"357" );
 	CBasePlayer::GiveAmmo( 3,	"rpg_round");
 	CBasePlayer::GiveAmmo( 16,	"XBowBolt");
+	CBasePlayer::GiveAmmo(100, "GaussEnergy");
 
 	CBasePlayer::GiveAmmo( 1,	"grenade" );
 	CBasePlayer::GiveAmmo( 2,	"slam" );
@@ -236,7 +237,10 @@ void CHL2MP_Player::GiveAllItems( void )
 	GiveNamedItem( "weapon_slam" );
 
 	GiveNamedItem( "weapon_physcannon" );
-	
+
+	GiveNamedItem("weapon_gauss");
+
+	GiveNamedItem("weapon_egon");
 }
 
 void CHL2MP_Player::GiveDefaultItems( void )

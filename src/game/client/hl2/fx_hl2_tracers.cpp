@@ -28,6 +28,7 @@ CLIENTEFFECT_REGISTER_BEGIN( PrecacheTracers )
 CLIENTEFFECT_MATERIAL( "effects/gunshiptracer" )
 CLIENTEFFECT_MATERIAL( "effects/combinemuzzle1" )
 CLIENTEFFECT_MATERIAL( "effects/combinemuzzle2_nocull" )
+CLIENTEFFECT_MATERIAL("effects/gaussglow_nocull")
 CLIENTEFFECT_REGISTER_END()
 
 //-----------------------------------------------------------------------------
@@ -401,6 +402,30 @@ void AR2ImpactCallback( const CEffectData &data )
 }
 
 DECLARE_CLIENT_EFFECT( "AR2Impact", AR2ImpactCallback );
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+// Input  : &data - 
+//-----------------------------------------------------------------------------
+void GaussImpactCallback(const CEffectData &data)
+{
+	FX_AddQuad(data.m_vOrigin,
+		data.m_vNormal,
+		random->RandomFloat(24, 32),
+		20,
+		0.75f,
+		1.0f,
+		0.0f,
+		0.4f,
+		random->RandomInt(0, 360),
+		0,
+		Vector(1.0f, 1.0f, 1.0f),
+		8.00f,
+		"effects/gaussglow_nocull",
+		(FXQUAD_BIAS_SCALE | FXQUAD_BIAS_ALPHA));
+}
+
+DECLARE_CLIENT_EFFECT("GaussImpact", GaussImpactCallback);
 
 //-----------------------------------------------------------------------------
 // Creates a muzzleflash elight
