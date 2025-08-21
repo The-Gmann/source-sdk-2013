@@ -124,6 +124,8 @@ ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCV
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
 extern ConVar *sv_maxreplay;
+extern ConVar rb_suitvoice;
+extern ConVar rb_ear_ringing;
 
 extern CServerGameDLL g_ServerGameDLL;
 
@@ -301,6 +303,7 @@ BEGIN_DATADESC( CBasePlayer )
 	DEFINE_FIELD( m_afPhysicsFlags, FIELD_INTEGER ),
 	DEFINE_FIELD( m_hVehicle, FIELD_EHANDLE ),
 
+    DEFINE_FIELD( m_flJumpBufferTime, FIELD_FLOAT ),
     DEFINE_FIELD( m_flWallJumpCooldown, FIELD_FLOAT ),
     DEFINE_FIELD( m_vecLastWallNormal, FIELD_VECTOR ),
     DEFINE_FIELD( m_vecLastWallJumpPosition, FIELD_VECTOR ),
