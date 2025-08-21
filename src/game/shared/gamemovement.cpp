@@ -59,8 +59,32 @@ ConVar player_limit_jump_speed( "player_limit_jump_speed", "1", FCVAR_REPLICATED
 ConVar option_duck_method("option_duck_method", "1", FCVAR_REPLICATED|FCVAR_ARCHIVE );// 0 = HOLD to duck, 1 = Duck is a toggle
 
 
+#ifdef STAGING_ONLY
+
+#ifdef CLIENT_DLL
+
+ConVar debug_latch_reset_onduck("debug_latch_reset_onduck", "1", FCVAR_CHEAT);
+
+#endif
+
+#endif
+
+
+// Jump buffering
+
+#define JUMP_BUFFER_TIME 0.2f // 200ms jump buffer window
 // [MD] I'll remove this eventually. For now, I want the ability to A/B the optimizations.
 bool g_bMovementOptimizations = true;
+
+//Cvars
+ConVar rb_enable_bunnyhop("rb_enable_bunnyhop", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable bunny hopping speed boost");
+ConVar rb_autobunnyhopping("rb_autobunnyhopping", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable automatic bunny hopping");
+ConVar rb_walljump_enabled("rb_walljump_enabled", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable wall-jump mechanic");
+ConVar rb_walljump_abuse_threshold("rb_walljump_abuse_threshold", "0.5", FCVAR_REPLICATED | FCVAR_NOTIFY, "Time threshold to detect wall jump abuse in seconds");
+ConVar rb_viewbob_enabled	( "rb_viewbob_enabled", "0", 0, "Oscillation Toggle" );
+ConVar rb_viewbob_timer		( "rb_viewbob_timer", "10", 0, "Speed of Oscillation" );
+ConVar rb_viewbob_scale		( "rb_viewbob_scale", "0.002", 0, "Magnitude of Oscillation" );
+ConVar rb_jump_buffer("rb_jump_buffer", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enables/disables jump buffering");
 
 // Roughly how often we want to update the info about the ground surface we're on.
 // We don't need to do this very often.
@@ -1733,7 +1757,15 @@ void CGameMovement::AirAccelerate( Vector& wishdir, float wishspeed, float accel
 	// Determine acceleration speed after acceleration
 	accelspeed = accel * wishspeed * gpGlobals->frametime * player->m_surfaceFriction;
 
-	// Cap it
+	// Make strafing easier when bunny hopping is enabled
+	if (rb_enable_bunnyhop.GetBool() && mv->m_flSideMove != 0.0f)
+	{
+		// Increase the effective acceleration for strafing, but still respect the addspeed cap
+		// This makes it easier to reach the available speed gain, not exceed it
+		accelspeed *= 1.8f;
+	}
+
+	// Cap it (this prevents exceeding normal speed limits)
 	if (accelspeed > addspeed)
 		accelspeed = addspeed;
 	
@@ -1913,6 +1945,13 @@ void CGameMovement::WalkMove( void )
 	fmove = mv->m_flForwardMove;
 	smove = mv->m_flSideMove;
 
+	if ( rb_viewbob_enabled.GetBool() && !engine->IsPaused() )
+	{
+	float xoffset = sin( gpGlobals->curtime * rb_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rb_viewbob_scale.GetFloat() / 100;
+	float yoffset = sin( 2 * gpGlobals->curtime * rb_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rb_viewbob_scale.GetFloat() / 400;
+	player->ViewPunch( QAngle( xoffset, yoffset, 0 ) );
+	}
+
 	// Zero out z components of movement vectors
 	if ( g_bMovementOptimizations )
 	{
@@ -2056,6 +2095,7 @@ void CGameMovement::FullWalkMove( )
 		// Was jump button pressed?
 		if (mv->m_nButtons & IN_JUMP)
 		{
+		if ( !WallJump() )
 			CheckJumpButton();
 		}
 		else
@@ -2081,6 +2121,7 @@ void CGameMovement::FullWalkMove( )
 		// Was jump button pressed?
 		if (mv->m_nButtons & IN_JUMP)
 		{
+		if ( !WallJump() )
  			CheckJumpButton();
 		}
 		else
@@ -2349,182 +2390,177 @@ void CGameMovement::PlaySwimSound()
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-bool CGameMovement::CheckJumpButton( void )
+bool CGameMovement::CheckJumpButton(void)
 {
-	if (player->pl.deadflag)
-	{
-		mv->m_nOldButtons |= IN_JUMP ;	// don't jump again until released
-		return false;
-	}
+    if (player->pl.deadflag)
+    {
+        mv->m_nOldButtons |= IN_JUMP;    // don't jump again until released
+        return false;
+    }
 
-	// See if we are waterjumping.  If so, decrement count and return.
-	if (player->m_flWaterJumpTime)
-	{
-		player->m_flWaterJumpTime -= gpGlobals->frametime;
-		if (player->m_flWaterJumpTime < 0)
-			player->m_flWaterJumpTime = 0;
-		
-		return false;
-	}
+    // See if we are waterjumping.  If so, decrement count and return.
+    if (player->m_flWaterJumpTime)
+    {
+        player->m_flWaterJumpTime -= gpGlobals->frametime;
+        if (player->m_flWaterJumpTime < 0)
+            player->m_flWaterJumpTime = 0;
 
-	// If we are in the water most of the way...
-	if ( player->GetWaterLevel() >= 2 )
-	{	
-		// swimming, not jumping
-		SetGroundEntity( NULL );
+        return false;
+    }
 
-		if(player->GetWaterType() == CONTENTS_WATER)    // We move up a certain amount
-			mv->m_vecVelocity[2] = 100;
-		else if (player->GetWaterType() == CONTENTS_SLIME)
-			mv->m_vecVelocity[2] = 80;
-		
-		// play swiming sound
-		if ( player->m_flSwimSoundTime <= 0 )
-		{
-			// Don't play sound again for 1 second
-			player->m_flSwimSoundTime = 1000;
-			PlaySwimSound();
-		}
+    // If we are in the water most of the way...
+    if (player->GetWaterLevel() >= 2)
+    {
+        // swimming, not jumping
+        SetGroundEntity(NULL);
 
-		return false;
-	}
+        if (player->GetWaterType() == CONTENTS_WATER)    // We move up a certain amount
+            mv->m_vecVelocity[2] = 100;
+        else if (player->GetWaterType() == CONTENTS_SLIME)
+            mv->m_vecVelocity[2] = 80;
 
-	// No more effect
- 	if (player->GetGroundEntity() == NULL)
-	{
-		mv->m_nOldButtons |= IN_JUMP;
-		return false;		// in air, so no effect
-	}
+        // play swiming sound
+        if (player->m_flSwimSoundTime <= 0)
+        {
+            // Don't play sound again for 1 second
+            player->m_flSwimSoundTime = 1000;
+            PlaySwimSound();
+        }
 
-	// Don't allow jumping when the player is in a stasis field.
+        return false;
+    }
+
+    // ✅ Jump buffer logic - now using per-player variables
+    bool bWantsToJump = (mv->m_nButtons & IN_JUMP) != 0;
+    bool bJumpBufferEnabled = rb_jump_buffer.GetBool();
+
+    if (bJumpBufferEnabled)
+    {
+        // Reset jump buffer when jump button is released
+        if ((mv->m_nOldButtons & IN_JUMP) && !bWantsToJump)
+        {
+            player->m_flJumpBufferTime = 0.0f;
+        }
+
+        // Start jump buffer timer when jump is pressed
+        if (bWantsToJump && !(mv->m_nOldButtons & IN_JUMP))
+        {
+            player->m_flJumpBufferTime = gpGlobals->curtime + 0.2f; // 200ms buffer
+        }
+    }
+
+    // No more effect
+    if (player->GetGroundEntity() == NULL)
+    {
+        mv->m_nOldButtons |= IN_JUMP;
+        return false;        // in air, so no effect
+    }
+
+    // Don't allow jumping when the player is in a stasis field.
 #ifndef HL2_EPISODIC
-	if ( player->m_Local.m_bSlowMovement )
-		return false;
+    if (player->m_Local.m_bSlowMovement)
+        return false;
 #endif
 
-	if ( mv->m_nOldButtons & IN_JUMP )
-		return false;		// don't pogo stick
+    // Check for auto bunnyhopping first
+    if (!rb_autobunnyhopping.GetBool())
+    {
+        // If not auto bunnyhopping, check jump buffer if enabled
+        if (bJumpBufferEnabled && gpGlobals->curtime < player->m_flJumpBufferTime)
+        {
+            // Allow the jump through jump buffer
+        }
+        else if (mv->m_nOldButtons & IN_JUMP)
+        {
+            return false;        // don't pogo stick
+        }
+    }
 
-	// Cannot jump will in the unduck transition.
-	if ( player->m_Local.m_bDucking && (  player->GetFlags() & FL_DUCKING ) )
-		return false;
+    // Cannot jump while in the unduck transition.
+    if (player->m_Local.m_bDucking && (player->GetFlags() & FL_DUCKING))
+        return false;
 
-	// Still updating the eye position.
-	if ( player->m_Local.m_flDuckJumpTime > 0.0f )
-		return false;
+    // Still updating the eye position.
+    if (player->m_Local.m_flDuckJumpTime > 0.0f)
+        return false;
 
+    // In the air now.
+    SetGroundEntity(NULL);
 
-	// In the air now.
-    SetGroundEntity( NULL );
-	
-	player->PlayStepSound( (Vector &)mv->GetAbsOrigin(), player->m_pSurfaceData, 1.0, true );
-	
-	MoveHelper()->PlayerSetAnimation( PLAYER_JUMP );
+    player->PlayStepSound((Vector&)mv->GetAbsOrigin(), player->m_pSurfaceData, 1.0, true);
 
-	float flGroundFactor = 1.0f;
-	if (player->m_pSurfaceData)
-	{
-		flGroundFactor = player->m_pSurfaceData->game.jumpFactor; 
-	}
+    MoveHelper()->PlayerSetAnimation(PLAYER_JUMP);
 
-	float flMul;
-	if ( g_bMovementOptimizations )
-	{
+    float flGroundFactor = 1.0f;
+    if (player->m_pSurfaceData)
+    {
+        flGroundFactor = player->m_pSurfaceData->game.jumpFactor;
+    }
+
+    float flMul;
+    if (g_bMovementOptimizations)
+    {
 #if defined(HL2_DLL) || defined(HL2_CLIENT_DLL)
-		Assert( GetCurrentGravity() == 600.0f );
-		flMul = 160.0f;	// approx. 21 units.
+        Assert(GetCurrentGravity() == 600.0f);
+        flMul = 160.0f;    // approx. 21 units.
 #else
-		Assert( GetCurrentGravity() == 800.0f );
-		flMul = 268.3281572999747f;
+        Assert(GetCurrentGravity() == 800.0f);
+        flMul = 288.4f;    // For 52 unit jump height
 #endif
+    }
+    else
+    {
+        flMul = sqrt(2 * GetCurrentGravity() * GAMEMOVEMENT_JUMP_HEIGHT);
+    }
 
-	}
-	else
-	{
-		flMul = sqrt(2 * GetCurrentGravity() * GAMEMOVEMENT_JUMP_HEIGHT);
-	}
+    // Accelerate upward
+    // If we are ducking...
+    float startz = mv->m_vecVelocity[2];
+    if ((player->m_Local.m_bDucking) || (player->GetFlags() & FL_DUCKING))
+    {
+        mv->m_vecVelocity[2] = flGroundFactor * flMul;  // 2 * gravity * height
+    }
+    else
+    {
+        mv->m_vecVelocity[2] += flGroundFactor * flMul;  // 2 * gravity * height
+    }
 
-	// Acclerate upward
-	// If we are ducking...
-	float startz = mv->m_vecVelocity[2];
-	if ( (  player->m_Local.m_bDucking ) || (  player->GetFlags() & FL_DUCKING ) )
-	{
-		// d = 0.5 * g * t^2		- distance traveled with linear accel
-		// t = sqrt(2.0 * 45 / g)	- how long to fall 45 units
-		// v = g * t				- velocity at the end (just invert it to jump up that high)
-		// v = g * sqrt(2.0 * 45 / g )
-		// v^2 = g * g * 2.0 * 45 / g
-		// v = sqrt( g * 2.0 * 45 )
-		mv->m_vecVelocity[2] = flGroundFactor * flMul;  // 2 * gravity * height
-	}
-	else
-	{
-		mv->m_vecVelocity[2] += flGroundFactor * flMul;  // 2 * gravity * height
-	}
+    // ✅ Reset jump buffer timer after successful jump
+    if (bJumpBufferEnabled)
+    {
+        player->m_flJumpBufferTime = 0.0f;
+    }
 
-	// Add a little forward velocity based on your current forward velocity - if you are not sprinting.
-#if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
-	if ( gpGlobals->maxClients == 1 )
-	{
-		CHLMoveData *pMoveData = ( CHLMoveData* )mv;
-		Vector vecForward;
-		AngleVectors( mv->m_vecViewAngles, &vecForward );
-		vecForward.z = 0;
-		VectorNormalize( vecForward );
-		
-		// We give a certain percentage of the current forward movement as a bonus to the jump speed.  That bonus is clipped
-		// to not accumulate over time.
-		float flSpeedBoostPerc = ( !pMoveData->m_bIsSprinting && !player->m_Local.m_bDucked ) ? 0.5f : 0.1f;
-		float flSpeedAddition = fabs( mv->m_flForwardMove * flSpeedBoostPerc );
-		float flMaxSpeed = mv->m_flMaxSpeed + ( mv->m_flMaxSpeed * flSpeedBoostPerc );
-		float flNewSpeed = ( flSpeedAddition + mv->m_vecVelocity.Length2D() );
+    FinishGravity();
 
-		// If we're over the maximum, we want to only boost as much as will get us to the goal speed
-		if ( flNewSpeed > flMaxSpeed )
-		{
-			flSpeedAddition -= flNewSpeed - flMaxSpeed;
-		}
+    CheckV(player->CurrentCommandNumber(), "CheckJump", mv->m_vecVelocity);
 
-		if ( mv->m_flForwardMove < 0.0f )
-			flSpeedAddition *= -1.0f;
+    mv->m_outJumpVel.z += mv->m_vecVelocity[2] - startz;
+    mv->m_outStepHeight += 0.15f;
 
-		// Add it on
-		VectorAdd( (vecForward*flSpeedAddition), mv->m_vecVelocity, mv->m_vecVelocity );
-	}
-#endif
+    OnJump(mv->m_outJumpVel.z);
 
-	FinishGravity();
-
-	CheckV( player->CurrentCommandNumber(), "CheckJump", mv->m_vecVelocity );
-
-	mv->m_outJumpVel.z += mv->m_vecVelocity[2] - startz;
-	mv->m_outStepHeight += 0.15f;
-
-	OnJump(mv->m_outJumpVel.z);
-
-	// Set jump time.
-	if ( gpGlobals->maxClients == 1 )
-	{
-		player->m_Local.m_flJumpTime = GAMEMOVEMENT_JUMP_TIME;
-		player->m_Local.m_bInDuckJump = true;
-	}
+    // Set jump time.
+    if (gpGlobals->maxClients == 1)
+    {
+        player->m_Local.m_flJumpTime = GAMEMOVEMENT_JUMP_TIME;
+        player->m_Local.m_bInDuckJump = true;
+    }
 
 #if defined( HL2_DLL )
-
-	if ( xc_uncrouch_on_jump.GetBool() )
-	{
-		// Uncrouch when jumping
-		if ( player->GetToggledDuckState() )
-		{
-			player->ToggleDuck();
-		}
-	}
-
+    if (xc_uncrouch_on_jump.GetBool())
+    {
+        // Uncrouch when jumping
+        if (player->GetToggledDuckState())
+        {
+            player->ToggleDuck();
+        }
+    }
 #endif
 
-	// Flag that we jumped.
-	mv->m_nOldButtons |= IN_JUMP;	// don't jump again until released
-	return true;
+    // Flag that we jumped.
+    mv->m_nOldButtons |= IN_JUMP;    // don't jump again until released
+    return true;
 }
 
 
@@ -2837,12 +2873,10 @@ inline bool CGameMovement::OnLadder( trace_t &trace )
 
 //=============================================================================
 // HPE_BEGIN
-// [sbodenbender] make ladders easier to climb in cstrike
+// [sbodenbender] make ladders easier to climb in cstrike (enabled for HL2MP)
 //=============================================================================
-#if defined (CSTRIKE_DLL)
 ConVar sv_ladder_dampen ( "sv_ladder_dampen", "0.2", FCVAR_REPLICATED, "Amount to dampen perpendicular movement on a ladder", true, 0.0f, true, 1.0f );
 ConVar sv_ladder_angle( "sv_ladder_angle", "-0.707", FCVAR_REPLICATED, "Cos of angle of incidence to ladder perpendicular for applying ladder_dampen", true, -1.0f, true, 1.0f );
-#endif
 //=============================================================================
 // HPE_END
 //=============================================================================
@@ -2850,7 +2884,7 @@ ConVar sv_ladder_angle( "sv_ladder_angle", "-0.707", FCVAR_REPLICATED, "Cos of a
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-bool CGameMovement::LadderMove( void )
+bool CGameMovement::LadderMove(void)
 {
 	trace_t pm;
 	bool onFloor;
@@ -2858,24 +2892,24 @@ bool CGameMovement::LadderMove( void )
 	Vector wishdir;
 	Vector end;
 
-	if ( player->GetMoveType() == MOVETYPE_NOCLIP )
+	if (player->GetMoveType() == MOVETYPE_NOCLIP)
 		return false;
 
-	if ( !GameHasLadders() )
+	if (!GameHasLadders())
 		return false;
 
 	// If I'm already moving on a ladder, use the previous ladder direction
-	if ( player->GetMoveType() == MOVETYPE_LADDER )
+	if (player->GetMoveType() == MOVETYPE_LADDER)
 	{
 		wishdir = -player->m_vecLadderNormal;
 	}
 	else
 	{
 		// otherwise, use the direction player is attempting to move
-		if ( mv->m_flForwardMove || mv->m_flSideMove )
+		if (mv->m_flForwardMove || mv->m_flSideMove)
 		{
-			for (int i=0 ; i<3 ; i++)       // Determine x and y parts of velocity
-				wishdir[i] = m_vecForward[i]*mv->m_flForwardMove + m_vecRight[i]*mv->m_flSideMove;
+			for (int i = 0; i < 3; i++)       // Determine x and y parts of velocity
+				wishdir[i] = m_vecForward[i] * mv->m_flForwardMove + m_vecRight[i] * mv->m_flSideMove;
 
 			VectorNormalize(wishdir);
 		}
@@ -2887,24 +2921,24 @@ bool CGameMovement::LadderMove( void )
 	}
 
 	// wishdir points toward the ladder if any exists
-	VectorMA( mv->GetAbsOrigin(), LadderDistance(), wishdir, end );
-	TracePlayerBBox( mv->GetAbsOrigin(), end, LadderMask(), COLLISION_GROUP_PLAYER_MOVEMENT, pm );
+	VectorMA(mv->GetAbsOrigin(), LadderDistance(), wishdir, end);
+	TracePlayerBBox(mv->GetAbsOrigin(), end, LadderMask(), COLLISION_GROUP_PLAYER_MOVEMENT, pm);
 
 	// no ladder in that direction, return
-	if ( pm.fraction == 1.0f || !OnLadder( pm ) )
+	if (pm.fraction == 1.0f || !OnLadder(pm))
 		return false;
 
-	player->SetMoveType( MOVETYPE_LADDER );
-	player->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+	player->SetMoveType(MOVETYPE_LADDER);
+	player->SetMoveCollide(MOVECOLLIDE_DEFAULT);
 
 	player->m_vecLadderNormal = pm.plane.normal;
 
 	// On ladder, convert movement to be relative to the ladder
 
-	VectorCopy( mv->GetAbsOrigin(), floor );
+	VectorCopy(mv->GetAbsOrigin(), floor);
 	floor[2] += GetPlayerMins()[2] - 1;
 
-	if( enginetrace->GetPointContents( floor ) == CONTENTS_SOLID || player->GetGroundEntity() != NULL )
+	if (enginetrace->GetPointContents(floor) == CONTENTS_SOLID || player->GetGroundEntity() != NULL)
 	{
 		onFloor = true;
 	}
@@ -2913,33 +2947,33 @@ bool CGameMovement::LadderMove( void )
 		onFloor = false;
 	}
 
-	player->SetGravity( 0 );
+	player->SetGravity(0);
 
 	float climbSpeed = ClimbSpeed();
 
 	float forwardSpeed = 0, rightSpeed = 0;
-	if ( mv->m_nButtons & IN_BACK )
+	if (mv->m_nButtons & IN_BACK)
 		forwardSpeed -= climbSpeed;
-	
-	if ( mv->m_nButtons & IN_FORWARD )
+
+	if (mv->m_nButtons & IN_FORWARD)
 		forwardSpeed += climbSpeed;
-	
-	if ( mv->m_nButtons & IN_MOVELEFT )
+
+	if (mv->m_nButtons & IN_MOVELEFT)
 		rightSpeed -= climbSpeed;
-	
-	if ( mv->m_nButtons & IN_MOVERIGHT )
+
+	if (mv->m_nButtons & IN_MOVERIGHT)
 		rightSpeed += climbSpeed;
 
-	if ( mv->m_nButtons & IN_JUMP )
+	if (mv->m_nButtons & IN_JUMP)
 	{
-		player->SetMoveType( MOVETYPE_WALK );
-		player->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+		player->SetMoveType(MOVETYPE_WALK);
+		player->SetMoveCollide(MOVECOLLIDE_DEFAULT);
 
-		VectorScale( pm.plane.normal, 270, mv->m_vecVelocity );
+		VectorScale(pm.plane.normal, 270, mv->m_vecVelocity);
 	}
 	else
 	{
-		if ( forwardSpeed != 0 || rightSpeed != 0 )
+		if (forwardSpeed != 0 || rightSpeed != 0)
 		{
 			Vector velocity, perp, cross, lateral, tmp;
 
@@ -2947,39 +2981,38 @@ bool CGameMovement::LadderMove( void )
 			//	pev->velocity.x, pev->velocity.y, pev->velocity.z);
 			// Calculate player's intended velocity
 			//Vector velocity = (forward * gpGlobals->v_forward) + (right * gpGlobals->v_right);
-			VectorScale( m_vecForward, forwardSpeed, velocity );
-			VectorMA( velocity, rightSpeed, m_vecRight, velocity );
+			VectorScale(m_vecForward, forwardSpeed, velocity);
+			VectorMA(velocity, rightSpeed, m_vecRight, velocity);
 
 			// Perpendicular in the ladder plane
-			VectorCopy( vec3_origin, tmp );
+			VectorCopy(vec3_origin, tmp);
 			tmp[2] = 1;
-			CrossProduct( tmp, pm.plane.normal, perp );
-			VectorNormalize( perp );
+			CrossProduct(tmp, pm.plane.normal, perp);
+			VectorNormalize(perp);
 
 			// decompose velocity into ladder plane
-			float normal = DotProduct( velocity, pm.plane.normal );
+			float normal = DotProduct(velocity, pm.plane.normal);
 
 			// This is the velocity into the face of the ladder
-			VectorScale( pm.plane.normal, normal, cross );
+			VectorScale(pm.plane.normal, normal, cross);
 
 			// This is the player's additional velocity
-			VectorSubtract( velocity, cross, lateral );
+			VectorSubtract(velocity, cross, lateral);
 
 			// This turns the velocity into the face of the ladder into velocity that
 			// is roughly vertically perpendicular to the face of the ladder.
 			// NOTE: It IS possible to face up and move down or face down and move up
 			// because the velocity is a sum of the directional velocity and the converted
 			// velocity through the face of the ladder -- by design.
-			CrossProduct( pm.plane.normal, perp, tmp );
+			CrossProduct(pm.plane.normal, perp, tmp);
 
 			//=============================================================================
 			// HPE_BEGIN
-			// [sbodenbender] make ladders easier to climb in cstrike
+			// [sbodenbender] make ladders easier to climb in cstrike (enabled for HL2MP)
 			//=============================================================================
-#if defined (CSTRIKE_DLL)
 			// break lateral into direction along tmp (up the ladder) and direction along perp (perpendicular to ladder)
-			float tmpDist = DotProduct ( tmp, lateral );
-			float perpDist = DotProduct ( perp, lateral );
+			float tmpDist = DotProduct(tmp, lateral);
+			float perpDist = DotProduct(perp, lateral);
 
 			Vector angleVec = perp * perpDist;
 			angleVec += cross;
@@ -2990,16 +3023,15 @@ bool CGameMovement::LadderMove( void )
 
 			if (angleDot < sv_ladder_angle.GetFloat())
 				lateral = (tmp * tmpDist) + (perp * sv_ladder_dampen.GetFloat() * perpDist);
-#endif // CSTRIKE_DLL
 			//=============================================================================
 			// HPE_END
 			//=============================================================================
 
-			VectorMA( lateral, -normal, tmp, mv->m_vecVelocity );
+			VectorMA(lateral, -normal, tmp, mv->m_vecVelocity);
 
-			if ( onFloor && normal > 0 )	// On ground moving away from the ladder
+			if (onFloor && normal > 0)	// On ground moving away from the ladder
 			{
-				VectorMA( mv->m_vecVelocity, MAX_CLIMB_SPEED, pm.plane.normal, mv->m_vecVelocity );
+				VectorMA(mv->m_vecVelocity, MAX_CLIMB_SPEED, pm.plane.normal, mv->m_vecVelocity);
 			}
 			//pev->velocity = lateral - (CrossProduct( trace.vecPlaneNormal, perp ) * normal);
 		}
@@ -3879,11 +3911,15 @@ void CGameMovement::CategorizePosition( void )
 			else
 			{
 				SetGroundEntity( &pm );
+				// Reset wall jump cooldown when landing
+				player->m_flWallJumpCooldown = 0.0f;
 			}
 		}
 		else
 		{
 			SetGroundEntity( &pm );  // Otherwise, point to index of ent under us.
+			// Reset wall jump cooldown when landing
+			player->m_flWallJumpCooldown = 0.0f;
 		}
 
 #ifndef CLIENT_DLL
@@ -4928,6 +4964,118 @@ void CGameMovement::TracePlayerBBox( const Vector& start, const Vector& end, uns
 }
 
 
+//-----------------------------------------------------------------------------
+// Purpose: Wall jumping
+//-----------------------------------------------------------------------------
+bool CGameMovement::WallJump()
+{
+    if (!rb_walljump_enabled.GetBool())
+        return false;
+
+    // don't pogo stick
+    if (mv->m_nOldButtons & IN_JUMP)
+        return false;
+
+    // Check if the player is falling and not on the ground
+    if (mv->m_vecVelocity.z < 0.0f && player->GetGroundEntity() == NULL)
+    {
+        trace_t pm;
+        Vector forward;
+        AngleVectors(mv->m_vecViewAngles, &forward);
+        Vector start = mv->GetAbsOrigin();
+        Vector end = start + forward * 24.0f; // Check 24 units ahead for a wall
+
+        TracePlayerBBox(start, end, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, pm);
+
+        // Ensure the player is not touching the ground
+        if (pm.fraction < 1.0f && pm.plane.normal.z < 0.7 && player->GetGroundEntity() == NULL) // Hit a wall and not the ground
+        {
+            // ✅ Check if the player is touching a different wall
+            if (pm.plane.normal != player->m_vecLastWallNormal)
+            {
+                // Reset the cooldown when touching a different wall
+                player->m_flWallJumpCooldown = 0.0f;
+                DevMsg("Player %d touched a different wall. Cooldown reset.\n", player->entindex());
+            }
+
+            // ✅ Check if the cooldown is still active
+            if (player->m_flWallJumpCooldown > gpGlobals->curtime)
+            {
+                DevMsg("Player %d wall jump on cooldown. Time remaining: %f seconds\n", 
+                    player->entindex(), player->m_flWallJumpCooldown - gpGlobals->curtime);
+                return false;
+            }
+
+            // ✅ Check if the player is abusing wall jumping in corners
+            float timeElapsed = gpGlobals->curtime - player->m_flLastWallJumpCheckTime;
+            if (timeElapsed >= rb_walljump_abuse_threshold.GetFloat())
+            {
+                Vector currentPosition = mv->GetAbsOrigin();
+                float xDiff = fabs(currentPosition.x - player->m_vecLastWallJumpPosition.x);
+                float yDiff = fabs(currentPosition.y - player->m_vecLastWallJumpPosition.y);
+                float zDiff = currentPosition.z - player->m_vecLastWallJumpPosition.z;
+
+                if (xDiff < 10.0f && yDiff < 10.0f && zDiff > 0.0f)
+                {
+                    player->m_flWallJumpZIncrease += zDiff;
+                }
+                else
+                {
+                    player->m_flWallJumpZIncrease = 0.0f;
+                }
+
+                if (player->m_flWallJumpZIncrease > 100.0f) // Adjust the threshold as needed
+                {
+                    player->m_flWallJumpCooldown = gpGlobals->curtime + 1.5f; // Force cooldown
+                    DevMsg("Player %d wall jump abuse detected. Cooldown forced.\n", player->entindex());
+                    return false;
+                }
+
+                player->m_vecLastWallJumpPosition = currentPosition;
+                player->m_flLastWallJumpCheckTime = gpGlobals->curtime;
+            }
+
+            // Apply a vertical jump force
+            float jumpForce = 200.0f; // Adjust as needed
+            mv->m_vecVelocity.z = jumpForce; // Only modify the vertical component
+
+            // Apply a view punch away from the wall
+            QAngle viewPunch(0, 0, 0);
+            Vector wallNormal = pm.plane.normal;
+            Vector playerForward;
+            AngleVectors(mv->m_vecViewAngles, &playerForward);
+
+            // Calculate the direction to punch the view
+            Vector punchDirection = playerForward - 2 * (playerForward.Dot(wallNormal)) * wallNormal;
+            punchDirection.NormalizeInPlace();
+
+            viewPunch.x = -5.0f * punchDirection.z; // Adjust as needed
+            viewPunch.y = 5.0f * punchDirection.y; // Adjust as needed
+            viewPunch.z = 5.0f * punchDirection.x; // Adjust as needed
+            player->ViewPunch(viewPunch);
+
+            // ✅ Set the cooldown
+            player->m_flWallJumpCooldown = gpGlobals->curtime + 1.5f; // 1.5 second cooldown
+            DevMsg("Player %d wall jump performed. Cooldown set to 1.5 seconds.\n", player->entindex());
+
+            // ✅ Store the last wall normal
+            player->m_vecLastWallNormal = pm.plane.normal;
+
+            // Get the surface data of the wall hit
+            IPhysicsSurfaceProps* physprops = MoveHelper()->GetSurfaceProps();
+            surfacedata_t* pSurfaceData = physprops->GetSurfaceData(pm.surface.surfaceProps);
+
+            // Play footstep sound using the wall's surface data
+            player->PlayStepSound((Vector&)mv->GetAbsOrigin(), pSurfaceData, 1.0, true);
+
+            // Flag that we jumped.
+            mv->m_nOldButtons |= IN_JUMP;    // don't jump again until released
+
+            return true;
+        }
+    }
+    return false;
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: overridded by game classes to limit results (to standable objects for example)

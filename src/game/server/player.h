@@ -261,6 +261,12 @@ public:
 
 	virtual void			UpdateOnRemove( void );
 
+	float m_flJumpBufferTime;
+	float m_flWallJumpCooldown;
+	Vector m_vecLastWallNormal;
+	Vector m_vecLastWallJumpPosition;
+	float m_flLastWallJumpCheckTime;
+	float m_flWallJumpZIncrease;
 	static CBasePlayer		*CreatePlayer( const char *className, edict_t *ed );
 
 	virtual void			CreateViewModel( int viewmodelindex = 0 );

@@ -665,88 +665,92 @@ void CBasePlayer::UpdateStepSound( surfacedata_t *psurface, const Vector &vecOri
 //			fvol - 
 //			force - force sound to play
 //-----------------------------------------------------------------------------
-void CBasePlayer::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, float fvol, bool force )
+void CBasePlayer::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, float fvol, bool force)
 {
-	if ( gpGlobals->maxClients > 1 && !sv_footsteps.GetFloat() )
+	if (gpGlobals->maxClients > 1 && !sv_footsteps.GetFloat())
 		return;
 
 #if defined( CLIENT_DLL )
 	// during prediction play footstep sounds only once
-	if ( prediction->InPrediction() && !prediction->IsFirstTimePredicted() )
+	if (prediction->InPrediction() && !prediction->IsFirstTimePredicted())
 		return;
 #endif
 
-	if ( !psurface )
+	if (!psurface)
 		return;
 
 	int nSide = m_Local.m_nStepside;
 	unsigned short stepSoundName = nSide ? psurface->sounds.stepleft : psurface->sounds.stepright;
-	if ( !stepSoundName )
+	if (!stepSoundName)
 		return;
 
 	m_Local.m_nStepside = !nSide;
 
 	CSoundParameters params;
 
-	Assert( nSide == 0 || nSide == 1 );
+	Assert(nSide == 0 || nSide == 1);
 
-	if ( m_StepSoundCache[ nSide ].m_usSoundNameIndex == stepSoundName )
+	if (m_StepSoundCache[nSide].m_usSoundNameIndex == stepSoundName)
 	{
-		params = m_StepSoundCache[ nSide ].m_SoundParameters;
+		params = m_StepSoundCache[nSide].m_SoundParameters;
 	}
 	else
 	{
-		const char *pSoundName = MoveHelper()->GetSurfaceProps()->GetString( stepSoundName );
+		const char* pSoundName = MoveHelper()->GetSurfaceProps()->GetString(stepSoundName);
 
 		// Give child classes an opportunity to override.
-		pSoundName = GetOverrideStepSound( pSoundName );
+		pSoundName = GetOverrideStepSound(pSoundName);
 
-		if ( !CBaseEntity::GetParametersForSound( pSoundName, params, NULL ) )
+		if (!CBaseEntity::GetParametersForSound(pSoundName, params, NULL))
 			return;
 
 		// Only cache if there's one option.  Otherwise we'd never here any other sounds
-		if ( params.count == 1 )
+		if (params.count == 1)
 		{
-			m_StepSoundCache[ nSide ].m_usSoundNameIndex = stepSoundName;
-			m_StepSoundCache[ nSide ].m_SoundParameters = params;
+			m_StepSoundCache[nSide].m_usSoundNameIndex = stepSoundName;
+			m_StepSoundCache[nSide].m_SoundParameters = params;
 		}
 	}
 
 	CRecipientFilter filter;
-	filter.AddRecipientsByPAS( vecOrigin );
+	filter.AddRecipientsByPAS(vecOrigin);
 
 #ifndef CLIENT_DLL
 	// in MP, server removes all players in the vecOrigin's PVS, these players generate the footsteps client side
-	if ( gpGlobals->maxClients > 1 )
+	if (gpGlobals->maxClients > 1)
 	{
-		filter.RemoveRecipientsByPVS( vecOrigin );
+		filter.RemoveRecipientsByPVS(vecOrigin);
 	}
 #endif
+
+	// Apply volume boost to base footstep sounds
+	float boostedVolume = fvol * 3.5f;
+	boostedVolume = clamp(boostedVolume, 0.0f, 1.0f);
 
 	EmitSound_t ep;
 	ep.m_nChannel = CHAN_BODY;
 	ep.m_pSoundName = params.soundname;
 #if defined ( TF_DLL ) || defined ( TF_CLIENT_DLL )
-	if( TFGameRules()->IsMannVsMachineMode() )
+	if (TFGameRules()->IsMannVsMachineMode())
 	{
 		ep.m_flVolume = params.volume;
 	}
 	else
 	{
-		ep.m_flVolume = fvol;
+		ep.m_flVolume = boostedVolume; // Use boosted volume instead of fvol
 	}
 #else
-	ep.m_flVolume = fvol;
+	ep.m_flVolume = boostedVolume; // Use boosted volume instead of fvol
 #endif
 	ep.m_SoundLevel = params.soundlevel;
 	ep.m_nFlags = 0;
 	ep.m_nPitch = params.pitch;
 	ep.m_pOrigin = &vecOrigin;
 
-	EmitSound( filter, entindex(), ep );
+	EmitSound(filter, entindex(), ep);
 
 	// Kyle says: ugggh. This function may as well be called "PerformPileOfDesperateGameSpecificFootstepHacks".
-	OnEmitFootstepSound( params, vecOrigin, fvol );
+	OnEmitFootstepSound(params, vecOrigin, fvol);
 }
 
 void CBasePlayer::UpdateButtonState( int nUserCmdButtonMask )

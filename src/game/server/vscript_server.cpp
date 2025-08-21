@@ -39,7 +39,7 @@
 #endif
 
 #if defined( _WIN32 ) || defined( POSIX )
-#include "vscript_server_nut.h"
+//#include "vscript_server_nut.h"
 #endif
 
 #if defined( PORTAL2_PUZZLEMAKER )

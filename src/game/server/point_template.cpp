@@ -13,7 +13,7 @@
 #include "mapentities.h"
 #include "tier0/icommandline.h"
 #include "mapentities_shared.h"
-#include "spawn_helper_nut.h"
+//#include "spawn_helper_nut.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

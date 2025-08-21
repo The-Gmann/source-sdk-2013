@@ -1,4 +1,4 @@
-//========= Copyright Valve Corporation, All rights reserved. ============//
+(//========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: 
 //
@@ -34,18 +34,18 @@ const char *CHL2MP_Player::GetPlayerModelSoundPrefix( void )
 
 void CHL2MP_Player::PrecacheFootStepSounds( void )
 {
-	int iFootstepSounds = ARRAYSIZE( g_ppszPlayerSoundPrefixNames );
+	int iFootstepSounds = ARRAYSIZE(g_ppszPlayerSoundPrefixNames);
 	int i;
 
-	for ( i = 0; i < iFootstepSounds; ++i )
+	for (i = 0; i < iFootstepSounds; ++i)
 	{
 		char szFootStepName[128];
 
-		Q_snprintf( szFootStepName, sizeof( szFootStepName ), "%s.RunFootstepLeft", g_ppszPlayerSoundPrefixNames[i] );
-		PrecacheScriptSound( szFootStepName );
+		Q_snprintf(szFootStepName, sizeof(szFootStepName), "%s.RunFootstepLeft", g_ppszPlayerSoundPrefixNames[i]);
+		PrecacheScriptSound(szFootStepName);
 
-		Q_snprintf( szFootStepName, sizeof( szFootStepName ), "%s.RunFootstepRight", g_ppszPlayerSoundPrefixNames[i] );
-		PrecacheScriptSound( szFootStepName );
+		Q_snprintf(szFootStepName, sizeof(szFootStepName), "%s.RunFootstepRight", g_ppszPlayerSoundPrefixNames[i]);
+		PrecacheScriptSound(szFootStepName);
 	}
 }
 
@@ -68,59 +68,61 @@ Vector CHL2MP_Player::GetAttackSpread( CBaseCombatWeapon *pWeapon, CBaseEntity *
 //			fvol - 
 //			force - force sound to play
 //-----------------------------------------------------------------------------
-void CHL2MP_Player::PlayStepSound( Vector &vecOrigin, surfacedata_t *psurface, float fvol, bool force )
+void CHL2MP_Player::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, float fvol, bool force)
 {
-	if ( gpGlobals->maxClients > 1 && !sv_footsteps.GetFloat() )
-		return;
-
-#if defined( CLIENT_DLL )
-	// during prediction play footstep sounds only once
-	if ( !prediction->IsFirstTimePredicted() )
-		return;
+#if defined(CLIENT_DLL)
+    // During prediction, play footstep sounds only once
+    if (!prediction->IsFirstTimePredicted())
+        return;
 #endif
 
-	if ( GetFlags() & FL_DUCKING )
-		return;
+    // Always play the base surface-dependent footstep sound first
+    BaseClass::PlayStepSound(vecOrigin, psurface, fvol, force);
 
-	m_Local.m_nStepside = !m_Local.m_nStepside;
+    // Only play character-specific sounds for Combine Soldiers and Metro Police
+    // Skip Citizens (m_iPlayerSoundType == 0)
+    if (m_iPlayerSoundType == 1 || m_iPlayerSoundType == 2) // CombineS or MetroPolice
+    {
+        if (gpGlobals->maxClients > 1 && !sv_footsteps.GetFloat())
+            return;
 
-	char szStepSound[128];
+        if (GetFlags() & FL_DUCKING)
+            return;
 
-	if ( m_Local.m_nStepside )
-	{
-		Q_snprintf( szStepSound, sizeof( szStepSound ), "%s.RunFootstepLeft", g_ppszPlayerSoundPrefixNames[m_iPlayerSoundType] );
-	}
-	else
-	{
-		Q_snprintf( szStepSound, sizeof( szStepSound ), "%s.RunFootstepRight", g_ppszPlayerSoundPrefixNames[m_iPlayerSoundType] );
-	}
+        char szCharacterStepSound[128];
+        if (m_Local.m_nStepside)
+        {
+            Q_snprintf(szCharacterStepSound, sizeof(szCharacterStepSound), "%s.RunFootstepLeft", g_ppszPlayerSoundPrefixNames[m_iPlayerSoundType]);
+        }
+        else
+        {
+            Q_snprintf(szCharacterStepSound, sizeof(szCharacterStepSound), "%s.RunFootstepRight", g_ppszPlayerSoundPrefixNames[m_iPlayerSoundType]);
+        }
 
-	CSoundParameters params;
-	if ( GetParametersForSound( szStepSound, params, NULL ) == false )
-		return;
-
-	CRecipientFilter filter;
-	filter.AddRecipientsByPAS( vecOrigin );
+        CSoundParameters params;
+        if (GetParametersForSound(szCharacterStepSound, params, NULL))
+        {
+            CRecipientFilter filter;
+            filter.AddRecipientsByPAS(vecOrigin);
 
 #ifndef CLIENT_DLL
-	// im MP, server removed all players in origins PVS, these players 
-	// generate the footsteps clientside
-	if ( gpGlobals->maxClients > 1 )
-		filter.RemoveRecipientsByPVS( vecOrigin );
+            if (gpGlobals->maxClients > 1)
+                filter.RemoveRecipientsByPVS(vecOrigin);
 #endif
 
-	EmitSound_t ep;
-	ep.m_nChannel = CHAN_BODY;
-	ep.m_pSoundName = params.soundname;
-	ep.m_flVolume = fvol;
-	ep.m_SoundLevel = params.soundlevel;
-	ep.m_nFlags = 0;
-	ep.m_nPitch = params.pitch;
-	ep.m_pOrigin = &vecOrigin;
+            EmitSound_t ep;
+            ep.m_nChannel = CHAN_STATIC;
+            ep.m_pSoundName = params.soundname;
+            ep.m_flVolume = fvol;
+            ep.m_SoundLevel = params.soundlevel;
+            ep.m_nFlags = 0;
+            ep.m_nPitch = params.pitch;
+            ep.m_pOrigin = &vecOrigin;
 
-	EmitSound( filter, entindex(), ep );
+            EmitSound(filter, entindex(), ep);
+        }
+    }
 }
-
 
 //==========================
 // ANIMATION CODE

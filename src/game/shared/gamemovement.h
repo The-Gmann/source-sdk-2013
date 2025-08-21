@@ -20,8 +20,8 @@
 #define CBTEXTURENAMEMAX	13			// only load first n chars of name
 
 #define GAMEMOVEMENT_DUCK_TIME				1000.0f		// ms
-#define GAMEMOVEMENT_JUMP_TIME				510.0f		// ms approx - based on the 21 unit height jump
-#define GAMEMOVEMENT_JUMP_HEIGHT			21.0f		// units
+#define GAMEMOVEMENT_JUMP_TIME				800.0f		// ms approx - based on the 52 unit height jump
+#define GAMEMOVEMENT_JUMP_HEIGHT			52.0f		// units (CS:S height)
 #define GAMEMOVEMENT_TIME_TO_UNDUCK			( TIME_TO_UNDUCK * 1000.0f )		// ms
 #define GAMEMOVEMENT_TIME_TO_UNDUCK_INV		( GAMEMOVEMENT_DUCK_TIME - GAMEMOVEMENT_TIME_TO_UNDUCK )
 
@@ -76,7 +76,6 @@ protected:
 	Vector			m_vecRight;
 	Vector			m_vecUp;
 
-
 	// Does most of the player movement logic.
 	// Returns with origin, angles, and velocity modified in place.
 	// were contacted during the move.
@@ -95,6 +94,7 @@ protected:
 
 	void			WaterJump( void );
 
+	bool 			WallJump();
 	// Handles both ground friction and water friction
 	void			Friction( void );
 

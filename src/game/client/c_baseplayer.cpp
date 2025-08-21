@@ -115,7 +115,7 @@ ConVar	spec_freeze_distance_min( "spec_freeze_distance_min", "96", FCVAR_CHEAT, 
 ConVar	spec_freeze_distance_max( "spec_freeze_distance_max", "200", FCVAR_CHEAT, "Maximum random distance from the target to stop when framing them in observer freeze cam." );
 #endif
 
-static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_NONE, "Causes the third person model to be drawn instead of the view model" );
+static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_ARCHIVE, "Causes the third person model to be drawn instead of the view model" );
 
 ConVar demo_fov_override( "demo_fov_override", "0", FCVAR_CLIENTDLL | FCVAR_DONTRECORD, "If nonzero, this value will be used to override FOV during demo playback." );
 
@@ -300,6 +300,13 @@ END_RECV_TABLE()
 		RecvPropInt		(RECVINFO(m_iObserverMode), 0, RecvProxy_ObserverMode ),
 		RecvPropEHandle	(RECVINFO(m_hObserverTarget), RecvProxy_ObserverTarget ),
 		RecvPropArray	( RecvPropEHandle( RECVINFO( m_hViewModel[0] ) ), m_hViewModel ),
+
+		RecvPropFloat(RECVINFO(m_flJumpBufferTime)),
+		RecvPropFloat(RECVINFO(m_flWallJumpCooldown)),
+		RecvPropVector(RECVINFO(m_vecLastWallNormal)),
+		RecvPropVector(RECVINFO(m_vecLastWallJumpPosition)),
+		RecvPropFloat(RECVINFO(m_flLastWallJumpCheckTime)),
+		RecvPropFloat(RECVINFO(m_flWallJumpZIncrease)),
 		
 
 		RecvPropString( RECVINFO(m_szLastPlaceName) ),
@@ -434,6 +441,13 @@ C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOf
 	m_bWasFrozen = false;
 
 	m_bResampleWaterSurface = true;
+
+	m_flJumpBufferTime = 0.0f;
+	m_flWallJumpCooldown = 0.0f;
+	m_vecLastWallNormal.Init();
+	m_vecLastWallJumpPosition.Init();
+	m_flLastWallJumpCheckTime = 0.0f;
+	m_flWallJumpZIncrease = 0.0f;
 	
 	ResetObserverMode();
 
@@ -443,6 +457,7 @@ C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOf
 	m_surfaceProps = 0;
 	m_pSurfaceData = NULL;
 	m_surfaceFriction = 1.0f;
+	m_flWallJumpCooldown = 0.0f;
 	m_chTextureType = 0;
 
 	m_flNextAchievementAnnounceTime = 0;

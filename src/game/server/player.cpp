@@ -301,6 +301,12 @@ BEGIN_DATADESC( CBasePlayer )
 	DEFINE_FIELD( m_afPhysicsFlags, FIELD_INTEGER ),
 	DEFINE_FIELD( m_hVehicle, FIELD_EHANDLE ),
 
+    DEFINE_FIELD( m_flWallJumpCooldown, FIELD_FLOAT ),
+    DEFINE_FIELD( m_vecLastWallNormal, FIELD_VECTOR ),
+    DEFINE_FIELD( m_vecLastWallJumpPosition, FIELD_VECTOR ),
+    DEFINE_FIELD( m_flLastWallJumpCheckTime, FIELD_FLOAT ),
+    DEFINE_FIELD( m_flWallJumpZIncrease, FIELD_FLOAT ),
+
 	// recreate, don't restore
 	// DEFINE_FIELD( m_CommandContext, CUtlVector < CCommandContext > ),
 	//DEFINE_FIELD( m_pPhysicsController, FIELD_POINTER ),
@@ -615,6 +621,13 @@ CBasePlayer::CBasePlayer( )
 	m_flPlayerTalkAvailableMessagesTier1 = 1.0f;
 	m_flPlayerTalkAvailableMessagesTier2 = 10.0f;
 	m_PlayerInfo.SetParent( this );
+
+    m_flJumpBufferTime = 0.0f;
+    m_flWallJumpCooldown = 0.0f;
+    m_vecLastWallNormal.Init();
+    m_vecLastWallJumpPosition.Init();
+    m_flLastWallJumpCheckTime = 0.0f;
+    m_flWallJumpZIncrease = 0.0f;
 
 	ResetObserverMode();
 
@@ -1461,7 +1474,10 @@ void CBasePlayer::OnDamagedByExplosion( const CTakeDamageInfo &info )
 		random->RandomInt( 32, 34 );
 
 	CSingleUserRecipientFilter user( this );
-	enginesound->SetPlayerDSP( user, effect, false );
+	if (rb_ear_ringing.GetBool())
+	{
+		enginesound->SetPlayerDSP(user, effect, false);
+	}
 }
 
 //=========================================================
@@ -4329,9 +4345,8 @@ void CBasePlayer::CheckSuitUpdate()
 	// if in range of radiation source, ping geiger counter
 	UpdateGeigerCounter();
 
-	if ( g_pGameRules->IsMultiplayer() )
+	if (!rb_suitvoice.GetBool())
 	{
-		// don't bother updating HEV voice in multiplayer.
 		return;
 	}
 
@@ -4388,9 +4403,8 @@ void CBasePlayer::SetSuitUpdate(const char *name, int fgroup, int iNoRepeatTime)
 	if ( !IsSuitEquipped() )
 		return;
 
-	if ( g_pGameRules->IsMultiplayer() )
+	if (!rb_suitvoice.GetBool())
 	{
-		// due to static channel design, etc. We don't play HEV sounds in multiplayer right now.
 		return;
 	}
 
