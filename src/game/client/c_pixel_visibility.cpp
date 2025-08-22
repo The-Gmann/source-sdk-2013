@@ -409,6 +409,17 @@ float CPixelVisibilityQuery::GetFractionVisible( float fadeTimeInv )
 
 void CPixelVisibilityQuery::IssueQuery( IMatRenderContext *pRenderContext, float proxySize, float proxyAspect, IMaterial *pMaterial, bool sizeIsScreenSpace )
 {
+	// Prevent multiple queries in the same frame
+	if ( m_frameIssued == gpGlobals->framecount )
+	{
+		// Already issued a query this frame, skip
+		if ( r_pixelvisibility_spew.GetBool() && CurrentViewID() == 0 ) 
+		{
+			DevMsg( 1, "Skipping duplicate query in frame %d\n", gpGlobals->framecount );
+		}
+		return;
+	}
+
 	if ( !m_failed )
 	{
 		Assert( IsValid() );
@@ -429,10 +440,9 @@ void CPixelVisibilityQuery::IssueQuery( IMatRenderContext *pRenderContext, float
 			return;
 		}
 	}
-#ifndef PORTAL // FIXME: In portal we query visibility multiple times per frame because of portal renders!
-	Assert ( ( m_frameIssued != gpGlobals->framecount ) || UseVR() );
-#endif
 
+	// Now we can safely remove the assert since we've prevented the condition
+	// that would cause it to fail
 	m_frameIssued = gpGlobals->framecount;
 	m_wasQueriedThisFrame = false;
 	m_failed = false;

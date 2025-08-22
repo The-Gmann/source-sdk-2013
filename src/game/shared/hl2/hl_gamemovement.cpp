@@ -571,7 +571,7 @@ void CHL2GameMovement::ReduceTimers( void )
 void CHL2GameMovement::FullLadderMove()
 {
 	CFuncLadder *ladder = GetLadder();
-	Assert( ladder );
+	//Assert( ladder );
 	if ( !ladder )
 	{
 #ifdef HL2_USES_FUNC_LADDER_CODE

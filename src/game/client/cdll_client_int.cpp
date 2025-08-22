@@ -173,6 +173,9 @@ extern vgui::IInputInternal *g_InputInternal;
 #include "sixense/in_sixense.h"
 #endif
 
+// Sky fix
+#include "DynamicSky.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -862,6 +865,11 @@ CHLClient::CHLClient()
 
 extern IGameSystem *ViewportClientSystem();
 
+void SvSkyChangeCallback(IConVar* cvar, const char*, float)
+{
+	R_UnloadSkys();
+	R_LoadSkys();
+}
 
 //-----------------------------------------------------------------------------
 ISourceVirtualReality *g_pSourceVR = NULL;
@@ -1115,7 +1123,9 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	{
 		RegisterSecureLaunchProcessFunc( pfnUnsafeCmdLineProcessor );
 	}
-
+	static ConVar* skyname = cvar->FindVar("sv_skyname");
+		if (skyname)
+			skyname->InstallChangeCallback(SvSkyChangeCallback);
 	return true;
 }
 
@@ -1673,6 +1683,9 @@ void CHLClient::LevelInitPreEntity( char const* pMapName )
 		CReplayRagdollRecorder::Instance().Init();
 	}
 #endif
+
+	R_UnloadSkys();
+	R_LoadSkys();
 }
 
 

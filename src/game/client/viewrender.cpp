@@ -80,6 +80,9 @@
 // Projective textures
 #include "C_Env_Projected_Texture.h"
 
+// Sky fix
+#include "DynamicSky.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -111,7 +114,6 @@ ConVar r_entityclips( "r_entityclips", "1" ); //FIXME: Nvidia drivers before 81.
 static ConVar r_drawopaqueworld( "r_drawopaqueworld", "1", FCVAR_CHEAT );
 static ConVar r_drawtranslucentworld( "r_drawtranslucentworld", "1", FCVAR_CHEAT );
 static ConVar r_3dsky( "r_3dsky","1", 0, "Enable the rendering of 3d sky boxes" );
-static ConVar r_skybox( "r_skybox","1", FCVAR_CHEAT, "Enable the rendering of sky boxes" );
 #ifdef TF_CLIENT_DLL
 ConVar r_drawviewmodel( "r_drawviewmodel","1", FCVAR_DONTRECORD );
 #else
@@ -1423,7 +1425,7 @@ void CViewRender::ViewDrawScene( bool bDrew3dSkybox, SkyboxVisibility_t nSkyboxV
 		SetClearColorToFogColor( );
 	}
 
-	bool drawSkybox = r_skybox.GetBool();
+	bool drawSkybox = false;
 	if ( bDrew3dSkybox || ( nSkyboxVisible == SKYBOX_NOT_VISIBLE ) )
 	{
 		drawSkybox = false;
@@ -2096,6 +2098,8 @@ void CViewRender::RenderView( const CViewSetup &viewRender, int nClearFlags, int
 		bool bDrew3dSkybox = false;
 		SkyboxVisibility_t nSkyboxVisible = SKYBOX_NOT_VISIBLE;
 
+		s_bCanAccessCurrentView = true;
+
 		// if the 3d skybox world is drawn, then don't draw the normal skybox
 		CSkyboxView *pSkyView = new CSkyboxView( this );
 		if ( ( bDrew3dSkybox = pSkyView->Setup( viewRender, &nClearFlags, &nSkyboxVisible ) ) != false )
@@ -2103,6 +2107,7 @@ void CViewRender::RenderView( const CViewSetup &viewRender, int nClearFlags, int
 			AddViewToScene( pSkyView );
 		}
 		SafeRelease( pSkyView );
+		s_bCanAccessCurrentView = false;
 
 		// Force it to clear the framebuffer if they're in solid space.
 		if ( ( nClearFlags & VIEW_CLEAR_COLOR ) == 0 )
@@ -4923,6 +4928,8 @@ void CSkyboxView::DrawInternal( view_id_t iSkyBoxViewID, bool bInvokePreAndPostR
 
 	g_pClientShadowMgr->ComputeShadowTextures( (*this), m_pWorldListInfo->m_LeafCount, m_pWorldListInfo->m_pLeafList );
 
+	R_DrawSkyBox(view->GetZFar());
+
 	DrawWorld( 0.0f );
 
 	// Iterate over all leaves and render objects in those leaves
@@ -4959,30 +4966,27 @@ void CSkyboxView::DrawInternal( view_id_t iSkyBoxViewID, bool bInvokePreAndPostR
 //-----------------------------------------------------------------------------
 // 
 //-----------------------------------------------------------------------------
-bool CSkyboxView::Setup( const CViewSetup &viewRender, int *pClearFlags, SkyboxVisibility_t *pSkyboxVisible )
+bool CSkyboxView::Setup(const CViewSetup& viewRender, int* pClearFlags, SkyboxVisibility_t* pSkyboxVisible)
 {
-	BaseClass::Setup( viewRender );
+	BaseClass::Setup(viewRender);
 
 	// The skybox might not be visible from here
 	*pSkyboxVisible = ComputeSkyboxVisibility();
-	m_pSky3dParams = PreRender3dSkyboxWorld( *pSkyboxVisible );
+	m_pSky3dParams = PreRender3dSkyboxWorld(*pSkyboxVisible);
 
-	if ( !m_pSky3dParams )
+	if (!m_pSky3dParams)
 	{
+		R_DrawSkyBox(zFar);
 		return false;
 	}
 
 	// At this point, we've cleared everything we need to clear
 	// The next path will need to clear depth, though.
 	m_ClearFlags = *pClearFlags;
-	*pClearFlags &= ~( VIEW_CLEAR_COLOR | VIEW_CLEAR_DEPTH | VIEW_CLEAR_STENCIL | VIEW_CLEAR_FULL_TARGET );
+	*pClearFlags &= ~(VIEW_CLEAR_COLOR | VIEW_CLEAR_DEPTH | VIEW_CLEAR_STENCIL | VIEW_CLEAR_FULL_TARGET);
 	*pClearFlags |= VIEW_CLEAR_DEPTH; // Need to clear depth after rednering the skybox
 
 	m_DrawFlags = DF_RENDER_UNDERWATER | DF_RENDER_ABOVEWATER | DF_RENDER_WATER;
-	if( r_skybox.GetBool() )
-	{
-		m_DrawFlags |= DF_DRAWSKYBOX;
-	}
 
 	return true;
 }
