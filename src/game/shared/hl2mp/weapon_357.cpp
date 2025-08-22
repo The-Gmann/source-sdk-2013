@@ -12,16 +12,20 @@
 #ifdef CLIENT_DLL
 	#include "c_hl2mp_player.h"
 	#include <prediction.h>
+    #include "c_te_effect_dispatch.h"
 #else
 	#include "hl2mp_player.h"
+    #include "te_effect_dispatch.h"
 #endif
 
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
+#include "zoom_shared.h" // Include for zoom functionality
 
 #ifdef CLIENT_DLL
 #define CWeapon357 C_Weapon357
 #endif
 
+ConVar rb_357_zoom("rb_357_zoom", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable 357 zoom functionality");
 //-----------------------------------------------------------------------------
 // CWeapon357
 //-----------------------------------------------------------------------------
@@ -32,8 +36,14 @@ class CWeapon357 : public CBaseHL2MPCombatWeapon
 public:
 
 	CWeapon357( void );
+    
+    void    Operator_HandleAnimEvent(animevent_t *pEvent, CBaseCombatCharacter *pOperator);
+    void    PrimaryAttack( void );
+    void    ItemPostFrame( void );
+    bool    Holster(CBaseCombatWeapon *pSwitchingTo); // Declare the Holster method
+    void    ToggleZoom( void ); // Declare the ToggleZoom method
+    bool    Reload(void); // Declare the Reload method
 
-	void	PrimaryAttack( void );
 	DECLARE_NETWORKCLASS(); 
 	DECLARE_PREDICTABLE();
 
@@ -44,11 +54,18 @@ public:
 private:
 	
 	CWeapon357( const CWeapon357 & );
+
+    CNetworkVar( bool, m_bInZoom ); // Networked variable to track zoom state
 };
 
 IMPLEMENT_NETWORKCLASS_ALIASED( Weapon357, DT_Weapon357 )
 
 BEGIN_NETWORK_TABLE( CWeapon357, DT_Weapon357 )
+#ifdef CLIENT_DLL
+    RecvPropBool( RECVINFO( m_bInZoom ) ),
+#else
+    SendPropBool( SENDINFO( m_bInZoom ) ),
+#endif
 END_NETWORK_TABLE()
 
 BEGIN_PREDICTION_DATA( CWeapon357 )
@@ -84,6 +101,66 @@ CWeapon357::CWeapon357( void )
 {
 	m_bReloadsSingly	= false;
 	m_bFiresUnderwater	= false;
+    m_bReloadsSingly    = false;
+    m_bFiresUnderwater    = false;
+    m_bInZoom            = false; // Initialize zoom state
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Handles the weapon being holstered
+//-----------------------------------------------------------------------------
+bool CWeapon357::Holster(CBaseCombatWeapon *pSwitchingTo)
+{
+    if ( m_bInZoom )
+    {
+        ToggleZoom();
+    }
+    return BaseClass::Holster(pSwitchingTo);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Toggles the zoom state
+//-----------------------------------------------------------------------------
+void CWeapon357::ToggleZoom(void)
+{
+    if (!rb_357_zoom.GetBool())
+        return;
+
+    CBasePlayer *pPlayer = ToBasePlayer(GetOwner());
+
+    if (pPlayer == NULL)
+        return;
+
+#ifndef CLIENT_DLL
+    float zoomTransitionTime = rb_smooth_zoom.GetBool() ? 0.2f : 0.0f;
+
+    if (m_bInZoom)
+    {
+        if (pPlayer->SetFOV(this, 0, zoomTransitionTime))
+        {
+            m_bInZoom = false;
+        }
+    }
+    else
+    {
+        if (pPlayer->SetFOV(this, 40, zoomTransitionTime))
+        {
+            m_bInZoom = true;
+        }
+    }
+#endif
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Handles the weapon reloading
+//-----------------------------------------------------------------------------
+bool CWeapon357::Reload(void)
+{
+    if ( m_bInZoom )
+    {
+        ToggleZoom();
+    }
+    return BaseClass::Reload();
 }
 
 //-----------------------------------------------------------------------------
@@ -154,4 +231,55 @@ void CWeapon357::PrimaryAttack( void )
 		// HEV suit - indicate out of ammo condition
 		pPlayer->SetSuitUpdate( "!HEV_AMO0", FALSE, 0 ); 
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose:
+//-----------------------------------------------------------------------------
+void CWeapon357::Operator_HandleAnimEvent(animevent_t* pEvent, CBaseCombatCharacter* pOperator)
+{
+    CBasePlayer* pOwner = ToBasePlayer(GetOwner());
+    switch (pEvent->event)
+    {
+    case EVENT_WEAPON_RELOAD:
+    {
+        CEffectData data;
+
+        // Emit six spent shells
+        for (int i = 0; i < 6; i++)
+        {
+            IPredictionSystem::SuppressHostEvents(NULL);
+
+            data.m_vOrigin = pOwner->WorldSpaceCenter() + RandomVector(-4, 4);
+            data.m_vAngles = QAngle(90, random->RandomInt(0, 360), 0);
+
+#ifdef CLIENT_DLL
+            data.m_hEntity = GetOwner();
+#else
+            data.m_nEntIndex = entindex();
+#endif
+
+            DispatchEffect("ShellEject", data);
+        }
+        break;
+    }
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Handles the item post frame
+//-----------------------------------------------------------------------------
+void CWeapon357::ItemPostFrame(void)
+{
+    CBasePlayer *pPlayer = ToBasePlayer(GetOwner());
+
+    if (pPlayer == NULL)
+        return;
+
+    if (pPlayer->m_afButtonPressed & IN_ATTACK2)
+    {
+        ToggleZoom();
+    }
+
+    BaseClass::ItemPostFrame();
 }

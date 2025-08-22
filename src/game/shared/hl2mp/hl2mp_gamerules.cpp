@@ -808,10 +808,18 @@ void CHL2MPRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 	}
 	if ( sv_report_client_settings.GetInt() == 1 )
 	{
-		UTIL_LogPrintf( "\"%s\" cl_cmdrate = \"%s\"\n", pHL2Player->GetPlayerName(), engine->GetClientConVarValue( pHL2Player->entindex(), "cl_cmdrate" ));
+		UTIL_LogPrintf("\"%s\" cl_cmdrate = \"%s\"\n", pHL2Player->GetPlayerName(), engine->GetClientConVarValue(pHL2Player->entindex(), "cl_cmdrate"));
 	}
 
-	BaseClass::ClientSettingsChanged( pPlayer );
+	const char *pszFov = engine->GetClientConVarValue( pPlayer->entindex(), "fov_desired" );
+	if ( pszFov )
+	{
+		int iFov = atoi(pszFov);
+		iFov = clamp( iFov, 70, 150 );
+		pPlayer->SetDefaultFOV( iFov );
+	}
+
+	BaseClass::ClientSettingsChanged(pPlayer);
 #endif
 	
 }
