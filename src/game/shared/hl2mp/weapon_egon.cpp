@@ -10,7 +10,7 @@
 //----------------------------------------
 #include "cbase.h"
 #include "beam_shared.h"
-#include "beam_flags.h"  // Add this include
+#include "beam_flags.h"
 #include "in_buttons.h"
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
 #include "soundenvelope.h"
@@ -30,6 +30,7 @@
     #include "c_te_effect_dispatch.h"
     #include "dlight.h"
     #include "iefx.h"
+    #include "prediction.h"
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
@@ -45,7 +46,7 @@ namespace EgonConstants
 {
     // Sprites and models
     static const char* BEAM_SPRITE = "sprites/xbeam1.vmt";
-    static const char* BEAM_SPRITE_NODEPTH = "sprites/xbeam_nodepth.vmt";  // Add this
+    static const char* BEAM_SPRITE_NODEPTH = "sprites/xbeam_nodepth.vmt";
     static const char* FLARE_SPRITE = "sprites/xspark1.vmt";
     
     // Beam properties
@@ -82,7 +83,7 @@ ConVar sk_plr_dmg_egon("sk_plr_dmg_egon", "15", FCVAR_REPLICATED, "Egon weapon d
 #ifdef CLIENT_DLL
     CLIENTEFFECT_REGISTER_BEGIN(PrecacheEffectEgon)
         CLIENTEFFECT_MATERIAL("sprites/xbeam1")
-        CLIENTEFFECT_MATERIAL("sprites/xbeam_nodepth")  // Add this
+        CLIENTEFFECT_MATERIAL("sprites/xbeam_nodepth")
         CLIENTEFFECT_MATERIAL("sprites/xspark1")
     CLIENTEFFECT_REGISTER_END()
 
@@ -134,6 +135,7 @@ private:
     CNetworkVar(float, m_flNextDamageTime);
     CNetworkVar(EFireState, m_fireState);
     CNetworkVar(Vector, m_vecBeamEndPos);
+    CNetworkVar(bool, m_bRunSoundPlaying);
 
 #ifdef CLIENT_DLL
     // Client-only beam rendering
@@ -144,7 +146,7 @@ private:
     float m_flNextBeamUpdateTime;
     dlight_t *m_pBeamGlow;
     bool m_bClientThinking;
-    int m_nBeamDelayFrames;  // Add frame delay counter
+    int m_nBeamDelayFrames;
 #endif
 
     // State variables
@@ -185,11 +187,13 @@ BEGIN_NETWORK_TABLE(CWeaponEgon, DT_WeaponEgon)
     RecvPropFloat(RECVINFO(m_flNextDamageTime)),
     RecvPropInt(RECVINFO(m_fireState)),
     RecvPropVector(RECVINFO(m_vecBeamEndPos)),
+    RecvPropBool(RECVINFO(m_bRunSoundPlaying)),
 #else
     SendPropFloat(SENDINFO(m_flAmmoUseTime)),
     SendPropFloat(SENDINFO(m_flNextDamageTime)),
     SendPropInt(SENDINFO(m_fireState)),
     SendPropVector(SENDINFO(m_vecBeamEndPos)),
+    SendPropBool(SENDINFO(m_bRunSoundPlaying)),
 #endif
 END_NETWORK_TABLE()
 
@@ -200,6 +204,7 @@ BEGIN_PREDICTION_DATA(CWeaponEgon)
     DEFINE_PRED_FIELD(m_flNextDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_fireState, FIELD_INTEGER, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_vecBeamEndPos, FIELD_VECTOR, FTYPEDESC_INSENDTABLE),
+    DEFINE_PRED_FIELD(m_bRunSoundPlaying, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE),
 END_PREDICTION_DATA()
 #endif
 
@@ -233,6 +238,7 @@ CWeaponEgon::CWeaponEgon()
     m_flShakeTime = 0.0f;
     m_flStartSoundDuration = EgonConstants::DEFAULT_SOUND_DURATION;
     m_bTransitionedToCharge = false;
+    m_bRunSoundPlaying = false;
 
 #ifdef CLIENT_DLL
     m_pClientBeam = nullptr;
@@ -242,7 +248,7 @@ CWeaponEgon::CWeaponEgon()
     m_flNextBeamUpdateTime = 0.0f;
     m_pBeamGlow = nullptr;
     m_bClientThinking = false;
-    m_nBeamDelayFrames = 0;  // Initialize frame counter
+    m_nBeamDelayFrames = 0;
 #endif
 }
 
@@ -262,7 +268,7 @@ CWeaponEgon::~CWeaponEgon()
 void CWeaponEgon::Precache()
 {
     PrecacheModel(EgonConstants::BEAM_SPRITE);
-    PrecacheModel(EgonConstants::BEAM_SPRITE_NODEPTH);  // Add this
+    PrecacheModel(EgonConstants::BEAM_SPRITE_NODEPTH);
     PrecacheModel(EgonConstants::FLARE_SPRITE);
 
     // Precache sounds and get actual duration
@@ -300,7 +306,7 @@ Vector CWeaponEgon::GetMuzzlePosition()
     // Try to get muzzle attachment point from viewmodel
     int attachment = pViewModel->LookupAttachment("muzzle");
     if (attachment == -1)
-        attachment = pViewModel->LookupAttachment("0"); // Fallback to attachment 0
+        attachment = pViewModel->LookupAttachment("0");
         
     if (attachment != -1 && pViewModel->GetAttachment(attachment, muzzlePos, muzzleAng))
     {
@@ -316,15 +322,15 @@ Vector CWeaponEgon::GetMuzzlePosition()
 //-----------------------------------------------------------------------------
 void CWeaponEgon::CreateClientBeams()
 {
-    DestroyClientBeams(); // Clean up first
+    DestroyClientBeams();
 
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
 
-    // Don't create beams immediately - wait for proper positioning data
-    m_nBeamDelayFrames = 5; // Wait 5 frames for positioning to stabilize
+    // Wait for proper positioning data
+    m_nBeamDelayFrames = 8;
 
-    // Create primary beam using no-depth material
+    // Create primary beam
     m_pClientBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::BEAM_WIDTH);
     if (m_pClientBeam)
     {
@@ -336,16 +342,12 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientBeam->SetColor(50, 215, 255);
         m_pClientBeam->SetNoise(0.2f);
         m_pClientBeam->SetRenderMode(kRenderTransAdd);
-        
-        // Set beam type to ensure proper rendering
         m_pClientBeam->SetType(BEAM_POINTS);
         m_pClientBeam->PointsInit(startPos, endPos);
-        
-        // Hide the beam initially
         m_pClientBeam->AddEffects(EF_NODRAW);
     }
 
-    // Create noise beam using no-depth material
+    // Create noise beam
     m_pClientNoise = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::NOISE_WIDTH);
     if (m_pClientNoise)
     {
@@ -357,47 +359,35 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientNoise->SetColor(50, 240, 255);
         m_pClientNoise->SetNoise(0.8f);
         m_pClientNoise->SetRenderMode(kRenderTransAdd);
-        
-        // Set beam type to ensure proper rendering
         m_pClientNoise->SetType(BEAM_POINTS);
         m_pClientNoise->PointsInit(startPos, endPos);
-        
-        // Hide the beam initially
         m_pClientNoise->AddEffects(EF_NODRAW);
     }
 
-    // Create client-side flare sprite at beam end with proper initialization
+    // Create flare sprite
     m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, endPos, false);
     if (m_pClientSprite)
     {
-        // Set sprite properties
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
         m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
         m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         
-        // Set owner for proper cleanup
         CBasePlayer *pOwner = ToBasePlayer(GetOwner());
         if (pOwner)
         {
             m_pClientSprite->SetOwnerEntity(pOwner);
         }
         
-        // Start the sprite animation/thinking
         m_pClientSprite->TurnOn();
-        
-        // Hide the sprite initially
         m_pClientSprite->AddEffects(EF_NODRAW);
         
-        // Verify the sprite was created properly
         if (m_pClientSprite->GetClientHandle() == INVALID_CLIENTENTITY_HANDLE)
         {
-            Warning("CWeaponEgon::CreateClientBeams - Sprite created with invalid client handle\n");
             m_pClientSprite->Remove();
             m_pClientSprite = nullptr;
         }
     }
 
-    // Don't create dynamic light immediately - wait for beam delay frames to finish
     m_pBeamGlow = nullptr;
 }
 
@@ -415,11 +405,11 @@ void CWeaponEgon::UpdateClientBeams()
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
     
-    // Ensure minimum beam length to prevent near-plane clipping
+    // Ensure minimum beam length
     Vector beamDir = endPos - startPos;
     float beamLength = beamDir.Length();
     
-    if (beamLength < 16.0f) // Minimum safe distance
+    if (beamLength < 16.0f)
     {
         beamDir.NormalizeInPlace();
         endPos = startPos + (beamDir * 16.0f);
@@ -430,12 +420,10 @@ void CWeaponEgon::UpdateClientBeams()
     {
         m_nBeamDelayFrames--;
         
-        // Update positions but keep beams hidden
         if (m_pClientBeam)
         {
             m_pClientBeam->SetStartPos(startPos);
             m_pClientBeam->SetEndPos(endPos);
-            // Re-initialize beam points to force update
             m_pClientBeam->PointsInit(startPos, endPos);
         }
 
@@ -443,7 +431,6 @@ void CWeaponEgon::UpdateClientBeams()
         {
             m_pClientNoise->SetStartPos(startPos);
             m_pClientNoise->SetEndPos(endPos);
-            // Re-initialize beam points to force update
             m_pClientNoise->PointsInit(startPos, endPos);
         }
 
@@ -451,15 +438,12 @@ void CWeaponEgon::UpdateClientBeams()
         {
             m_pClientSprite->SetAbsOrigin(endPos);
         }
-
-        // Don't update light during delay frames - it shouldn't exist yet
         
-        // Set last position for smooth interpolation when beams become visible
         m_vecLastEndPos = endPos;
         return;
     }
 
-    // Create dynamic light now that delay frames are finished
+    // Create dynamic light
     if (!m_pBeamGlow)
     {
         m_pBeamGlow = effects->CL_AllocDlight(entindex());
@@ -474,7 +458,7 @@ void CWeaponEgon::UpdateClientBeams()
         }
     }
 
-    // Smooth interpolation for beam end position
+    // Smooth interpolation
     if (m_vecLastEndPos != vec3_origin)
     {
         float lerpFactor = gpGlobals->frametime * 25.0f;
@@ -489,7 +473,7 @@ void CWeaponEgon::UpdateClientBeams()
         return;
     }
 
-    // Show the beams now that positioning has stabilized
+    // Show beams
     if (m_pClientBeam && m_pClientBeam->IsEffectActive(EF_NODRAW))
     {
         m_pClientBeam->RemoveEffects(EF_NODRAW);
@@ -505,15 +489,12 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->RemoveEffects(EF_NODRAW);
     }
 
-    // Update beam positions with safe minimum distance and force reinit
+    // Update beam positions
     if (m_pClientBeam)
     {
         m_pClientBeam->SetStartPos(startPos);
         m_pClientBeam->SetEndPos(endPos);
-        // Force beam update by reinitializing points
         m_pClientBeam->PointsInit(startPos, endPos);
-        
-        // Set beam to always visible by removing potential culling
         m_pClientBeam->SetBeamFlags(m_pClientBeam->GetBeamFlags() | FBEAM_FOREVER);
     }
 
@@ -521,19 +502,15 @@ void CWeaponEgon::UpdateClientBeams()
     {
         m_pClientNoise->SetStartPos(startPos);
         m_pClientNoise->SetEndPos(endPos);
-        // Force beam update by reinitializing points
         m_pClientNoise->PointsInit(startPos, endPos);
-        
-        // Set beam to always visible by removing potential culling
         m_pClientNoise->SetBeamFlags(m_pClientNoise->GetBeamFlags() | FBEAM_FOREVER);
     }
 
-    // Update sprite position and animation
+    // Update sprite
     if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
     {
         m_pClientSprite->SetAbsOrigin(endPos);
         
-        // Animate the sprite frame
         float currentFrame = m_pClientSprite->m_flFrame;
         currentFrame += 8.0f * gpGlobals->frametime;
         
@@ -543,7 +520,7 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->m_flFrame = currentFrame;
     }
 
-    // Update dynamic light (only if it exists now)
+    // Update dynamic light
     if (m_pBeamGlow)
     {
         m_pBeamGlow->origin = endPos;
@@ -552,7 +529,7 @@ void CWeaponEgon::UpdateClientBeams()
 }
 
 //-----------------------------------------------------------------------------
-// Destroy client beams - with safer sprite cleanup
+// Destroy client beams
 //-----------------------------------------------------------------------------
 void CWeaponEgon::DestroyClientBeams()
 {
@@ -568,10 +545,8 @@ void CWeaponEgon::DestroyClientBeams()
         m_pClientNoise = nullptr;
     }
     
-    // Safely remove sprite
     if (m_pClientSprite)
     {
-        // Check if it still has a valid handle before trying to remove
         if (m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
         {
             m_pClientSprite->Remove();
@@ -581,11 +556,11 @@ void CWeaponEgon::DestroyClientBeams()
     
     m_pBeamGlow = nullptr;
     m_vecLastEndPos = vec3_origin;
-    m_nBeamDelayFrames = 0; // Reset frame counter
+    m_nBeamDelayFrames = 0;
 }
 
 //-----------------------------------------------------------------------------
-// Client think - updates beams every frame
+// Client think
 //-----------------------------------------------------------------------------
 void CWeaponEgon::ClientThink()
 {
@@ -618,7 +593,6 @@ void CWeaponEgon::OnDataChanged(DataUpdateType_t updateType)
 {
     BaseClass::OnDataChanged(updateType);
     
-    // Set up client thinking when firing state changes
     if (m_fireState != FIRE_OFF && !m_bClientThinking)
     {
         SetNextClientThink(CLIENT_THINK_ALWAYS);
@@ -639,7 +613,6 @@ void CWeaponEgon::ViewModelDrawn(C_BaseViewModel *pBaseViewModel)
 {
     BaseClass::ViewModelDrawn(pBaseViewModel);
     
-    // Update beams after viewmodel is drawn to ensure proper positioning
     if (m_fireState != FIRE_OFF)
     {
         UpdateClientBeams();
@@ -653,6 +626,7 @@ void CWeaponEgon::ViewModelDrawn(C_BaseViewModel *pBaseViewModel)
 bool CWeaponEgon::Deploy()
 {
     StopFiring();
+    m_bRunSoundPlaying = false;
     return BaseClass::Deploy();
 }
 
@@ -661,9 +635,12 @@ bool CWeaponEgon::Deploy()
 //-----------------------------------------------------------------------------
 bool CWeaponEgon::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
+    // Stop all sounds and play off sound
     StopSound(EgonConstants::SOUND_START);
     StopSound(EgonConstants::SOUND_RUN);
+    
     StopFiring();
+    m_bRunSoundPlaying = false;
     
     return BaseClass::Holster(pSwitchingTo);
 }
@@ -757,8 +734,7 @@ void CWeaponEgon::StartFiring()
     m_fireState = FIRE_STARTUP;
 
 #ifdef CLIENT_DLL
-    // Reset frame delay counter for new firing sequence
-    m_nBeamDelayFrames = 5;
+    m_nBeamDelayFrames = 6;
     
     if (!m_bClientThinking)
     {
@@ -776,9 +752,15 @@ void CWeaponEgon::StopFiring()
     if (m_fireState == FIRE_OFF)
         return;
 
-    // Stop sounds and play off sound
+    // Stop all firing sounds
+    StopSound(EgonConstants::SOUND_START);
     StopSound(EgonConstants::SOUND_RUN);
     EmitSound(EgonConstants::SOUND_OFF);
+    
+    if (m_bRunSoundPlaying)
+    {
+        m_bRunSoundPlaying = false;
+    }
     
     // Reset animation and effects
     SendWeaponAnim(ACT_VM_IDLE);
@@ -811,7 +793,30 @@ void CWeaponEgon::HandleFireStateTransition()
         !m_bTransitionedToCharge &&
         gpGlobals->curtime >= (m_flStartFireTime + m_flStartSoundDuration))
     {
-        EmitSound(EgonConstants::SOUND_RUN);
+        // Stop the start sound before playing run sound
+        StopSound(EgonConstants::SOUND_START);
+        
+#ifdef CLIENT_DLL
+        // Client side - server will handle run sound
+#else
+        // Server side - control run sound
+        if (!m_bRunSoundPlaying)
+        {
+            CBasePlayer *pOwner = GetPlayerOwner();
+            if (pOwner)
+            {
+                CPASAttenuationFilter filter(pOwner, ATTN_NORM);
+                EmitSound(filter, entindex(), EgonConstants::SOUND_RUN);
+            }
+            else
+            {
+                EmitSound(EgonConstants::SOUND_RUN);
+            }
+            
+            m_bRunSoundPlaying = true;
+        }
+#endif
+        
         m_fireState = FIRE_CHARGE;
         m_bTransitionedToCharge = true;
     }
@@ -875,7 +880,6 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
         CTakeDamageInfo directDmg(this, pOwner, baseDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB);
         CalculateMeleeDamageForce(&directDmg, direction, tr.endpos);
         
-        // Cast away const since DispatchTraceAttack doesn't modify the trace meaningfully
         tr.m_pEnt->DispatchTraceAttack(directDmg, direction, const_cast<trace_t*>(&tr));
         ApplyMultiDamage();
     }
