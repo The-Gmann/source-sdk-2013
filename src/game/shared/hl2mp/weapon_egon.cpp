@@ -322,7 +322,7 @@ void CWeaponEgon::CreateClientBeams()
     Vector endPos = m_vecBeamEndPos;
 
     // Don't create beams immediately - wait for proper positioning data
-    m_nBeamDelayFrames = 4; // Wait 4 frames for positioning to stabilize
+    m_nBeamDelayFrames = 5; // Wait 5 frames for positioning to stabilize
 
     // Create primary beam using no-depth material
     m_pClientBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::BEAM_WIDTH);
@@ -397,17 +397,8 @@ void CWeaponEgon::CreateClientBeams()
         }
     }
 
-    // Create dynamic light at beam end
-    m_pBeamGlow = effects->CL_AllocDlight(entindex());
-    if (m_pBeamGlow)
-    {
-        m_pBeamGlow->origin = endPos;
-        m_pBeamGlow->radius = 128.0f;
-        m_pBeamGlow->color.r = 50;
-        m_pBeamGlow->color.g = 215;
-        m_pBeamGlow->color.b = 255;
-        m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
-    }
+    // Don't create dynamic light immediately - wait for beam delay frames to finish
+    m_pBeamGlow = nullptr;
 }
 
 //-----------------------------------------------------------------------------
@@ -461,16 +452,26 @@ void CWeaponEgon::UpdateClientBeams()
             m_pClientSprite->SetAbsOrigin(endPos);
         }
 
-        // Update light position even when beams are hidden
-        if (m_pBeamGlow)
-        {
-            m_pBeamGlow->origin = endPos;
-            m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
-        }
+        // Don't update light during delay frames - it shouldn't exist yet
         
         // Set last position for smooth interpolation when beams become visible
         m_vecLastEndPos = endPos;
         return;
+    }
+
+    // Create dynamic light now that delay frames are finished
+    if (!m_pBeamGlow)
+    {
+        m_pBeamGlow = effects->CL_AllocDlight(entindex());
+        if (m_pBeamGlow)
+        {
+            m_pBeamGlow->origin = endPos;
+            m_pBeamGlow->radius = 128.0f;
+            m_pBeamGlow->color.r = 50;
+            m_pBeamGlow->color.g = 215;
+            m_pBeamGlow->color.b = 255;
+            m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+        }
     }
 
     // Smooth interpolation for beam end position
@@ -542,7 +543,7 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->m_flFrame = currentFrame;
     }
 
-    // Update dynamic light
+    // Update dynamic light (only if it exists now)
     if (m_pBeamGlow)
     {
         m_pBeamGlow->origin = endPos;
@@ -757,7 +758,7 @@ void CWeaponEgon::StartFiring()
 
 #ifdef CLIENT_DLL
     // Reset frame delay counter for new firing sequence
-    m_nBeamDelayFrames = 4;
+    m_nBeamDelayFrames = 5;
     
     if (!m_bClientThinking)
     {
