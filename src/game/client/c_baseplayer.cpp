@@ -116,7 +116,7 @@ ConVar	spec_freeze_distance_max( "spec_freeze_distance_max", "200", FCVAR_CHEAT,
 #endif
 
 static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_ARCHIVE, "Causes the third person model to be drawn instead of the view model" );
-
+static ConVar rb_playershadow( "rb_playershadow", "0", FCVAR_ARCHIVE, "Enable player shadow rendering" );
 ConVar demo_fov_override( "demo_fov_override", "0", FCVAR_CLIENTDLL | FCVAR_DONTRECORD, "If nonzero, this value will be used to override FOV during demo playback." );
 
 // This only needs to be approximate - it just controls the distance to the pivot-point of the head ("the neck") of the in-game character, not the player's real-world neck length.
@@ -1464,6 +1464,15 @@ int C_BasePlayer::DrawModel( int flags )
 		return 0;
 	}
 #endif
+
+	if(IsLocalPlayer() && rb_playershadow.GetBool())
+	{
+		if (input->CAM_IsThirdPerson())
+			return BaseClass::DrawModel(flags);
+		else
+			return 0;
+	}
+
 	return BaseClass::DrawModel( flags );
 }
 
@@ -2019,7 +2028,7 @@ bool C_BasePlayer::ShouldDrawThisPlayer()
 			return true;
 		}
 	}
-	return false;
+	return rb_playershadow.GetBool();
 }
 
 
