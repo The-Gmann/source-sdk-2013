@@ -950,13 +950,11 @@ void C_HL2MP_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNea
 
 			if ( pRagdoll )
 			{
-				DevMsg("Using ragdoll for death cam\n");
 				origin = pRagdoll->GetRagdollOrigin();
 				origin.z += VEC_DEAD_VIEWHEIGHT_SCALED( this ).z; // look over ragdoll, not through
 			}
 			else
 			{
-				DevMsg("Using default player position for death cam\n");
 			}
 		}
 

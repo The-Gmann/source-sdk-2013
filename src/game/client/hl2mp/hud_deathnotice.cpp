@@ -156,7 +156,6 @@ void CHudDeathNotice::Paint()
 	surface()->DrawSetTextFont( m_hTextFont );
 	surface()->DrawSetTextColor( GameResources()->GetTeamColor( 0 ) );
 
-
 	int iCount = m_DeathNotices.Count();
 	for ( int i = 0; i < iCount; i++ )
 	{
@@ -173,8 +172,18 @@ void CHudDeathNotice::Paint()
 
 		if( g_PR )
 		{
-			iKillerTeam = g_PR->GetTeam( m_DeathNotices[i].Killer.iEntIndex );
-			iVictimTeam = g_PR->GetTeam( m_DeathNotices[i].Victim.iEntIndex );
+			// Validate killer index before getting team (fix for environmental damage)
+			if ( m_DeathNotices[i].Killer.iEntIndex >= 1 && m_DeathNotices[i].Killer.iEntIndex <= MAX_PLAYERS )
+			{
+				iKillerTeam = g_PR->GetTeam( m_DeathNotices[i].Killer.iEntIndex );
+			}
+			// else iKillerTeam remains 0 for environmental/world damage
+			
+			// Validate victim index before getting team
+			if ( m_DeathNotices[i].Victim.iEntIndex >= 1 && m_DeathNotices[i].Victim.iEntIndex <= MAX_PLAYERS )
+			{
+				iVictimTeam = g_PR->GetTeam( m_DeathNotices[i].Victim.iEntIndex );
+			}
 		}
 
 		g_pVGuiLocalize->ConvertANSIToUnicode( m_DeathNotices[i].Victim.szName, victim, sizeof( victim ) );
@@ -300,9 +309,19 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 		m_DeathNotices.Remove(0);
 	}
 
-	// Get the names of the players
-	const char *killer_name = g_PR->GetPlayerName( killer );
-	const char *victim_name = g_PR->GetPlayerName( victim );
+	// Get the names of the players - validate indices first
+	const char *killer_name = "";
+	const char *victim_name = "";
+	
+	if ( killer >= 1 && killer <= MAX_PLAYERS )
+	{
+		killer_name = g_PR->GetPlayerName( killer );
+	}
+	
+	if ( victim >= 1 && victim <= MAX_PLAYERS )
+	{
+		victim_name = g_PR->GetPlayerName( victim );
+	}
 
 	if ( !killer_name )
 		killer_name = "";
@@ -356,6 +375,3 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 
 	Msg( "%s", sDeathMsg );
 }
-
-
-

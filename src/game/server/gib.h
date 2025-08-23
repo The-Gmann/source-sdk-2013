@@ -104,12 +104,12 @@ public:
 
 	CHandle<CBasePlayer>	m_hPhysicsAttacker;
 	float					m_flLastPhysicsInfluenceTime;
+	float			m_flNextBloodSpray;		// Time for next blood spray
 
 private:
 	// A little piece of duplicated code
 	void AdjustVelocityBasedOnHealth( int nHealth, Vector &vecVelocity );
 	int		m_bloodColor;
-	float			m_flNextBloodSpray;		// Time for next blood spray
 
 	EHANDLE m_hSprite;
 	EHANDLE m_hFlame;

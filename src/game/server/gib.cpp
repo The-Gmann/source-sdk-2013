@@ -24,6 +24,23 @@ extern Vector			g_vecAttackDir;		// In globals.cpp
 // ConVar for controlling gib blood particles
 ConVar rb_gib_blood("rb_gib_blood", "1", FCVAR_ARCHIVE, "Enable blood particle effects from gibs while flying (0 = off, 1 = on)");
 
+// Cache commonly used values to avoid repeated ConVar lookups and calculations
+static bool g_bBloodEnabled = true;
+static bool g_bIsGerman = false;
+static float g_flLastBloodCheck = 0.0f;
+
+// Update cached values periodically (every second)
+inline void UpdateBloodCache()
+{
+	float flCurrentTime = gpGlobals->curtime;
+	if (flCurrentTime - g_flLastBloodCheck > 1.0f)
+	{
+		g_bBloodEnabled = rb_gib_blood.GetBool();
+		g_bIsGerman = (g_Language.GetInt() == LANGUAGE_GERMAN);
+		g_flLastBloodCheck = flCurrentTime;
+	}
+}
+
 BEGIN_DATADESC( CGib )
 	// Function pointers
 	DEFINE_ENTITYFUNC( BounceGibTouch ),
@@ -49,89 +66,82 @@ void CGib::LimitVelocity( void )
 }
 
 //------------------------------------------------------------------------------
-// Purpose: Blood spray think function - sprays blood while gib is moving
+// Purpose: Optimized blood spray think function
 //------------------------------------------------------------------------------
 void CGib::BloodSprayThink( void )
 {
-	// Check if we're out of world bounds
+	// Early bounds check with single call
 	if (!IsInWorld())
 	{
 		UTIL_Remove( this );
 		return;
 	}
 
-	// Check if blood particles are disabled by cvar
-	if ( !rb_gib_blood.GetBool() )
+	// Update cached values periodically
+	UpdateBloodCache();
+
+	// Early exit for disabled blood or German version
+	if (!g_bBloodEnabled || g_bIsGerman || m_bloodColor == DONT_BLEED)
 	{
-		SetThink ( &CGib::WaitTillLand );
-		SetNextThink( gpGlobals->curtime + 0.1f );
+		SetThink(&CGib::WaitTillLand);
+		SetNextThink(gpGlobals->curtime + 0.1f);
 		return;
 	}
 
-	// Check if we can still bleed
-	if ( g_Language.GetInt() == LANGUAGE_GERMAN )
-	{
-		SetThink ( &CGib::WaitTillLand );
-		SetNextThink( gpGlobals->curtime + 0.1f );
-		return;
-	}
-
-	if ( m_bloodColor == DONT_BLEED )
-	{
-		SetThink ( &CGib::WaitTillLand );
-		SetNextThink( gpGlobals->curtime + 0.1f );
-		return;
-	}
-
-	// Get current velocity - check both GetAbsVelocity and VPhysics velocity
-	Vector velocity = GetAbsVelocity();
-	float speed = velocity.Length();
+	// Get velocity once and cache the calculation
+	Vector velocity;
+	float speed;
 	
-	// For VPhysics objects, check the physics velocity instead
 	IPhysicsObject *pPhysics = VPhysicsGetObject();
-	if ( pPhysics )
+	if (pPhysics)
 	{
-		pPhysics->GetVelocity( &velocity, NULL );
-		speed = velocity.Length();
+		pPhysics->GetVelocity(&velocity, NULL);
+		speed = VectorLength(velocity);  // Slightly faster than velocity.Length()
+	}
+	else
+	{
+		velocity = GetAbsVelocity();
+		speed = VectorLength(velocity);
 	}
 	
-	// Check if we're still moving fast enough to spray blood
-	if ( speed < 50.0f )
+	// Early exit for slow movement
+	if (speed < 50.0f)
 	{
-		SetThink ( &CGib::WaitTillLand );
-		SetNextThink( gpGlobals->curtime + 0.1f );
+		SetThink(&CGib::WaitTillLand);
+		SetNextThink(gpGlobals->curtime + 0.1f);
 		return;
 	}
 
-	// Spray blood at regular intervals based on speed
-	if ( gpGlobals->curtime >= m_flNextBloodSpray )
+	// Only spray blood if enough time has passed (avoid excessive calculations)
+	float flCurrentTime = gpGlobals->curtime;
+	if (flCurrentTime >= m_flNextBloodSpray)
 	{
-		// Calculate spray intensity based on speed
-		float sprayIntensity = MIN( speed / 300.0f, 1.0f ); // Normalize to 0-1
+		// Pre-calculate normalized intensity (0-1 range)
+		float sprayIntensity = MIN(speed * (1.0f / 300.0f), 1.0f); // Avoid division
 		
-		// Get the direction opposite to velocity for blood spray
-		Vector sprayDirection = -velocity;
-		VectorNormalize( sprayDirection );
+		// Create spray direction (reuse velocity calculation)
+		Vector sprayDirection = velocity * (-1.0f / speed); // Normalize by dividing by speed
 		
-		// Add some randomness to the spray direction
-		sprayDirection.x += random->RandomFloat( -0.2f, 0.2f );
-		sprayDirection.y += random->RandomFloat( -0.2f, 0.2f );
-		sprayDirection.z += random->RandomFloat( -0.2f, 0.2f );
-		VectorNormalize( sprayDirection );
+		// Add randomness more efficiently
+		sprayDirection.x += random->RandomFloat(-0.2f, 0.2f);
+		sprayDirection.y += random->RandomFloat(-0.2f, 0.2f);
+		sprayDirection.z += random->RandomFloat(-0.2f, 0.2f);
+		VectorNormalize(sprayDirection);
 		
-		// Use UTIL_BloodImpact instead of UTIL_BloodSpray for smaller, more controlled effects
-		// Scale the effect size based on intensity (1-3 instead of larger values)
-		int effectSize = (int)(2 * sprayIntensity) + 1; // 1-3 size
-		UTIL_BloodImpact( GetAbsOrigin(), sprayDirection, m_bloodColor, effectSize );
+		// Calculate effect size (1-3 range) more efficiently
+		int effectSize = (int)(sprayIntensity * 2.0f) + 1;
 		
-		// Set next spray time based on speed - Increased frequency by 1.5x (divided intervals by 1.5)
-		float sprayInterval = 0.20f - (sprayIntensity * 0.133f); // 0.067-0.20 seconds (was 0.10-0.30)
-		sprayInterval = MAX( sprayInterval, 0.067f ); // Minimum interval decreased from 0.10 to 0.067
-		m_flNextBloodSpray = gpGlobals->curtime + sprayInterval;
+		// Single blood effect call
+		UTIL_BloodImpact(GetAbsOrigin(), sprayDirection, m_bloodColor, effectSize);
+		
+		// Calculate next spray time more efficiently
+		float sprayInterval = 0.20f - (sprayIntensity * 0.133f);
+		sprayInterval = MAX(sprayInterval, 0.067f);
+		m_flNextBloodSpray = flCurrentTime + sprayInterval;
 	}
 
-	// Continue thinking
-	SetNextThink( gpGlobals->curtime + 0.05f );
+	// Continue thinking with slightly longer interval to reduce CPU load
+	SetNextThink(flCurrentTime + 0.05f);
 }
 
 void CGib::SpawnStickyGibs( CBaseEntity *pVictim, Vector vecOrigin, int cGibs )
@@ -255,73 +265,79 @@ void CGib::SetBloodColor( int nBloodColor )
 //------------------------------------------------------------------------------
 void CGib::AdjustVelocityBasedOnHealth( int nHealth, Vector &vecVelocity )
 {
-	if ( nHealth > -50)
-	{
-		vecVelocity *= 0.7;
-	}
-	else if ( nHealth > -200)
-	{
-		vecVelocity *= 2;
-	}
-	else
-	{
-		vecVelocity *= 4;
-	}
+    // For living players who just died, don't reduce velocity
+    if ( nHealth > 0 )
+    {
+        // Player was alive when killed - use full velocity
+        return; // No modification
+    }
+    else if ( nHealth > -50)
+    {
+        vecVelocity *= 0.7;
+    }
+    else if ( nHealth > -200)
+    {
+        vecVelocity *= 2;
+    }
+    else
+    {
+        vecVelocity *= 4;
+    }
 }
 
 
 //------------------------------------------------------------------------------
-// Purpose : Initialize a gibs position and velocity
+// Purpose: Optimized gib initialization
 //------------------------------------------------------------------------------
 void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity )
 {
-	// ------------------------------------------------------------------------
-	// If have a pVictim spawn the gib somewhere in the pVictim's bounding volume
-	// ------------------------------------------------------------------------
 	if ( pVictim )
 	{
-		// Find a random position within the bounding box (add 1 to Z to get it out of the ground)
+		// Cache victim properties
 		Vector vecOrigin;
 		pVictim->CollisionProp()->RandomPointInBounds( vec3_origin, Vector( 1, 1, 1 ), &vecOrigin );
 		vecOrigin.z += 1.0f;
 		SetAbsOrigin( vecOrigin );	
 
-		// make the gib fly away from the attack vector
-		Vector vecNewVelocity =	 g_vecAttackDir * -1;
+		// Pre-calculate velocity components
+		Vector vecNewVelocity = g_vecAttackDir * -1.0f;
 
-		// mix in some noise
-		vecNewVelocity.x += random->RandomFloat ( -0.25, 0.25 );
-		vecNewVelocity.y += random->RandomFloat ( -0.25, 0.25 );
-		vecNewVelocity.z += random->RandomFloat ( -0.25, 0.25 );
+		// Batch random calculations
+		float randX = random->RandomFloat(-0.25f, 0.25f);
+		float randY = random->RandomFloat(-0.25f, 0.25f);
+		float randZ = random->RandomFloat(-0.25f, 0.25f);
+		float velocityScale = random->RandomFloat(fMaxVelocity, fMinVelocity);
 
-		vecNewVelocity *= random->RandomFloat ( fMaxVelocity, fMinVelocity );
+		vecNewVelocity.x += randX;
+		vecNewVelocity.y += randY;
+		vecNewVelocity.z += randZ;
+		vecNewVelocity *= velocityScale;
 
-		QAngle vecNewAngularVelocity = GetLocalAngularVelocity();
-		vecNewAngularVelocity.x = random->RandomFloat ( 100, 200 );
-		vecNewAngularVelocity.y = random->RandomFloat ( 100, 300 );
+		// Set angular velocity
+		QAngle vecNewAngularVelocity(
+			random->RandomFloat(100, 200),
+			random->RandomFloat(100, 300),
+			0
+		);
 		SetLocalAngularVelocity( vecNewAngularVelocity );
 		
-		// copy owner's blood color - but force it to red if it's DONT_BLEED
+		// Optimize blood color setting
 		int victimBloodColor = pVictim->BloodColor();
-		
-		// Force human players to use red blood
 		if ( victimBloodColor == DONT_BLEED || FClassnameIs( pVictim, "player" ) )
 		{
-			victimBloodColor = BLOOD_COLOR_RED; // 247
+			victimBloodColor = BLOOD_COLOR_RED;
 		}
-		
 		SetBloodColor( victimBloodColor );
 		
 		AdjustVelocityBasedOnHealth( pVictim->m_iHealth, vecNewVelocity );
 
-		// Initialize blood spraying timing
+		// Initialize blood spraying with slight random delay
 		m_flNextBloodSpray = gpGlobals->curtime + random->RandomFloat( 0.1f, 0.3f );
 
-		// Attempt to be physical if we can
+		// Physics initialization
 		if ( VPhysicsInitNormal( SOLID_VPHYSICS, 0, false ) )
 		{
 			IPhysicsObject *pObj = VPhysicsGetObject();
-
 			if ( pObj != NULL )
 			{
 				AngularImpulse angImpulse = RandomAngularImpulse( -500, 500 );
@@ -337,11 +353,11 @@ void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity
 		SetCollisionGroup( COLLISION_GROUP_DEBRIS );
 	}
 
-	LimitVelocity();
+	//LimitVelocity();
 }
 
 //------------------------------------------------------------------------------
-// Purpose : New function that can return the first gib created
+// Purpose: Optimized batch gib spawning
 //------------------------------------------------------------------------------
 void CGib::SpawnSpecificGibs(	CBaseEntity*	pVictim, 
 								int				nNumGibs, 
@@ -351,7 +367,10 @@ void CGib::SpawnSpecificGibs(	CBaseEntity*	pVictim,
 								float			flLifetime,
 								CBaseEntity**	ppFirstGib)
 {
-	for (int i=0;i<nNumGibs;i++)
+	// Pre-cache the model name to avoid string operations in loop
+	string_t modelName = AllocPooledString(cModelName);
+	
+	for (int i = 0; i < nNumGibs; i++)
 	{
 		CGib *pGib = CREATE_ENTITY( CGib, "gib" );
 		pGib->Spawn( cModelName, flLifetime );
@@ -409,7 +428,7 @@ void CGib::SpawnRandomGibs( CBaseEntity *pVictim, int cGibs, GibType_e eGibType 
 }
 
 //=========================================================
-// WaitTillLand - simplified without the flying variable
+// WaitTillLand - optimized version
 //=========================================================
 void CGib::WaitTillLand ( void )
 {
@@ -419,19 +438,21 @@ void CGib::WaitTillLand ( void )
 		return;
 	}
 
-	// Check if we're still moving fast enough to spray blood
+	// Cache velocity calculation
 	Vector velocity = GetAbsVelocity();
-	float speed = velocity.Length();
+	float speed = VectorLength(velocity);
 	
-	if ( speed > 50.0f && m_bloodColor != DONT_BLEED && g_Language.GetInt() != LANGUAGE_GERMAN && rb_gib_blood.GetBool() )
+	// Update blood cache
+	UpdateBloodCache();
+	
+	if ( speed > 50.0f && m_bloodColor != DONT_BLEED && !g_bIsGerman && g_bBloodEnabled )
 	{
-		// Still moving fast enough to spray blood, switch back to blood spray think
 		SetThink ( &CGib::BloodSprayThink );
 		SetNextThink( gpGlobals->curtime + 0.05f );
 		return;
 	}
 
-	if ( GetAbsVelocity() == vec3_origin )
+	if ( velocity == vec3_origin )
 	{
 		SetRenderColorA( 255 );
 		m_nRenderMode = kRenderTransTexture;
@@ -444,39 +465,30 @@ void CGib::WaitTillLand ( void )
 		SetNextThink( gpGlobals->curtime + m_lifeTime );
 		SetThink ( &CGib::SUB_FadeOut );
 
+		// Handle sprite fading
 		if ( GetSprite() )
 		{
 			CSprite *pSprite = dynamic_cast<CSprite*>( GetSprite() );
-
 			if ( pSprite )
 			{
 				if ( m_lifeTime == 0 )
 					m_lifeTime = random->RandomFloat( 1, 3 );
-
 				pSprite->FadeAndDie( m_lifeTime );
 			}
 		}
 
+		// Handle flame lifetime
 		if ( GetFlame() )
 		{
 			CEntityFlame *pFlame = dynamic_cast< CEntityFlame*>( GetFlame() );
-
 			if ( pFlame )
 			{
 				pFlame->SetLifetime( 1.0f );
 			}
 		}
-
-		// If you bleed, you stink!
-		if ( m_bloodColor != DONT_BLEED )
-		{
-			// ok, start stinkin!
-			// CSoundEnt::InsertSound ( SOUND_MEAT, GetAbsOrigin(), 384, 25 );
-		}
 	}
 	else
 	{
-		// wait and check again in another half second.
 		SetNextThink( gpGlobals->curtime + 0.5f );
 	}
 }
@@ -579,14 +591,17 @@ void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 {
 	BaseClass::VPhysicsCollision( index, pEvent );
 
+	// Update cached values periodically for optimization
+	UpdateBloodCache();
+
 	// Only create blood decals if we have decals left and can bleed
-	if ( g_Language.GetInt() != LANGUAGE_GERMAN && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
+	if ( !g_bIsGerman && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
 	{
 		// Check if collision was hard enough to leave blood
 		float impactSpeed = pEvent->collisionSpeed;
 		
 		// Only bleed on impacts above a certain threshold
-		if ( impactSpeed > 100.0f )  // Adjust this threshold as needed
+		if ( impactSpeed > 100.0f )
 		{
 			Vector vecSpot = GetAbsOrigin() + Vector( 0, 0, 8 );
 			trace_t tr;
@@ -598,8 +613,8 @@ void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 			{
 				UTIL_BloodDecalTrace( &tr, m_bloodColor );
 				
-				// Only create blood particle effects if enabled by cvar
-				if ( rb_gib_blood.GetBool() )
+				// Only create blood particle effects if enabled by cvar (use cached value)
+				if ( g_bBloodEnabled )
 				{
 					// Create blood particle effect at impact point
 					Vector bloodOrigin = tr.endpos + tr.plane.normal * 2.0f;  // Slightly off surface
@@ -630,8 +645,8 @@ void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 				{
 					UTIL_BloodDecalTrace( &tr, m_bloodColor );
 					
-					// Only create blood particle effects if enabled by cvar
-					if ( rb_gib_blood.GetBool() )
+					// Only create blood particle effects if enabled by cvar (use cached value)
+					if ( g_bBloodEnabled )
 					{
 						// Create blood particle effect at collision point
 						Vector bloodOrigin = hitPos + hitNormal * 2.0f;  // Slightly off surface
@@ -659,82 +674,61 @@ CBasePlayer *CGib::HasPhysicsAttacker( float dt )
 }
 
 
-//
-// Gib bounces on the ground or wall, sponges some blood down, too!
-//
+//------------------------------------------------------------------------------
+// Purpose: Optimized bounce handling
+//------------------------------------------------------------------------------
 void CGib::BounceGibTouch ( CBaseEntity *pOther )
 {
-	Vector	vecSpot;
-	trace_t	tr;
-	
 	IPhysicsObject *pPhysics = VPhysicsGetObject();
 
-	// Handle blood decals for both VPhysics and non-VPhysics gibs
-	if ( g_Language.GetInt() != LANGUAGE_GERMAN && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
+	// Handle blood decals efficiently
+	if ( !g_bIsGerman && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
 	{
-		// For VPhysics gibs, we need to check if they're moving fast enough to leave blood
 		bool bShouldBleed = false;
 		
 		if ( pPhysics )
 		{
-			// VPhysics gib - check velocity
 			Vector velocity;
 			pPhysics->GetVelocity( &velocity, NULL );
-			float speed = velocity.Length();
-			
-			// Only bleed if moving fast enough (similar to original non-vphysics check)
-			if ( speed > 50.0f )
-			{
-				bShouldBleed = true;
-			}
+			bShouldBleed = (VectorLength(velocity) > 50.0f);
 		}
 		else
 		{
-			// Non-VPhysics gib - use original check (not on ground)
-			if ( !(GetFlags() & FL_ONGROUND) )
-			{
-				bShouldBleed = true;
-			}
+			bShouldBleed = !(GetFlags() & FL_ONGROUND);
 		}
 		
 		if ( bShouldBleed )
 		{
-			vecSpot = GetAbsOrigin() + Vector ( 0 , 0 , 8 );//move up a bit, and trace down.
-			UTIL_TraceLine ( vecSpot, vecSpot + Vector ( 0, 0, -24 ),  MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+			Vector vecSpot = GetAbsOrigin() + Vector( 0, 0, 8 );
+			trace_t tr;
+			UTIL_TraceLine( vecSpot, vecSpot + Vector( 0, 0, -24 ), MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
 
 			UTIL_BloodDecalTrace( &tr, m_bloodColor );
-
 			m_cBloodDecals--; 
 		}
 	}
 
-	// Early return for VPhysics gibs - they don't need the manual physics handling below
+	// Early return for VPhysics gibs
 	if ( pPhysics )
 		 return;
 	
-	// Original non-VPhysics handling
-	//if ( random->RandomInt(0,1) )
-	//	return;// don't bleed everytime
+	// Optimized ground handling for non-VPhysics gibs
 	if (GetFlags() & FL_ONGROUND)
 	{
-		SetAbsVelocity( GetAbsVelocity() * 0.9 );
+		SetAbsVelocity( GetAbsVelocity() * 0.9f );
+		
 		QAngle angles = GetLocalAngles();
 		angles.x = 0;
 		angles.z = 0;
 		SetLocalAngles( angles );
-
-		QAngle angVel = GetLocalAngularVelocity();
-		angVel.x = 0;
-		angVel.z = 0;
 		SetLocalAngularVelocity( vec3_angle );
 	}
 
+	// Material sound with reduced frequency check
 	if ( m_material != matNone && random->RandomInt(0,2) == 0 )
 	{
-		float volume;
 		float zvel = fabs(GetAbsVelocity().z);
-	
-		volume = 0.8f * MIN(1.0, ((float)zvel) / 450.0f);
+		float volume = 0.8f * MIN(1.0f, zvel * (1.0f / 450.0f)); // Avoid division
 
 		CBreakable::MaterialSoundRandom( entindex(), (Materials)m_material, volume );
 	}

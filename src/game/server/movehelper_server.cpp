@@ -362,7 +362,8 @@ bool CMoveHelperServer::PlayerFallingDamage( void )
 	float flFallDamage = g_pGameRules->FlPlayerFallDamage( m_pHostPlayer );	
 	if ( flFallDamage > 0 )
 	{
-		int iDamageTaken = m_pHostPlayer->TakeDamage( CTakeDamageInfo( GetContainingEntity(INDEXENT(0)), GetContainingEntity(INDEXENT(0)), flFallDamage, DMG_FALL ) ); 
+		CBaseEntity* pWorldEntity = GetContainingEntity(INDEXENT(0));
+		int iDamageTaken = m_pHostPlayer->TakeDamage(CTakeDamageInfo(pWorldEntity, pWorldEntity, flFallDamage, DMG_FALL));
 		if ( iDamageTaken > 0 )
 		{
 			StartSound( m_pHostPlayer->GetAbsOrigin(), "Player.FallDamage" );
@@ -390,13 +391,16 @@ bool CMoveHelperServer::PlayerFallingDamage( void )
 
     }
 
-	if ( m_pHostPlayer->m_iHealth <= 0 )
+	if (m_pHostPlayer->m_iHealth <= 0)
 	{
+		// Comment out or remove the screen fade
+		/*
 		if ( g_pGameRules->FlPlayerFallDeathDoesScreenFade( m_pHostPlayer ) )
 		{
 			color32 black = {0, 0, 0, 255};
 			UTIL_ScreenFade( m_pHostPlayer, black, 0, 9999, FFADE_OUT | FFADE_STAYOUT );
 		}
+		*/
 		return(false);
 	}
 
