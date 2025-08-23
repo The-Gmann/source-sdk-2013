@@ -21,30 +21,17 @@
 
 extern Vector			g_vecAttackDir;		// In globals.cpp
 
+// ConVar for controlling gib blood particles
+ConVar rb_gib_blood("rb_gib_blood", "1", FCVAR_ARCHIVE, "Enable blood particle effects from gibs while flying (0 = off, 1 = on)");
+
 BEGIN_DATADESC( CGib )
-
-	// gibs are not saved/restored
-//	DEFINE_FIELD( m_bloodColor, FIELD_INTEGER ),
-//	DEFINE_FIELD( m_hSprite, FIELD_EHANDLE ),
-//	DEFINE_FIELD( m_cBloodDecals, FIELD_INTEGER ),
-//	DEFINE_FIELD( m_material, FIELD_INTEGER ),
-//	DEFINE_FIELD( m_lifeTime, FIELD_TIME ),
-//	DEFINE_FIELD( m_pSprite, CSprite ),
-//	DEFINE_FIELD( m_hFlame, FIELD_EHANDLE ),
-
-//	DEFINE_FIELD( m_hPhysicsAttacker, FIELD_EHANDLE ),
-//	DEFINE_FIELD( m_flLastPhysicsInfluenceTime, FIELD_TIME ),
-
-//  DEFINE_FIELD( m_bForceRemove, FIELD_BOOLEAN ),
-
 	// Function pointers
 	DEFINE_ENTITYFUNC( BounceGibTouch ),
 	DEFINE_ENTITYFUNC( StickyGibTouch ),
 	DEFINE_THINKFUNC( WaitTillLand ),
 	DEFINE_THINKFUNC( DieThink ),
-
+	DEFINE_THINKFUNC( BloodSprayThink ),
 END_DATADESC()
-
 
 // HACKHACK -- The gib velocity equations don't work
 void CGib::LimitVelocity( void )
@@ -61,6 +48,91 @@ void CGib::LimitVelocity( void )
 	}
 }
 
+//------------------------------------------------------------------------------
+// Purpose: Blood spray think function - sprays blood while gib is moving
+//------------------------------------------------------------------------------
+void CGib::BloodSprayThink( void )
+{
+	// Check if we're out of world bounds
+	if (!IsInWorld())
+	{
+		UTIL_Remove( this );
+		return;
+	}
+
+	// Check if blood particles are disabled by cvar
+	if ( !rb_gib_blood.GetBool() )
+	{
+		SetThink ( &CGib::WaitTillLand );
+		SetNextThink( gpGlobals->curtime + 0.1f );
+		return;
+	}
+
+	// Check if we can still bleed
+	if ( g_Language.GetInt() == LANGUAGE_GERMAN )
+	{
+		SetThink ( &CGib::WaitTillLand );
+		SetNextThink( gpGlobals->curtime + 0.1f );
+		return;
+	}
+
+	if ( m_bloodColor == DONT_BLEED )
+	{
+		SetThink ( &CGib::WaitTillLand );
+		SetNextThink( gpGlobals->curtime + 0.1f );
+		return;
+	}
+
+	// Get current velocity - check both GetAbsVelocity and VPhysics velocity
+	Vector velocity = GetAbsVelocity();
+	float speed = velocity.Length();
+	
+	// For VPhysics objects, check the physics velocity instead
+	IPhysicsObject *pPhysics = VPhysicsGetObject();
+	if ( pPhysics )
+	{
+		pPhysics->GetVelocity( &velocity, NULL );
+		speed = velocity.Length();
+	}
+	
+	// Check if we're still moving fast enough to spray blood
+	if ( speed < 50.0f )
+	{
+		SetThink ( &CGib::WaitTillLand );
+		SetNextThink( gpGlobals->curtime + 0.1f );
+		return;
+	}
+
+	// Spray blood at regular intervals based on speed
+	if ( gpGlobals->curtime >= m_flNextBloodSpray )
+	{
+		// Calculate spray intensity based on speed
+		float sprayIntensity = MIN( speed / 300.0f, 1.0f ); // Normalize to 0-1
+		
+		// Get the direction opposite to velocity for blood spray
+		Vector sprayDirection = -velocity;
+		VectorNormalize( sprayDirection );
+		
+		// Add some randomness to the spray direction
+		sprayDirection.x += random->RandomFloat( -0.2f, 0.2f );
+		sprayDirection.y += random->RandomFloat( -0.2f, 0.2f );
+		sprayDirection.z += random->RandomFloat( -0.2f, 0.2f );
+		VectorNormalize( sprayDirection );
+		
+		// Use UTIL_BloodImpact instead of UTIL_BloodSpray for smaller, more controlled effects
+		// Scale the effect size based on intensity (1-3 instead of larger values)
+		int effectSize = (int)(2 * sprayIntensity) + 1; // 1-3 size
+		UTIL_BloodImpact( GetAbsOrigin(), sprayDirection, m_bloodColor, effectSize );
+		
+		// Set next spray time based on speed - Increased frequency by 1.5x (divided intervals by 1.5)
+		float sprayInterval = 0.20f - (sprayIntensity * 0.133f); // 0.067-0.20 seconds (was 0.10-0.30)
+		sprayInterval = MAX( sprayInterval, 0.067f ); // Minimum interval decreased from 0.10 to 0.067
+		m_flNextBloodSpray = gpGlobals->curtime + sprayInterval;
+	}
+
+	// Continue thinking
+	SetNextThink( gpGlobals->curtime + 0.05f );
+}
 
 void CGib::SpawnStickyGibs( CBaseEntity *pVictim, Vector vecOrigin, int cGibs )
 {
@@ -200,8 +272,6 @@ void CGib::AdjustVelocityBasedOnHealth( int nHealth, Vector &vecVelocity )
 
 //------------------------------------------------------------------------------
 // Purpose : Initialize a gibs position and velocity
-// Input   :
-// Output  :
 //------------------------------------------------------------------------------
 void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity )
 {
@@ -231,13 +301,24 @@ void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity
 		vecNewAngularVelocity.y = random->RandomFloat ( 100, 300 );
 		SetLocalAngularVelocity( vecNewAngularVelocity );
 		
-		// copy owner's blood color
-		SetBloodColor( pVictim->BloodColor() );
+		// copy owner's blood color - but force it to red if it's DONT_BLEED
+		int victimBloodColor = pVictim->BloodColor();
+		
+		// Force human players to use red blood
+		if ( victimBloodColor == DONT_BLEED || FClassnameIs( pVictim, "player" ) )
+		{
+			victimBloodColor = BLOOD_COLOR_RED; // 247
+		}
+		
+		SetBloodColor( victimBloodColor );
 		
 		AdjustVelocityBasedOnHealth( pVictim->m_iHealth, vecNewVelocity );
 
+		// Initialize blood spraying timing
+		m_flNextBloodSpray = gpGlobals->curtime + random->RandomFloat( 0.1f, 0.3f );
+
 		// Attempt to be physical if we can
-		if ( VPhysicsInitNormal( SOLID_BBOX, 0, false ) )
+		if ( VPhysicsInitNormal( SOLID_VPHYSICS, 0, false ) )
 		{
 			IPhysicsObject *pObj = VPhysicsGetObject();
 
@@ -246,16 +327,11 @@ void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity
 				AngularImpulse angImpulse = RandomAngularImpulse( -500, 500 );
 				pObj->AddVelocity( &vecNewVelocity, &angImpulse );
 			}
-			
-			// VPhysics entities use VPhysicsCollision callback instead of touch functions
-			// Blood decals will be handled in VPhysicsCollision()
 		}
 		else
 		{
-			SetSolid( SOLID_BBOX );
-			SetCollisionBounds( vec3_origin, vec3_origin );
+			SetSolid( SOLID_BSP );
 			SetAbsVelocity( vecNewVelocity );
-			// Non-VPhysics gibs use the touch function set in Spawn()
 		}
 	
 		SetCollisionGroup( COLLISION_GROUP_DEBRIS );
@@ -298,8 +374,6 @@ void CGib::SpawnSpecificGibs(	CBaseEntity*	pVictim,
 
 //------------------------------------------------------------------------------
 // Purpose : Spawn random gibs of the given gib type
-// Input   :
-// Output  :
 //------------------------------------------------------------------------------
 void CGib::SpawnRandomGibs( CBaseEntity *pVictim, int cGibs, GibType_e eGibType )
 {
@@ -335,16 +409,25 @@ void CGib::SpawnRandomGibs( CBaseEntity *pVictim, int cGibs, GibType_e eGibType 
 }
 
 //=========================================================
-// WaitTillLand - in order to emit their meaty scent from
-// the proper location, gibs should wait until they stop 
-// bouncing to emit their scent. That's what this function
-// does.
+// WaitTillLand - simplified without the flying variable
 //=========================================================
 void CGib::WaitTillLand ( void )
 {
 	if (!IsInWorld())
 	{
 		UTIL_Remove( this );
+		return;
+	}
+
+	// Check if we're still moving fast enough to spray blood
+	Vector velocity = GetAbsVelocity();
+	float speed = velocity.Length();
+	
+	if ( speed > 50.0f && m_bloodColor != DONT_BLEED && g_Language.GetInt() != LANGUAGE_GERMAN && rb_gib_blood.GetBool() )
+	{
+		// Still moving fast enough to spray blood, switch back to blood spray think
+		SetThink ( &CGib::BloodSprayThink );
+		SetNextThink( gpGlobals->curtime + 0.05f );
 		return;
 	}
 
@@ -367,7 +450,6 @@ void CGib::WaitTillLand ( void )
 
 			if ( pSprite )
 			{
-				//Adrian - Why am I doing this? Check InitPointGib for the answer!
 				if ( m_lifeTime == 0 )
 					m_lifeTime = random->RandomFloat( 1, 3 );
 
@@ -389,7 +471,6 @@ void CGib::WaitTillLand ( void )
 		if ( m_bloodColor != DONT_BLEED )
 		{
 			// ok, start stinkin!
-			// FIXME: It's too easy to fill up the sound queue with all these meat sounds
 			// CSoundEnt::InsertSound ( SOUND_MEAT, GetAbsOrigin(), 384, 25 );
 		}
 	}
@@ -517,12 +598,16 @@ void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 			{
 				UTIL_BloodDecalTrace( &tr, m_bloodColor );
 				
-				// Create blood particle effect at impact point
-				Vector bloodOrigin = tr.endpos + tr.plane.normal * 2.0f;  // Slightly off surface
-				Vector bloodDirection = tr.plane.normal;
-				
-				// Spawn blood impact effect
-				UTIL_BloodImpact( bloodOrigin, bloodDirection, m_bloodColor, 4 );
+				// Only create blood particle effects if enabled by cvar
+				if ( rb_gib_blood.GetBool() )
+				{
+					// Create blood particle effect at impact point
+					Vector bloodOrigin = tr.endpos + tr.plane.normal * 2.0f;  // Slightly off surface
+					Vector bloodDirection = tr.plane.normal;
+					
+					// Spawn blood impact effect
+					UTIL_BloodImpact( bloodOrigin, bloodDirection, m_bloodColor, 4 );
+				}
 				
 				m_cBloodDecals--;
 			}
@@ -545,11 +630,15 @@ void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
 				{
 					UTIL_BloodDecalTrace( &tr, m_bloodColor );
 					
-					// Create blood particle effect at collision point
-					Vector bloodOrigin = hitPos + hitNormal * 2.0f;  // Slightly off surface
-					
-					// Spawn blood impact effect
-					UTIL_BloodImpact( bloodOrigin, hitNormal, m_bloodColor, 4 );
+					// Only create blood particle effects if enabled by cvar
+					if ( rb_gib_blood.GetBool() )
+					{
+						// Create blood particle effect at collision point
+						Vector bloodOrigin = hitPos + hitNormal * 2.0f;  // Slightly off surface
+						
+						// Spawn blood impact effect
+						UTIL_BloodImpact( bloodOrigin, hitNormal, m_bloodColor, 4 );
+					}
 					
 					m_cBloodDecals--;
 				}
@@ -697,7 +786,9 @@ void CGib::Spawn( const char *szGibModel )
 	
 	// hopefully this will fix the VELOCITY TOO LOW stuff
 	m_takedamage = DAMAGE_EVENTS_ONLY;
-	SetSolid( SOLID_BBOX );
+	
+	// Use model collision instead of SOLID_BBOX
+	SetSolid( SOLID_VPHYSICS );
 	AddSolidFlags( FSOLID_NOT_STANDABLE );
 	SetCollisionGroup( COLLISION_GROUP_DEBRIS );
 
@@ -705,7 +796,8 @@ void CGib::Spawn( const char *szGibModel )
 
 #ifdef HL1_DLL
 	SetElasticity( 1.0 );
-	UTIL_SetSize( this, vec3_origin, vec3_origin );
+	// Don't force zero-sized bounds for HL1
+	// UTIL_SetSize( this, vec3_origin, vec3_origin );
 #endif//HL1_DLL
 
 	SetNextThink( gpGlobals->curtime + 4 );
@@ -716,9 +808,7 @@ void CGib::Spawn( const char *szGibModel )
 
 	m_material = matNone;
 	m_cBloodDecals = 5;// how many blood decals this gib can place (1 per bounce until none remain). 
-
 }
-
 
 //-----------------------------------------------------------------------------
 // Spawn a gib with a finite lifetime, after which it will fade out.
@@ -727,7 +817,12 @@ void CGib::Spawn( const char *szGibModel, float flLifetime )
 {
 	Spawn( szGibModel );
 	m_lifeTime = flLifetime;
-	SetThink ( &CGib::WaitTillLand );
+	
+	// Initialize blood spraying timing
+	m_flNextBloodSpray = gpGlobals->curtime;
+	
+	// Start with blood spray think - the function will check if we can bleed
+	SetThink ( &CGib::BloodSprayThink );
 	SetNextThink( gpGlobals->curtime + 0.1f );
 }
 

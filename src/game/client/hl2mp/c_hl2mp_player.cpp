@@ -934,17 +934,12 @@ void C_HL2MP_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNea
 {
 	if ( m_lifeState != LIFE_ALIVE && !IsObserver() )
 	{
-		DevMsg("C_HL2MP_Player::CalcView - Dead player camera\n");
-		
+	
 		Vector origin = EyePosition();			
 
 		// Check for networked death cam gib first
 		if ( m_hDeathCamGib.Get() )
 		{
-			DevMsg("Using networked gib for death cam at %.2f %.2f %.2f\n", 
-				m_hDeathCamGib.Get()->GetAbsOrigin().x,
-				m_hDeathCamGib.Get()->GetAbsOrigin().y,
-				m_hDeathCamGib.Get()->GetAbsOrigin().z);
 			// Use the networked gib's position as the origin
 			origin = m_hDeathCamGib.Get()->GetAbsOrigin();
 			origin.z += 32.0f;
@@ -987,10 +982,6 @@ void C_HL2MP_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNea
 		{
 			eyeOrigin = trace.endpos;
 		}
-		
-		DevMsg("Death cam positioned at %.2f %.2f %.2f, looking at %.2f %.2f %.2f\n",
-			eyeOrigin.x, eyeOrigin.y, eyeOrigin.z,
-			origin.x, origin.y, origin.z);
 		
 		return;
 	}

@@ -218,6 +218,8 @@ void CHL2MP_Player::Precache( void )
 	PrecacheScriptSound( "NPC_MetroPolice.Die" );
 	PrecacheScriptSound( "NPC_CombineS.Die" );
 	PrecacheScriptSound( "NPC_Citizen.die" );
+    // Precache gib sound
+    PrecacheSound( "player/bodysplat.wav" );
 }
 
 void CHL2MP_Player::GiveAllItems( void )
@@ -1344,6 +1346,9 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 			bShouldGib = true;
 			
 			float flFadeTime = 25.0f; // Gibs fade after 25 seconds in multiplayer
+			
+			// Play gib sound effect
+			EmitSound( "player/bodysplat.wav" );
 			
 			// Blood spray effect
 			Vector vecDamageDir = info.GetDamageForce();

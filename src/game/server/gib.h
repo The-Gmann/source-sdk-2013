@@ -46,6 +46,7 @@ public:
 	void DieThink( void );
 	void LimitVelocity( void );
 	virtual bool SUB_AllowedToFade( void );
+	void BloodSprayThink( void );	// Think function for blood spraying
 
 	// VPhysics collision callback for blood decals
 	virtual void VPhysicsCollision( int index, gamevcollisionevent_t *pEvent );
@@ -108,6 +109,7 @@ private:
 	// A little piece of duplicated code
 	void AdjustVelocityBasedOnHealth( int nHealth, Vector &vecVelocity );
 	int		m_bloodColor;
+	float			m_flNextBloodSpray;		// Time for next blood spray
 
 	EHANDLE m_hSprite;
 	EHANDLE m_hFlame;
