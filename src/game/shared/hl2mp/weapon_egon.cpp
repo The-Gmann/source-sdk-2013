@@ -212,15 +212,16 @@ LINK_ENTITY_TO_CLASS(weapon_egon, CWeaponEgon);
 PRECACHE_WEAPON_REGISTER(weapon_egon);
 
 // Activity table
-acttable_t CWeaponEgon::m_acttable[] =
+acttable_t CWeaponEgon::m_acttable[] = 
 {
-    { ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_PHYSGUN,					false },
-    { ACT_HL2MP_RUN,					ACT_HL2MP_RUN_PHYSGUN,					false },
-    { ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_PHYSGUN,			false },
-    { ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_PHYSGUN,			false },
-    { ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_PHYSGUN,	false },
-    { ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_PHYSGUN,		false },
-    { ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_PHYSGUN,					false },
+    { ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_AR2,                    false },
+    { ACT_HL2MP_RUN,                     ACT_HL2MP_RUN_AR2,                     false },
+    { ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_AR2,             false },
+    { ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_AR2,             false },
+    { ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_AR2,    false },
+    { ACT_HL2MP_GESTURE_RELOAD,          ACT_HL2MP_GESTURE_RELOAD_AR2,          false },
+    { ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_AR2,                    false },
+    { ACT_RANGE_ATTACK1,                 ACT_RANGE_ATTACK_AR2,                  false }
 };
 
 IMPLEMENT_ACTTABLE(CWeaponEgon);

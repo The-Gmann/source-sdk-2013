@@ -1336,15 +1336,59 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 	CBaseEntity *pFirstGib = NULL;  // Track the first gib for death camera
 	
 	// Check if this is a gibbing damage type
-	if( info.GetDamageType() & ( DMG_BUCKSHOT | DMG_BLAST | DMG_ENERGYBEAM | DMG_CRUSH | DMG_ALWAYSGIB | DMG_SHOCK ) )
+	if( info.GetDamageType() & ( DMG_BUCKSHOT | DMG_BLAST | DMG_ENERGYBEAM | DMG_CRUSH | DMG_ALWAYSGIB | DMG_SHOCK | DMG_FALL ) )
 	{
 		float flDamageRatio = info.GetDamage() / GetMaxHealth();
 		
-		// Always gib for DMG_ALWAYSGIB, or high damage for other gib types
-		if ( (info.GetDamageType() & DMG_ALWAYSGIB) || flDamageRatio >= 1.0f )
+		// Always gib for DMG_ALWAYSGIB
+		if (info.GetDamageType() & DMG_ALWAYSGIB)
 		{
 			bShouldGib = true;
-			
+			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_ALWAYSGIB\n", info.GetDamage());
+		}
+		// Check for fall damage threshold
+		else if (info.GetDamageType() & DMG_FALL)
+		{
+			if (info.GetDamage() >= 200.0f)
+			{
+				bShouldGib = true;
+				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_FALL\n", info.GetDamage());
+			}
+			else
+			{
+				// Explicitly skip the general damage ratio check for fall damage
+				bShouldGib = false;
+			}
+		}
+		// Check for crush damage threshold
+		else if (info.GetDamageType() & DMG_CRUSH)
+		{
+			if (info.GetDamage() >= 450.0f)
+			{
+				bShouldGib = true;
+				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_CRUSH\n", info.GetDamage());
+			}
+			else
+			{
+				// Explicitly skip the general damage ratio check for crush damage
+				bShouldGib = false;
+			}
+		}
+		// Specific check for DMG_BLAST with damage ratio >= 1.0
+		else if (info.GetDamageType() & DMG_BLAST && flDamageRatio >= 1.0f)
+		{
+			bShouldGib = true;
+			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_BLAST (Damage Ratio >= 1.0)\n", info.GetDamage());
+		}
+		// General gibbing condition (damage ratio >= 1.5)
+		else if (flDamageRatio >= 1.5f)
+		{
+			bShouldGib = true;
+			DevMsg("Player gibbed! Damage: %.1f, Type: General (Damage Ratio >= 1.5)\n", info.GetDamage());
+		}
+
+		if (bShouldGib)
+		{
 			float flFadeTime = 50.0f; // Gibs fade after 50 seconds in multiplayer
 			
 			// Play gib sound effect
@@ -1357,14 +1401,14 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 			// Determine gib intensity based on damage type and amount
 			int nGibIntensity = 1; // Default intensity
 			
-			if ( info.GetDamageType() & DMG_ALWAYSGIB )
+			if ( info.GetDamageType() & (DMG_ALWAYSGIB | DMG_CRUSH | DMG_FALL) )
 			{
-				// For DMG_ALWAYSGIB, scale intensity based on damage amount
-				if ( flDamageRatio >= 3.0f )
+				// For DMG_ALWAYSGIB, DMG_CRUSH, and DMG_FALL, scale intensity based on damage amount
+				if ( info.GetDamage() >= 200.0f )
 				{
-					nGibIntensity = 3; // Massive overkill - lots of gibs
+					nGibIntensity = 3; // Massive damage - lots of gibs
 				}
-				else if ( flDamageRatio >= 1.5f )
+				else if ( info.GetDamage() >= 120.0f )
 				{
 					nGibIntensity = 2; // Heavy damage - moderate gibs
 				}
@@ -1497,88 +1541,88 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 				maxVel *= velocityBoost;
 			}
 
-		// Spawn gibs using selected models with inherited velocity
-		for (int i = 0; i < gibsToSpawn; i++)
-		{
-			const char* modelName = gibModels[gibIndices[i]];
-			
-			// For each gib, slightly randomize the attack direction for scatter
-			Vector originalAttackDir = baseExplosionDir;
-			Vector scatteredAttackDir = originalAttackDir;
-			
-			// Add random scatter to explosion direction - modified to reduce downward bias
-			scatteredAttackDir.x += random->RandomFloat(-0.4f, 0.4f);
-			scatteredAttackDir.y += random->RandomFloat(-0.4f, 0.4f);
-			scatteredAttackDir.z += random->RandomFloat(0.2f, 1.0f); // Increased minimum upward scatter
-			VectorNormalize(scatteredAttackDir);
-			
-			// Temporarily set the scattered direction
-			g_vecAttackDir = scatteredAttackDir;
-			
-			// Adjust velocity ranges to be more consistent
-			float adjustedMinVel = minVel * 0.5f; // Increased from 0.3125f
-			float adjustedMaxVel = maxVel * 0.5f; // Increased from 0.3125f
-			
-			// Create gib with InitGib (this handles all the physics setup properly)
-			CGib *pGib = CREATE_ENTITY( CGib, "gib" );
-			pGib->Spawn( modelName, flFadeTime );
-			pGib->m_nBody = i;
-			pGib->InitGib( this, adjustedMinVel, adjustedMaxVel );
-			pGib->m_lifeTime = flFadeTime;
-			pGib->SetOwnerEntity( this );
-			
-			// NOW get the velocity that InitGib() set and add player momentum to it
-			IPhysicsObject *pPhysics = pGib->VPhysicsGetObject();
-			if ( pPhysics )
+			// Spawn gibs using selected models with inherited velocity
+			for (int i = 0; i < gibsToSpawn; i++)
 			{
-				Vector currentGibVel;
-				pPhysics->GetVelocity( &currentGibVel, NULL ); // Get what InitGib set
+				const char* modelName = gibModels[gibIndices[i]];
 				
-				// BOOST the inherited player velocity to make it more noticeable
-				Vector boostedPlayerVel = inheritedVelocity * 2.0f; // Double the player momentum impact
+				// For each gib, slightly randomize the attack direction for scatter
+				Vector originalAttackDir = baseExplosionDir;
+				Vector scatteredAttackDir = originalAttackDir;
 				
-				// Add the boosted inherited player velocity
-				Vector finalVelocity = currentGibVel + boostedPlayerVel;
+				// Add random scatter to explosion direction - modified to reduce downward bias
+				scatteredAttackDir.x += random->RandomFloat(-0.4f, 0.4f);
+				scatteredAttackDir.y += random->RandomFloat(-0.4f, 0.4f);
+				scatteredAttackDir.z += random->RandomFloat(0.2f, 1.0f); // Increased minimum upward scatter
+				VectorNormalize(scatteredAttackDir);
 				
-				// Apply some randomization to the inherited velocity for variety
-				Vector randomOffset;
-				randomOffset.x = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
-				randomOffset.y = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
-				randomOffset.z = random->RandomFloat( 0.0f, 0.5f ) * inheritedSpeed; // Only upward random for Z
+				// Temporarily set the scattered direction
+				g_vecAttackDir = scatteredAttackDir;
 				
-				finalVelocity += randomOffset;
+				// Adjust velocity ranges to be more consistent
+				float adjustedMinVel = minVel * 0.5f; // Increased from 0.3125f
+				float adjustedMaxVel = maxVel * 0.5f; // Increased from 0.3125f
 				
-				// Set the final combined velocity
-				pPhysics->SetVelocity( &finalVelocity, NULL );
+				// Create gib with InitGib (this handles all the physics setup properly)
+				CGib *pGib = CREATE_ENTITY( CGib, "gib" );
+				pGib->Spawn( modelName, flFadeTime );
+				pGib->m_nBody = i;
+				pGib->InitGib( this, adjustedMinVel, adjustedMaxVel );
+				pGib->m_lifeTime = flFadeTime;
+				pGib->SetOwnerEntity( this );
+				
+				// NOW get the velocity that InitGib() set and add player momentum to it
+				IPhysicsObject *pPhysics = pGib->VPhysicsGetObject();
+				if ( pPhysics )
+				{
+					Vector currentGibVel;
+					pPhysics->GetVelocity( &currentGibVel, NULL ); // Get what InitGib set
+					
+					// BOOST the inherited player velocity to make it more noticeable
+					Vector boostedPlayerVel = inheritedVelocity * 2.0f; // Double the player momentum impact
+					
+					// Add the boosted inherited player velocity
+					Vector finalVelocity = currentGibVel + boostedPlayerVel;
+					
+					// Apply some randomization to the inherited velocity for variety
+					Vector randomOffset;
+					randomOffset.x = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
+					randomOffset.y = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
+					randomOffset.z = random->RandomFloat( 0.0f, 0.5f ) * inheritedSpeed; // Only upward random for Z
+					
+					finalVelocity += randomOffset;
+					
+					// Set the final combined velocity
+					pPhysics->SetVelocity( &finalVelocity, NULL );
+				}
+				else
+				{
+					// For non-VPhysics gibs, get the velocity InitGib set
+					Vector currentGibVel = pGib->GetAbsVelocity();
+					
+					// BOOST the inherited player velocity
+					Vector boostedPlayerVel = inheritedVelocity * 2.0f;
+					Vector finalVelocity = currentGibVel + boostedPlayerVel;
+					
+					Vector randomOffset;
+					randomOffset.x = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
+					randomOffset.y = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
+					randomOffset.z = random->RandomFloat(0.1f, 0.8f) * inheritedSpeed; // Increased minimum upward random
+					
+					finalVelocity += randomOffset;
+					pGib->SetAbsVelocity( finalVelocity );
+				}
+				
+				// Track first gib for death camera
+				if (i == 0)
+				{
+					pFirstGib = pGib;
+				}
 			}
-			else
-			{
-				// For non-VPhysics gibs, get the velocity InitGib set
-				Vector currentGibVel = pGib->GetAbsVelocity();
-				
-				// BOOST the inherited player velocity
-				Vector boostedPlayerVel = inheritedVelocity * 2.0f;
-				Vector finalVelocity = currentGibVel + boostedPlayerVel;
-				
-				Vector randomOffset;
-				randomOffset.x = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
-				randomOffset.y = random->RandomFloat( -0.3f, 0.3f ) * inheritedSpeed;
-				randomOffset.z = random->RandomFloat(0.1f, 0.8f) * inheritedSpeed; // Increased minimum upward random
-				
-				finalVelocity += randomOffset;
-				pGib->SetAbsVelocity( finalVelocity );
-			}
-			
-			// Track first gib for death camera
-			if (i == 0)
-			{
-				pFirstGib = pGib;
-			}
-		}
 
-		// Restore original attack direction
-		g_vecAttackDir = baseExplosionDir;
-			
+			// Restore original attack direction
+			g_vecAttackDir = baseExplosionDir;
+				
 			// Set the gib for death camera tracking
 			if ( pFirstGib )
 			{
