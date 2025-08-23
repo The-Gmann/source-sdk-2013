@@ -721,7 +721,7 @@ void C_ReplayCamera::CalcView(Vector &origin, QAngle &angles, float &fov )
 		case OBS_MODE_FIXED		:	CalcFixedView( origin, angles, fov, flDelta );
 									break;
 
-		case OBS_MODE_IN_EYE	:	CalcInEyeCamView( origin, angles, fov, flDelta );
+		case OBS_MODE_IN_EYE	:	CalcInEyeCamView( origin, angles, 110, flDelta );
 									break;
 
 		case OBS_MODE_CHASE		:	CalcChaseCamView( origin, angles, fov, flDelta  );
