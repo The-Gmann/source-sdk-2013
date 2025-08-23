@@ -47,13 +47,23 @@ public:
 	void LimitVelocity( void );
 	virtual bool SUB_AllowedToFade( void );
 
+	// VPhysics collision callback for blood decals
+	virtual void VPhysicsCollision( int index, gamevcollisionevent_t *pEvent );
+
 	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 
 	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() & ~FCAP_ACROSS_TRANSITION) | FCAP_DONT_SAVE | FCAP_IMPULSE_USE; }
 	static	void SpawnHeadGib( CBaseEntity *pVictim );
 	static	void SpawnRandomGibs( CBaseEntity *pVictim, int cGibs, GibType_e eGibType );
 	static  void SpawnStickyGibs( CBaseEntity *pVictim, Vector vecOrigin, int cGibs );
-	static	void SpawnSpecificGibs( CBaseEntity *pVictim, int nNumGibs, float fMaxVelocity, float fMinVelocity, const char* cModelName, float flLifetime = 25);
+
+	static void SpawnSpecificGibs( CBaseEntity* pVictim, 
+								int nNumGibs, 
+								float vMinVelocity, 
+								float vMaxVelocity, 
+								const char* cModelName,
+								float flLifetime,
+								CBaseEntity** ppFirstGib = NULL );
 
 	void SetPhysicsAttacker( CBasePlayer *pEntity, float flTime );
 	virtual void OnPhysGunPickup( CBasePlayer *pPhysGunUser, PhysGunPickup_t reason );

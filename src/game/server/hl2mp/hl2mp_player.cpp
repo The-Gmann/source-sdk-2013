@@ -22,6 +22,9 @@
 #include "gamestats.h"
 #include "ammodef.h"
 #include "NextBot.h"
+#include "gib.h"
+#include "te_effect_dispatch.h"
+#include "ragdoll_shared.h"
 
 #include "engine/IEngineSound.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
@@ -88,6 +91,7 @@ IMPLEMENT_SERVERCLASS_ST(CHL2MP_Player, DT_HL2MP_Player)
 	SendPropDataTable( "hl2mpnonlocaldata", 0, &REFERENCE_SEND_TABLE( DT_HL2MPNonLocalPlayerExclusive ), SendProxy_SendNonLocalDataTable ),
 
 	SendPropEHandle( SENDINFO( m_hRagdoll ) ),
+    SendPropEHandle( SENDINFO( m_hDeathCamGib ) ),
 	SendPropInt( SENDINFO( m_iSpawnInterpCounter), 4 ),
 	SendPropInt( SENDINFO( m_iPlayerSoundType), 3 ),
 	
@@ -155,6 +159,8 @@ CHL2MP_Player::CHL2MP_Player() : m_PlayerAnimState( this )
 	m_bReady = false;
 
 	BaseClass::ChangeTeam( 0 );
+
+	m_hDeathCamGib = NULL;  // Add this line
 	
 	//UseClientSideAnimation();
 }
@@ -193,6 +199,19 @@ void CHL2MP_Player::Precache( void )
 
 	for ( i = 0; i < nHeads; ++i )
 	   	 PrecacheModel( g_ppszRandomCombineModels[i] );
+
+	// Precache gib models
+	PrecacheModel( "models/gibs/pgib_p1.mdl" );
+	PrecacheModel( "models/gibs/pgib_p2.mdl" );
+	PrecacheModel( "models/gibs/pgib_p3.mdl" );
+	PrecacheModel( "models/gibs/pgib_p4.mdl" );
+	PrecacheModel( "models/gibs/pgib_p5.mdl" );
+	PrecacheModel( "models/gibs/rgib_p1.mdl" );
+	PrecacheModel( "models/gibs/rgib_p2.mdl" );
+	PrecacheModel( "models/gibs/rgib_p3.mdl" );
+	PrecacheModel( "models/gibs/rgib_p4.mdl" );
+	PrecacheModel( "models/gibs/rgib_p5.mdl" );
+	PrecacheModel( "models/gibs/rgib_p6.mdl" );
 
 	PrecacheFootStepSounds();
 
@@ -380,6 +399,8 @@ void CHL2MP_Player::Spawn(void)
 	SetPlayerUnderwater(false);
 
 	m_bReady = false;
+
+	m_hDeathCamGib = NULL;  // Add this line - clear death cam gib on respawn
 }
 
 bool CHL2MP_Player::ValidatePlayerModel( const char *pModel )
@@ -1308,9 +1329,146 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 
 	SetNumAnimOverlays( 0 );
 
-	// Note: since we're dead, it won't draw us on the client, but we don't set EF_NODRAW
-	// because we still want to transmit to the clients in our PVS.
-	CreateRagdollEntity();
+	// Check for full gibbing conditions
+	bool bShouldGib = false;
+	CBaseEntity *pFirstGib = NULL;  // Track the first gib for death camera
+	
+	// Check if this is a gibbing damage type
+	if( info.GetDamageType() & ( DMG_BUCKSHOT | DMG_BLAST | DMG_ENERGYBEAM | DMG_CRUSH | DMG_ALWAYSGIB | DMG_SHOCK ) )
+	{
+		float flDamageRatio = info.GetDamage() / GetMaxHealth();
+		
+		// Always gib for DMG_ALWAYSGIB, or high damage for other gib types
+		if ( (info.GetDamageType() & DMG_ALWAYSGIB) || flDamageRatio >= 1.0f )
+		{
+			bShouldGib = true;
+			
+			float flFadeTime = 25.0f; // Gibs fade after 25 seconds in multiplayer
+			
+			// Blood spray effect
+			Vector vecDamageDir = info.GetDamageForce();
+			UTIL_BloodSpray( WorldSpaceCenter(), vecDamageDir, BLOOD_COLOR_RED, 15, FX_BLOODSPRAY_ALL );
+			
+			// Determine gib intensity based on damage type and amount
+			int nGibIntensity = 1; // Default intensity
+			
+			if ( info.GetDamageType() & DMG_ALWAYSGIB )
+			{
+				// For DMG_ALWAYSGIB, scale intensity based on damage amount
+				if ( flDamageRatio >= 3.0f )
+				{
+					nGibIntensity = 3; // Massive overkill - lots of gibs
+				}
+				else if ( flDamageRatio >= 1.5f )
+				{
+					nGibIntensity = 2; // Heavy damage - moderate gibs
+				}
+				else
+				{
+					nGibIntensity = 1; // Just enough to kill - fewer gibs
+				}
+			}
+			else if ( flDamageRatio >= 2.0f )
+			{
+				nGibIntensity = 3; // Massive overkill
+			}
+			else if ( flDamageRatio >= 1.5f )
+			{
+				nGibIntensity = 2; // Heavy damage
+			}
+			
+			// Create array of all available gib models
+			const char* gibModels[] = {
+				"models/gibs/rgib_p6.mdl",
+				"models/gibs/pgib_p1.mdl",
+				"models/gibs/pgib_p2.mdl",
+				"models/gibs/pgib_p3.mdl",
+				"models/gibs/pgib_p4.mdl",
+				"models/gibs/pgib_p5.mdl",
+				"models/gibs/rgib_p1.mdl",
+				"models/gibs/rgib_p2.mdl",
+				"models/gibs/rgib_p3.mdl",
+				"models/gibs/rgib_p4.mdl",
+				"models/gibs/rgib_p5.mdl"
+			};
+
+			const int totalGibModels = ARRAYSIZE(gibModels);
+			const int gibsToSpawn = 9; // Always spawn 9 gibs regardless of intensity
+
+			// Create a shuffled array of indices to ensure each model is used only once
+			int gibIndices[totalGibModels];
+			for (int i = 0; i < totalGibModels; i++)
+			{
+				gibIndices[i] = i;
+			}
+
+			// Fisher-Yates shuffle to randomize the order
+			for (int i = totalGibModels - 1; i > 0; i--)
+			{
+				int j = random->RandomInt(0, i);
+				int temp = gibIndices[i];
+				gibIndices[i] = gibIndices[j];
+				gibIndices[j] = temp;
+			}
+
+			// Determine velocity ranges based on intensity
+			float minVel, maxVel;
+			switch (nGibIntensity)
+			{
+				case 3: // Maximum gibbing - highest velocities
+					minVel = 600.0f;
+					maxVel = 1200.0f;
+					break;
+					
+				case 2: // Moderate gibbing - medium velocities
+					minVel = 400.0f;
+					maxVel = 900.0f;
+					break;
+					
+				case 1: // Light gibbing - lower velocities
+				default:
+					minVel = 250.0f;
+					maxVel = 600.0f;
+					break;
+			}
+
+			// Spawn 9 gibs using randomly selected models
+			for (int i = 0; i < gibsToSpawn; i++)
+			{
+				const char* modelName = gibModels[gibIndices[i]];
+				
+				// The first gib gets tracked for the death camera
+				if (i == 0)
+				{
+					CGib::SpawnSpecificGibs(this, 1, minVel, maxVel, modelName, flFadeTime, &pFirstGib);
+				}
+				else
+				{
+					CGib::SpawnSpecificGibs(this, 1, minVel, maxVel, modelName, flFadeTime, NULL);
+				}
+			}
+			
+			// Set the gib for death camera tracking
+			if ( pFirstGib )
+			{
+				m_hDeathCamGib = pFirstGib;
+			}
+		}
+	}
+
+	// For full gibbing, make player invisible and don't create ragdoll
+	if ( bShouldGib )
+	{
+		// Make player invisible and non-solid
+		SetModelName( NULL_STRING );
+		AddSolidFlags( FSOLID_NOT_SOLID );
+		AddEffects( EF_NODRAW );
+	}
+	else
+	{
+		// Create normal ragdoll
+		CreateRagdollEntity();
+	}
 
 	DetonateTripmines();
 
@@ -1342,7 +1500,12 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 
 	m_lifeState = LIFE_DEAD;
 
-	RemoveEffects( EF_NODRAW );	// still draw player body
+	// For full gibbing, keep nodraw effect, otherwise remove it
+	if ( !bShouldGib )
+	{
+		RemoveEffects( EF_NODRAW );	// still draw player body
+	}
+	
 	StopZooming();
 }
 

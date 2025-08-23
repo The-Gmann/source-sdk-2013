@@ -1513,6 +1513,29 @@ void CWeaponPhysCannon::PrimaryAttack( void )
 		pEntity = tr.m_pEnt;
 	}
 
+	#ifdef CLIENT_DLL
+		// CLIENT: Check for client-side gibs
+		// Gibs appear as C_BaseAnimating with MOVETYPE_VPHYSICS, no damage, and debris collision group
+		if ( pEntity && 
+			pEntity->GetMoveType() == MOVETYPE_VPHYSICS && 
+			pEntity->m_takedamage == DAMAGE_NO &&
+			FClassnameIs( pEntity, "class C_BaseAnimating" ) &&
+			pEntity->GetCollisionGroup() == COLLISION_GROUP_DEBRIS )
+		{
+			DryFire();
+			return;
+		}
+	#endif
+
+	#ifndef CLIENT_DLL
+		// SERVER: Check for server-side gibs by classname
+		if ( pEntity && (FClassnameIs( pEntity, "gib" ) || FClassnameIs( pEntity, "raggib" )) )
+		{
+			DryFire();
+			return;
+		}
+	#endif
+
 	// See if we hit something
 	if ( pEntity->GetMoveType() != MOVETYPE_VPHYSICS )
 	{

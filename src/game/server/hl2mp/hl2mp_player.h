@@ -138,6 +138,7 @@ public:
 
 	// Tracks our ragdoll entity.
 	CNetworkHandle( CBaseEntity, m_hRagdoll );	// networked entity handle 
+	CNetworkHandle( CBaseEntity, m_hDeathCamGib ); 
 
 	virtual bool	CanHearAndReadChatFrom( CBasePlayer *pPlayer );
 

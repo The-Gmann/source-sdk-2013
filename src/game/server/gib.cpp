@@ -246,12 +246,16 @@ void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity
 				AngularImpulse angImpulse = RandomAngularImpulse( -500, 500 );
 				pObj->AddVelocity( &vecNewVelocity, &angImpulse );
 			}
+			
+			// VPhysics entities use VPhysicsCollision callback instead of touch functions
+			// Blood decals will be handled in VPhysicsCollision()
 		}
 		else
 		{
 			SetSolid( SOLID_BBOX );
 			SetCollisionBounds( vec3_origin, vec3_origin );
 			SetAbsVelocity( vecNewVelocity );
+			// Non-VPhysics gibs use the touch function set in Spawn()
 		}
 	
 		SetCollisionGroup( COLLISION_GROUP_DEBRIS );
@@ -261,22 +265,20 @@ void CGib::InitGib( CBaseEntity *pVictim, float fMinVelocity, float fMaxVelocity
 }
 
 //------------------------------------------------------------------------------
-// Purpose : Given an .mdl file with gibs and the number of gibs in the file
-//			 spawns them in pVictim's bounding box
-// Input   :
-// Output  :
+// Purpose : New function that can return the first gib created
 //------------------------------------------------------------------------------
 void CGib::SpawnSpecificGibs(	CBaseEntity*	pVictim, 
 								int				nNumGibs, 
 								float			vMinVelocity, 
 								float			vMaxVelocity, 
 								const char*		cModelName,
-								float			flLifetime)
+								float			flLifetime,
+								CBaseEntity**	ppFirstGib)
 {
 	for (int i=0;i<nNumGibs;i++)
 	{
 		CGib *pGib = CREATE_ENTITY( CGib, "gib" );
-		pGib->Spawn( cModelName );
+		pGib->Spawn( cModelName, flLifetime );
 		pGib->m_nBody = i;
 		pGib->InitGib( pVictim, vMinVelocity, vMaxVelocity );
 		pGib->m_lifeTime = flLifetime;
@@ -284,6 +286,12 @@ void CGib::SpawnSpecificGibs(	CBaseEntity*	pVictim,
 		if ( pVictim != NULL )
 		{
 			pGib->SetOwnerEntity( pVictim );
+		}
+		
+		// Return the first gib created if requested
+		if ( i == 0 && ppFirstGib != NULL )
+		{
+			*ppFirstGib = pGib;
 		}
 	}
 }
@@ -484,6 +492,73 @@ void CGib::OnPhysGunDrop( CBasePlayer *pPhysGunUser, PhysGunDrop_t Reason )
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: VPhysics collision callback - handles blood decals for VPhysics gibs
+//-----------------------------------------------------------------------------
+void CGib::VPhysicsCollision( int index, gamevcollisionevent_t *pEvent )
+{
+	BaseClass::VPhysicsCollision( index, pEvent );
+
+	// Only create blood decals if we have decals left and can bleed
+	if ( g_Language.GetInt() != LANGUAGE_GERMAN && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
+	{
+		// Check if collision was hard enough to leave blood
+		float impactSpeed = pEvent->collisionSpeed;
+		
+		// Only bleed on impacts above a certain threshold
+		if ( impactSpeed > 100.0f )  // Adjust this threshold as needed
+		{
+			Vector vecSpot = GetAbsOrigin() + Vector( 0, 0, 8 );
+			trace_t tr;
+			
+			// Trace down to find a surface for the blood decal
+			UTIL_TraceLine( vecSpot, vecSpot + Vector( 0, 0, -24 ), MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr );
+			
+			if ( tr.fraction < 1.0f )
+			{
+				UTIL_BloodDecalTrace( &tr, m_bloodColor );
+				
+				// Create blood particle effect at impact point
+				Vector bloodOrigin = tr.endpos + tr.plane.normal * 2.0f;  // Slightly off surface
+				Vector bloodDirection = tr.plane.normal;
+				
+				// Spawn blood impact effect
+				UTIL_BloodImpact( bloodOrigin, bloodDirection, m_bloodColor, 4 );
+				
+				m_cBloodDecals--;
+			}
+			else
+			{
+				// If downward trace failed, try using the collision point
+				Vector hitPos;
+				pEvent->pInternalData->GetContactPoint( hitPos );
+				
+				// Use collision normal for decal placement
+				Vector hitNormal;
+				pEvent->pInternalData->GetSurfaceNormal( hitNormal );
+				
+				tr.endpos = hitPos;
+				tr.plane.normal = hitNormal;
+				tr.fraction = 1.0f;
+				tr.m_pEnt = GetContainingEntity( INDEXENT(0) );  // Get world entity
+				
+				if ( tr.m_pEnt )
+				{
+					UTIL_BloodDecalTrace( &tr, m_bloodColor );
+					
+					// Create blood particle effect at collision point
+					Vector bloodOrigin = hitPos + hitNormal * 2.0f;  // Slightly off surface
+					
+					// Spawn blood impact effect
+					UTIL_BloodImpact( bloodOrigin, hitNormal, m_bloodColor, 4 );
+					
+					m_cBloodDecals--;
+				}
+			}
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 CBasePlayer *CGib::HasPhysicsAttacker( float dt )
 {
@@ -505,9 +580,50 @@ void CGib::BounceGibTouch ( CBaseEntity *pOther )
 	
 	IPhysicsObject *pPhysics = VPhysicsGetObject();
 
+	// Handle blood decals for both VPhysics and non-VPhysics gibs
+	if ( g_Language.GetInt() != LANGUAGE_GERMAN && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
+	{
+		// For VPhysics gibs, we need to check if they're moving fast enough to leave blood
+		bool bShouldBleed = false;
+		
+		if ( pPhysics )
+		{
+			// VPhysics gib - check velocity
+			Vector velocity;
+			pPhysics->GetVelocity( &velocity, NULL );
+			float speed = velocity.Length();
+			
+			// Only bleed if moving fast enough (similar to original non-vphysics check)
+			if ( speed > 50.0f )
+			{
+				bShouldBleed = true;
+			}
+		}
+		else
+		{
+			// Non-VPhysics gib - use original check (not on ground)
+			if ( !(GetFlags() & FL_ONGROUND) )
+			{
+				bShouldBleed = true;
+			}
+		}
+		
+		if ( bShouldBleed )
+		{
+			vecSpot = GetAbsOrigin() + Vector ( 0 , 0 , 8 );//move up a bit, and trace down.
+			UTIL_TraceLine ( vecSpot, vecSpot + Vector ( 0, 0, -24 ),  MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+
+			UTIL_BloodDecalTrace( &tr, m_bloodColor );
+
+			m_cBloodDecals--; 
+		}
+	}
+
+	// Early return for VPhysics gibs - they don't need the manual physics handling below
 	if ( pPhysics )
 		 return;
 	
+	// Original non-VPhysics handling
 	//if ( random->RandomInt(0,1) )
 	//	return;// don't bleed everytime
 	if (GetFlags() & FL_ONGROUND)
@@ -523,27 +639,15 @@ void CGib::BounceGibTouch ( CBaseEntity *pOther )
 		angVel.z = 0;
 		SetLocalAngularVelocity( vec3_angle );
 	}
-	else
+
+	if ( m_material != matNone && random->RandomInt(0,2) == 0 )
 	{
-		if ( g_Language.GetInt() != LANGUAGE_GERMAN && m_cBloodDecals > 0 && m_bloodColor != DONT_BLEED )
-		{
-			vecSpot = GetAbsOrigin() + Vector ( 0 , 0 , 8 );//move up a bit, and trace down.
-			UTIL_TraceLine ( vecSpot, vecSpot + Vector ( 0, 0, -24 ),  MASK_SOLID_BRUSHONLY, this, COLLISION_GROUP_NONE, &tr);
+		float volume;
+		float zvel = fabs(GetAbsVelocity().z);
+	
+		volume = 0.8f * MIN(1.0, ((float)zvel) / 450.0f);
 
-			UTIL_BloodDecalTrace( &tr, m_bloodColor );
-
-			m_cBloodDecals--; 
-		}
-
-		if ( m_material != matNone && random->RandomInt(0,2) == 0 )
-		{
-			float volume;
-			float zvel = fabs(GetAbsVelocity().z);
-		
-			volume = 0.8f * MIN(1.0, ((float)zvel) / 450.0f);
-
-			CBreakable::MaterialSoundRandom( entindex(), (Materials)m_material, volume );
-		}
+		CBreakable::MaterialSoundRandom( entindex(), (Materials)m_material, volume );
 	}
 }
 
@@ -605,7 +709,7 @@ void CGib::Spawn( const char *szGibModel )
 #endif//HL1_DLL
 
 	SetNextThink( gpGlobals->curtime + 4 );
-	m_lifeTime = 25;
+	m_lifeTime = 50;
 	SetTouch ( &CGib::BounceGibTouch );
 
     m_bForceRemove = false;
@@ -623,8 +727,8 @@ void CGib::Spawn( const char *szGibModel, float flLifetime )
 {
 	Spawn( szGibModel );
 	m_lifeTime = flLifetime;
-	SetThink ( &CGib::SUB_FadeOut );
-	SetNextThink( gpGlobals->curtime + m_lifeTime );
+	SetThink ( &CGib::WaitTillLand );
+	SetNextThink( gpGlobals->curtime + 0.1f );
 }
 
 

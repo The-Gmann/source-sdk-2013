@@ -55,6 +55,7 @@ IMPLEMENT_CLIENTCLASS_DT(C_HL2MP_Player, DT_HL2MP_Player, CHL2MP_Player)
 	RecvPropInt( RECVINFO( m_iPlayerSoundType) ),
 
 	RecvPropBool( RECVINFO( m_fIsWalking ) ),
+	RecvPropEHandle( RECVINFO( m_hDeathCamGib ) ),  // Add this line
 END_RECV_TABLE()
 
 BEGIN_PREDICTION_DATA( C_HL2MP_Player )
@@ -113,6 +114,8 @@ C_HL2MP_Player::C_HL2MP_Player() : m_PlayerAnimState( this ), m_iv_angEyeAngles(
 	m_blinkTimer.Invalidate();
 
 	m_pFlashlightBeam = NULL;
+	
+	m_hDeathCamGib = NULL;  // Add this line
 
 	SuitPower_Initialize();
 }
@@ -931,14 +934,35 @@ void C_HL2MP_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNea
 {
 	if ( m_lifeState != LIFE_ALIVE && !IsObserver() )
 	{
+		DevMsg("C_HL2MP_Player::CalcView - Dead player camera\n");
+		
 		Vector origin = EyePosition();			
 
-		IRagdoll *pRagdoll = GetRepresentativeRagdoll();
-
-		if ( pRagdoll )
+		// Check for networked death cam gib first
+		if ( m_hDeathCamGib.Get() )
 		{
-			origin = pRagdoll->GetRagdollOrigin();
-			origin.z += VEC_DEAD_VIEWHEIGHT_SCALED( this ).z; // look over ragdoll, not through
+			DevMsg("Using networked gib for death cam at %.2f %.2f %.2f\n", 
+				m_hDeathCamGib.Get()->GetAbsOrigin().x,
+				m_hDeathCamGib.Get()->GetAbsOrigin().y,
+				m_hDeathCamGib.Get()->GetAbsOrigin().z);
+			// Use the networked gib's position as the origin
+			origin = m_hDeathCamGib.Get()->GetAbsOrigin();
+			origin.z += 32.0f;
+		}
+		else
+		{
+			IRagdoll *pRagdoll = GetRepresentativeRagdoll();
+
+			if ( pRagdoll )
+			{
+				DevMsg("Using ragdoll for death cam\n");
+				origin = pRagdoll->GetRagdollOrigin();
+				origin.z += VEC_DEAD_VIEWHEIGHT_SCALED( this ).z; // look over ragdoll, not through
+			}
+			else
+			{
+				DevMsg("Using default player position for death cam\n");
+			}
 		}
 
 		BaseClass::CalcView( eyeOrigin, eyeAngles, zNear, zFar, fov );
@@ -963,6 +987,10 @@ void C_HL2MP_Player::CalcView( Vector &eyeOrigin, QAngle &eyeAngles, float &zNea
 		{
 			eyeOrigin = trace.endpos;
 		}
+		
+		DevMsg("Death cam positioned at %.2f %.2f %.2f, looking at %.2f %.2f %.2f\n",
+			eyeOrigin.x, eyeOrigin.y, eyeOrigin.z,
+			origin.x, origin.y, origin.z);
 		
 		return;
 	}

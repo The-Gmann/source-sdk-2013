@@ -120,6 +120,8 @@ public:
 
 	virtual void PostThink( void );
 
+	CNetworkHandle( CBaseEntity, m_hDeathCamGib );  // Add this line
+
 private:
 	
 	C_HL2MP_Player( const C_HL2MP_Player & );
