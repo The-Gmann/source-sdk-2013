@@ -351,7 +351,7 @@ void CNPC_MissileDefense::Gib(void)
 	SetThink(NULL);
 	
 	// Throw manhackgibs
-	CGib::SpawnSpecificGibs( this, MD_GIB_COUNT, 300, 500, MD_GIB_MODEL);
+	CGib::SpawnSpecificGibs( this, MD_GIB_COUNT, 300, 500, MD_GIB_MODEL, NULL);
 }
 
 //------------------------------------------------------------------------------

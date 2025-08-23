@@ -233,7 +233,7 @@ void CNPC_Barnacle::HandleAnimEvent( animevent_t *pEvent )
 {
 	if ( pEvent->event== AE_BARNACLE_PUKEGIB )
 	{
-		CGib::SpawnSpecificGibs( this, 1, 50, 1, "models/gibs/hgibs_rib.mdl");
+		CGib::SpawnSpecificGibs( this, 1, 50, 1, "models/gibs/hgibs_rib.mdl", NULL);
 		return;
 	}
 	if ( pEvent->event == AE_BARNACLE_BITE )
@@ -585,7 +585,7 @@ void CNPC_Barnacle::BarnacleThink ( void )
 		if ( m_cGibs && random->RandomInt(0,99) == 1 )
 		{
 			// cough up a gib.
-			CGib::SpawnSpecificGibs( this, 1, 50, 1, "models/gibs/hgibs_rib.mdl");
+			CGib::SpawnSpecificGibs( this, 1, 50, 1, "models/gibs/hgibs_rib.mdl", NULL);
 			m_cGibs--;
 
 			EmitSound( "NPC_Barnacle.Digest" );
@@ -1996,7 +1996,7 @@ void CNPC_Barnacle::SpawnDeathGibs( void )
 	{
 		if ( random->RandomInt( 0, 1 ) )
 		{
-			CGib::SpawnSpecificGibs( this, 1, 32, 1, m_szGibNames[i] );
+			CGib::SpawnSpecificGibs( this, 1, 32, 1, m_szGibNames[i], NULL);
 			bDroppedAny = true;
 		}
 	}
@@ -2004,7 +2004,7 @@ void CNPC_Barnacle::SpawnDeathGibs( void )
 	// Make sure we at least drop something
 	if ( bDroppedAny == false )
 	{
-		CGib::SpawnSpecificGibs( this, 1, 32, 1, m_szGibNames[0] );
+		CGib::SpawnSpecificGibs( this, 1, 32, 1, m_szGibNames[0], NULL);
 	}
 }
 
