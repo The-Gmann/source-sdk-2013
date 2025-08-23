@@ -1345,7 +1345,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		{
 			bShouldGib = true;
 			
-			float flFadeTime = 25.0f; // Gibs fade after 25 seconds in multiplayer
+			float flFadeTime = 50.0f; // Gibs fade after 50 seconds in multiplayer
 			
 			// Play gib sound effect
 			EmitSound( "player/bodysplat.wav" );
