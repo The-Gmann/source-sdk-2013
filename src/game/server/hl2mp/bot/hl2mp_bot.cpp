@@ -103,95 +103,47 @@ const char *DifficultyLevelToString( CHL2MPBot::DifficultyType skill )
 	return "Undefined ";
 }
 
-//-----------------------------------------------------------------------------------------------------
-static CUtlVector<CUtlString> m_botNames;
-
-static void LoadBotNames()
-{
-	static bool namesLoaded = false;
-	if (namesLoaded)
-		return;
-
-	FileHandle_t f = filesystem->Open("scripts/bot_names.txt", "rt", "MOD"); // Use text mode
-	if (!f)
-	{
-		Warning("Couldn't load bot names from scripts/bot_names.txt\n");
-		return;
-	}
-
-	int fileSize = filesystem->Size(f);
-	char* fileBuffer = (char*)stackalloc(fileSize + 1);
-	filesystem->Read(fileBuffer, fileSize, f);
-	fileBuffer[fileSize] = 0;
-	filesystem->Close(f);
-
-	// Skip UTF-8 BOM if present
-	char* p = fileBuffer;
-	if (fileSize >= 3 && (uint8_t)p[0] == 0xEF && (uint8_t)p[1] == 0xBB && (uint8_t)p[2] == 0xBF)
-	{
-		p += 3;
-	}
-
-	while (*p)
-	{
-		// Skip leading whitespace and line endings
-		while (*p && (*p == '\n' || *p == '\r' || *p == ' ' || *p == '\t'))
-			p++;
-
-		if (!*p)
-			break;
-
-		char* lineStart = p;
-
-		// Find end of line
-		while (*p && *p != '\n' && *p != '\r')
-			p++;
-
-		// Terminate the line
-		char c = *p;
-		*p = 0;
-
-		// Trim trailing whitespace
-		char* lineEnd = p - 1;
-		while (lineEnd >= lineStart && (*lineEnd == ' ' || *lineEnd == '\t'))
-			lineEnd--;
-		*(lineEnd + 1) = 0;
-
-		// Add non-empty lines
-		if (*lineStart)
-			m_botNames.AddToTail(lineStart);
-
-		// Restore the character and move to next line
-		*p = c;
-	}
-
-	namesLoaded = true;
-}
 
 //-----------------------------------------------------------------------------------------------------
-const char* GetRandomBotName(void)
+const char *GetRandomBotName( void )
 {
-	LoadBotNames();
+	static const char *nameList[] =
+	{
+		"Bot Name",
+		NULL
+	};
+	static int nameCount = 0;
+	static int nameIndex = 0;
 
-	if (m_botNames.Count() == 0)
-		return "UnnamedBot";
+	if ( nameCount == 0 )
+	{
+		for( ; nameList[ nameCount ]; ++nameCount );
 
-	int index = RandomInt(0, m_botNames.Count() - 1);
-	return m_botNames[index].Get();
+		// randomize the initial index
+		nameIndex = RandomInt( 0, nameCount-1 );
+	}
+
+	const char *name = nameList[ nameIndex++ ];
+
+	if ( nameIndex >= nameCount )
+		nameIndex = 0;
+
+	return name;
 }
 
 
 //-----------------------------------------------------------------------------------------------------
-void CreateBotName(int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize)
+void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize )
 {
-	const char* pBotName = GetRandomBotName();
+	const char *pBotName = GetRandomBotName();
 	const char* pFriendlyOrEnemyTitle = "";
+	
+	const char *pDifficultyString = hl2mp_bot_prefix_name_with_difficulty.GetBool() ? DifficultyLevelToString( skill ) : "";
 
-	const char* pDifficultyString = hl2mp_bot_prefix_name_with_difficulty.GetBool() ? DifficultyLevelToString(skill) : "";
-
-	CFmtStr name("%s%s%s",
-		pDifficultyString, pFriendlyOrEnemyTitle, pBotName);
-	Q_strncpy(pBuffer, name.Access(), iBufferSize);
+	// we use this as our formatting, because we don't know the language of the downstream clients
+	CFmtStr name( "%s%s%s", 
+				  pDifficultyString, pFriendlyOrEnemyTitle, pBotName );
+	Q_strncpy( pBuffer, name.Access(), iBufferSize );
 }
 
 //-----------------------------------------------------------------------------------------------------

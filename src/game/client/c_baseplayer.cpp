@@ -2469,13 +2469,11 @@ float C_BasePlayer::GetFOV( void )
 	{
 		C_BasePlayer *pTargetPlayer = dynamic_cast<C_BasePlayer*>( GetObserverTarget() );
 
-		/* get fov from observer target. Not if target is observer itself
+		// get fov from observer target. Not if target is observer itself
 		if ( pTargetPlayer && !pTargetPlayer->IsObserver() )
 		{
 			return pTargetPlayer->GetFOV();
 		}
-		*/
-		return 110;
 	}
 
 	// Allow our vehicle to override our FOV if it's currently at the default FOV.

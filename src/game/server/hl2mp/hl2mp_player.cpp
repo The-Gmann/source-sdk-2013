@@ -1363,7 +1363,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		// Check for crush damage threshold
 		else if (info.GetDamageType() & DMG_CRUSH)
 		{
-			if (info.GetDamage() >= 600.0f)
+			if (info.GetDamage() >= 450.0f)
 			{
 				bShouldGib = true;
 				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_CRUSH\n", info.GetDamage());
@@ -1374,17 +1374,17 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 				bShouldGib = false;
 			}
 		}
-		// Specific check for DMG_BLAST with damage ratio >= 0.8
-		else if (info.GetDamageType() & DMG_BLAST && flDamageRatio >= 0.8f)
+		// Specific check for DMG_BLAST with damage ratio >= 1.0
+		else if (info.GetDamageType() & DMG_BLAST && flDamageRatio >= 1.0f)
 		{
 			bShouldGib = true;
-			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_BLAST (Damage Ratio >= 0.8)\n", info.GetDamage());
+			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_BLAST (Damage Ratio >= 1.0)\n", info.GetDamage());
 		}
-		// General gibbing condition (damage ratio >= 2.26)
-		else if (flDamageRatio >= 2.26f)
+		// General gibbing condition (damage ratio >= 1.5)
+		else if (flDamageRatio >= 1.5f)
 		{
 			bShouldGib = true;
-			DevMsg("Player gibbed! Damage: %.1f, Type: General (Damage Ratio >= 2.26)\n", info.GetDamage());
+			DevMsg("Player gibbed! Damage: %.1f, Type: General (Damage Ratio >= 1.5)\n", info.GetDamage());
 		}
 
 		if (bShouldGib)

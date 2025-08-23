@@ -384,7 +384,7 @@ public:
 LINK_ENTITY_TO_CLASS(item_ammo_crossbow, CItem_BoxXBowRounds);
 
 
-/* ========================================================================
+// ========================================================================
 //	>> FlareRound
 // ========================================================================
 class CItem_FlareRound : public CItem
@@ -455,7 +455,6 @@ public:
 	}
 };
 LINK_ENTITY_TO_CLASS(item_box_flare_rounds, CItem_BoxFlareRounds);
-*/
 
 // ========================================================================
 // RPG Round
