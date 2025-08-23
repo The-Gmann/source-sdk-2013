@@ -23,6 +23,7 @@ ConVar hl2mp_bot_auto_vacate( "hl2mp_bot_auto_vacate", "1", FCVAR_NONE, "If nonz
 ConVar hl2mp_bot_offline_practice( "hl2mp_bot_offline_practice", "0", FCVAR_NONE, "Tells the server that it is in offline practice mode." );
 ConVar hl2mp_bot_melee_only( "hl2mp_bot_melee_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use melee weapons" );
 ConVar hl2mp_bot_gravgun_only( "hl2mp_bot_gravgun_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use gravity gun weapon" );
+ConVar hl2mp_bot_quota_debug( "hl2mp_bot_quota_debug", "1", FCVAR_GAMEDLL, "Enable debug output for bot quota system" );
 
 extern const char *GetRandomBotName( void );
 extern void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize );
@@ -218,103 +219,240 @@ void CHL2MPBotManager::MaintainBotQuota()
 			return;
 	}
 
-	// We want to balance based on who's playing on game teams not necessary who's on team spectator, etc.
+	// Count current players and bots with proper team assignments
 	int nConnectedClients = 0;
-	int nHL2MPBots = 0;
-	int nHL2MPBotsOnGameTeams = 0;
-	int nNonHL2MPBotsOnGameTeams = 0;
+	int nQuotaManagedBots = 0;
+	int nQuotaManagedBotsOnGameTeams = 0;
+	int nHumanPlayersOnGameTeams = 0;
 	int nSpectators = 0;
+
+	// Track team populations for balance
+	int nRebelPlayers = 0;
+	int nCombinePlayers = 0;
+	int nRebelBots = 0;
+	int nCombineBots = 0;
+	int nUnassignedBots = 0;  // Track unassigned bots for deathmatch
+	int nUnassignedPlayers = 0;  // Track unassigned players for deathmatch
+
+	bool bIsTeamplay = HL2MPRules()->IsTeamplay();
+
 	for ( int i = 1; i <= gpGlobals->maxClients; ++i )
 	{
 		CHL2MP_Player *pPlayer = ToHL2MPPlayer( UTIL_PlayerByIndex( i ) );
 
-		if ( pPlayer == NULL )
+		if ( pPlayer == NULL || FNullEnt( pPlayer->edict() ) || !pPlayer->IsConnected() )
 			continue;
 
-		if ( FNullEnt( pPlayer->edict() ) )
-			continue;
-
-		if ( !pPlayer->IsConnected() )
-			continue;
+		nConnectedClients++;
 
 		CHL2MPBot* pBot = dynamic_cast<CHL2MPBot*>( pPlayer );
-		if ( pBot && pBot->HasAttribute( CHL2MPBot::QUOTA_MANANGED ) )
+		bool isQuotaManagedBot = (pBot && pBot->HasAttribute( CHL2MPBot::QUOTA_MANANGED ));
+
+		int teamNumber = pPlayer->GetTeamNumber();
+
+		if ( isQuotaManagedBot )
 		{
-			nHL2MPBots++;
-			if ( pPlayer->GetTeamNumber() == TEAM_REBELS || pPlayer->GetTeamNumber() == TEAM_COMBINE )
+			nQuotaManagedBots++;
+			
+			// In teamplay mode, only rebels/combine count as "game teams"
+			// In deathmatch mode, unassigned also counts as a "game team"
+			if ( bIsTeamplay )
 			{
-				nHL2MPBotsOnGameTeams++;
+				if ( teamNumber == TEAM_REBELS || teamNumber == TEAM_COMBINE )
+				{
+					nQuotaManagedBotsOnGameTeams++;
+				}
+			}
+			else
+			{
+				// Deathmatch mode - unassigned is a valid game team
+				if ( teamNumber == TEAM_UNASSIGNED || teamNumber == TEAM_REBELS || teamNumber == TEAM_COMBINE )
+				{
+					nQuotaManagedBotsOnGameTeams++;
+				}
+			}
+
+			// Track bot team populations
+			if ( teamNumber == TEAM_REBELS )
+				nRebelBots++;
+			else if ( teamNumber == TEAM_COMBINE )
+				nCombineBots++;
+			else if ( teamNumber == TEAM_UNASSIGNED )
+				nUnassignedBots++;
+		}
+		else
+		{
+			// Human player
+			if ( bIsTeamplay )
+			{
+				if ( teamNumber == TEAM_REBELS || teamNumber == TEAM_COMBINE )
+				{
+					nHumanPlayersOnGameTeams++;
+				}
+			}
+			else
+			{
+				// Deathmatch mode - unassigned is a valid game team
+				if ( teamNumber == TEAM_UNASSIGNED || teamNumber == TEAM_REBELS || teamNumber == TEAM_COMBINE )
+				{
+					nHumanPlayersOnGameTeams++;
+				}
+			}
+			
+			if ( teamNumber == TEAM_SPECTATOR )
+			{
+				nSpectators++;
+			}
+
+			// Track human team populations
+			if ( teamNumber == TEAM_REBELS )
+				nRebelPlayers++;
+			else if ( teamNumber == TEAM_COMBINE )
+				nCombinePlayers++;
+			else if ( teamNumber == TEAM_UNASSIGNED )
+				nUnassignedPlayers++;
+		}
+	}
+
+	// Calculate desired bot count based on quota mode
+	int desiredBotCount = hl2mp_bot_quota.GetInt();
+	int nTotalHumans = nConnectedClients - nQuotaManagedBots;
+
+	if ( hl2mp_bot_quota_debug.GetBool() )
+	{
+		DevMsg( "[BOT_QUOTA] === Bot Quota Debug Info ===\n" );
+		DevMsg( "[BOT_QUOTA] Teamplay Mode: %s\n", bIsTeamplay ? "YES" : "NO" );
+		DevMsg( "[BOT_QUOTA] Connected Clients: %d, Quota Managed Bots: %d, Bots On Game Teams: %d\n", 
+			nConnectedClients, nQuotaManagedBots, nQuotaManagedBotsOnGameTeams );
+		DevMsg( "[BOT_QUOTA] Human Players On Game Teams: %d, Spectators: %d\n", 
+			nHumanPlayersOnGameTeams, nSpectators );
+		DevMsg( "[BOT_QUOTA] Team Populations - Rebels: %d+%d, Combine: %d+%d, Unassigned: %d+%d (Human+Bot)\n",
+			nRebelPlayers, nRebelBots, nCombinePlayers, nCombineBots, nUnassignedPlayers, nUnassignedBots );
+		DevMsg( "[BOT_QUOTA] Raw Desired Bot Count: %d, Quota Mode: %s\n", 
+			desiredBotCount, hl2mp_bot_quota_mode.GetString() );
+	}
+
+	if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "fill" ) )
+	{
+		// Fill mode: maintain N total players (bots + humans)
+		desiredBotCount = MAX( 0, desiredBotCount - nHumanPlayersOnGameTeams );
+		if ( hl2mp_bot_quota_debug.GetBool() )
+			DevMsg( "[BOT_QUOTA] Fill mode: Adjusted desired count = %d\n", desiredBotCount );
+	}
+	else if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "match" ) )
+	{
+		// Match mode: maintain ratio of bots to humans
+		desiredBotCount = (int)MAX( 0, hl2mp_bot_quota.GetFloat() * nHumanPlayersOnGameTeams );
+		if ( hl2mp_bot_quota_debug.GetBool() )
+			DevMsg( "[BOT_QUOTA] Match mode: Adjusted desired count = %d\n", desiredBotCount );
+	}
+
+	// Wait for a player to join, if necessary - but be more lenient in deathmatch
+	if ( hl2mp_bot_join_after_player.GetBool() )
+	{
+		if ( bIsTeamplay )
+		{
+			// In teamplay, wait for humans on game teams
+			if ( ( nHumanPlayersOnGameTeams == 0 ) && ( nSpectators == 0 ) )
+			{
+				desiredBotCount = 0;
+				if ( hl2mp_bot_quota_debug.GetBool() )
+					DevMsg( "[BOT_QUOTA] Teamplay: Waiting for human players, setting desired count to 0\n" );
 			}
 		}
 		else
 		{
-			if ( pPlayer->GetTeamNumber() == TEAM_REBELS || pPlayer->GetTeamNumber() == TEAM_COMBINE )
+			// In deathmatch, only wait if there are absolutely no humans connected
+			if ( nTotalHumans == 0 )
 			{
-				nNonHL2MPBotsOnGameTeams++;
+				desiredBotCount = 0;
+				if ( hl2mp_bot_quota_debug.GetBool() )
+					DevMsg( "[BOT_QUOTA] Deathmatch: No humans connected, setting desired count to 0\n" );
 			}
-			else if ( pPlayer->GetTeamNumber() == TEAM_SPECTATOR )
-			{
-				nSpectators++;
-			}
-		}
-
-		nConnectedClients++;
-	}
-
-	int desiredBotCount = hl2mp_bot_quota.GetInt();
-	int nTotalNonHL2MPBots = nConnectedClients - nHL2MPBots;
-
-	if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "fill" ) )
-	{
-		desiredBotCount = MAX( 0, desiredBotCount - nNonHL2MPBotsOnGameTeams );
-	}
-	else if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "match" ) )
-	{
-		// If bot_quota_mode is 'match', we want the number of bots to be bot_quota * total humans
-		desiredBotCount = (int)MAX( 0, hl2mp_bot_quota.GetFloat() * nNonHL2MPBotsOnGameTeams );
-	}
-
-	// wait for a player to join, if necessary
-	if ( hl2mp_bot_join_after_player.GetBool() )
-	{
-		if ( ( nNonHL2MPBotsOnGameTeams == 0 ) && ( nSpectators == 0 ) )
-		{
-			desiredBotCount = 0;
 		}
 	}
 
-	// if bots will auto-vacate, we need to keep one slot open to allow players to join
+	// Reserve slots for humans if auto-vacate is enabled
 	if ( hl2mp_bot_auto_vacate.GetBool() )
 	{
-		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalNonHL2MPBots - 1 );
+		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalHumans - 1 );
+		DevMsg( "[BOT_QUOTA] Auto-vacate enabled: Adjusted desired count = %d\n", desiredBotCount );
 	}
 	else
 	{
-		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalNonHL2MPBots );
+		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalHumans );
 	}
 
-	// add bots if necessary
-	if ( desiredBotCount > nHL2MPBotsOnGameTeams )
+	DevMsg( "[BOT_QUOTA] Final desired bot count: %d, Current bots on game teams: %d\n", 
+		desiredBotCount, nQuotaManagedBotsOnGameTeams );
+
+	// Add bots if necessary
+	if ( desiredBotCount > nQuotaManagedBotsOnGameTeams )
 	{
+		DevMsg( "[BOT_QUOTA] Need to add bots: %d desired, %d current\n", 
+			desiredBotCount, nQuotaManagedBotsOnGameTeams );
+
+		// Determine which team needs more bots for balance
+		int targetTeam = TEAM_UNASSIGNED;
+		if ( bIsTeamplay )
+		{
+			int totalRebels = nRebelPlayers + nRebelBots;
+			int totalCombine = nCombinePlayers + nCombineBots;
+
+			if ( totalRebels < totalCombine )
+			{
+				targetTeam = TEAM_REBELS;
+			}
+			else if ( totalCombine < totalRebels )
+			{
+				targetTeam = TEAM_COMBINE;
+			}
+			else
+			{
+				// Teams are balanced, randomly assign
+				targetTeam = (RandomInt( 0, 1 ) == 0) ? TEAM_REBELS : TEAM_COMBINE;
+			}
+			DevMsg( "[BOT_QUOTA] Teamplay mode: Assigning bot to team %d (Rebels=%d, Combine=%d)\n", 
+				targetTeam, totalRebels, totalCombine );
+		}
+		else
+		{
+			// Deathmatch mode - use unassigned team
+			targetTeam = TEAM_UNASSIGNED;
+			DevMsg( "[BOT_QUOTA] Deathmatch mode: Assigning bot to TEAM_UNASSIGNED\n" );
+		}
+
+		// Try to get a bot from the pool first (but be more careful about reuse)
 		CHL2MPBot *pBot = GetAvailableBotFromPool();
 		if ( pBot == NULL )
 		{
+			// Create a new bot
+			DevMsg( "[BOT_QUOTA] Creating new bot from scratch\n" );
 			pBot = NextBotCreatePlayerBot< CHL2MPBot >( GetRandomBotName() );
 		}
+		else
+		{
+			DevMsg( "[BOT_QUOTA] Reusing bot from pool\n" );
+		}
+
 		if ( pBot )
 		{
+			DevMsg( "[BOT_QUOTA] Bot created successfully, configuring...\n" );
+			// Set quota management flag
 			pBot->SetAttribute( CHL2MPBot::QUOTA_MANANGED );
 
-			int iTeam = TEAM_UNASSIGNED;
-
-			if ( HL2MPRules()->IsTeamplay() && iTeam == TEAM_UNASSIGNED )
+			// Assign team (ensure we never leave bots unassigned in teamplay)
+			int iTeam = targetTeam;
+			if ( iTeam == TEAM_UNASSIGNED && bIsTeamplay )
 			{
-				CTeam* pRebels = GetGlobalTeam( TEAM_REBELS );
-				CTeam* pCombine = GetGlobalTeam( TEAM_COMBINE );
-
-				iTeam = pRebels->GetNumPlayers() < pCombine->GetNumPlayers() ? TEAM_REBELS : TEAM_COMBINE;
+				// Fallback safety - should not happen with new logic above
+				DevMsg( "[BOT_QUOTA] WARNING: Fallback team assignment in teamplay mode!\n" );
+				iTeam = TEAM_REBELS;
 			}
 
+			DevMsg( "[BOT_QUOTA] Assigning bot to team %d\n", iTeam );
+
+			// Set appropriate model based on team
 			const char* pszModel = "";
 			if ( iTeam == TEAM_UNASSIGNED )
 			{
@@ -329,59 +467,109 @@ void CHL2MPBotManager::MaintainBotQuota()
 				pszModel = g_ppszRandomCitizenModels[RandomInt( 0, ARRAYSIZE( g_ppszRandomCitizenModels ) )];
 			}
 
-			// give the bot a proper name
+			// Generate proper bot name based on team assignment
 			char name[256];
 			CHL2MPBot::DifficultyType skill = pBot->GetDifficulty();
-			CreateBotName( pBot->GetTeamNumber(), skill, name, sizeof( name ) );
+			CreateBotName( iTeam, skill, name, sizeof( name ) );
+
+			DevMsg( "[BOT_QUOTA] Bot configured - Name: %s, Model: %s, Team: %d\n", name, pszModel, iTeam );
+
+			// Configure bot
 			engine->SetFakeClientConVarValue( pBot->edict(), "cl_playermodel", pszModel );
 			engine->SetFakeClientConVarValue( pBot->edict(), "name", name );
+
+			// Join team - this is critical for proper spawning
+			DevMsg( "[BOT_QUOTA] Joining bot to team %d...\n", iTeam );
 			pBot->HandleCommand_JoinTeam( iTeam );
 			pBot->ChangeTeam( iTeam );
+
+			// Force spawn if the bot doesn't spawn automatically
+			if ( !pBot->IsAlive() )
+			{
+				DevMsg( "[BOT_QUOTA] Bot not alive, forcing respawn...\n" );
+				pBot->ForceRespawn();
+			}
+			else
+			{
+				DevMsg( "[BOT_QUOTA] Bot spawned successfully\n" );
+			}
+		}
+		else
+		{
+			DevWarning( "[BOT_QUOTA] Failed to create bot!\n" );
 		}
 	}
-	else if ( desiredBotCount < nHL2MPBotsOnGameTeams )
+	else if ( desiredBotCount < nQuotaManagedBotsOnGameTeams )
 	{
-		// kick a bot to maintain quota
+		DevMsg( "[BOT_QUOTA] Need to remove bots: %d desired, %d current\n", 
+			desiredBotCount, nQuotaManagedBotsOnGameTeams );
 		
-		// first remove any unassigned bots
+		// Remove excess bots
+		// First try to remove unassigned bots (cleanup)
 		if ( UTIL_KickBotFromTeam( TEAM_UNASSIGNED ) )
+		{
+			DevMsg( "[BOT_QUOTA] Removed unassigned bot\n" );
 			return;
+		}
 
+		// Determine which team to remove from for balance
 		int kickTeam;
+		int totalRebels = nRebelPlayers + nRebelBots;
+		int totalCombine = nCombinePlayers + nCombineBots;
 
 		CTeam *pRebels = GetGlobalTeam( TEAM_REBELS );
 		CTeam *pCombine = GetGlobalTeam( TEAM_COMBINE );
 
-		// remove from the team that has more players
-		if ( pCombine->GetNumPlayers() > pRebels->GetNumPlayers() )
+		if ( pCombine && pRebels )
 		{
-			kickTeam = TEAM_COMBINE;
-		}
-		else if ( pCombine->GetNumPlayers() < pRebels->GetNumPlayers() )
-		{
-			kickTeam = TEAM_REBELS;
-		}
-		// remove from the team that's winning
-		else if ( pCombine->GetScore() > pRebels->GetScore() )
-		{
-			kickTeam = TEAM_COMBINE;
-		}
-		else if ( pCombine->GetScore() < pRebels->GetScore() )
-		{
-			kickTeam = TEAM_REBELS;
+			// Remove from the team that has more players
+			if ( totalCombine > totalRebels )
+			{
+				kickTeam = TEAM_COMBINE;
+			}
+			else if ( totalRebels > totalCombine )
+			{
+				kickTeam = TEAM_REBELS;
+			}
+			// Remove from the team that's winning
+			else if ( pCombine->GetScore() > pRebels->GetScore() )
+			{
+				kickTeam = TEAM_COMBINE;
+			}
+			else if ( pRebels->GetScore() > pCombine->GetScore() )
+			{
+				kickTeam = TEAM_REBELS;
+			}
+			else
+			{
+				// Teams and scores are equal, pick randomly
+				kickTeam = (RandomInt( 0, 1 ) == 0) ? TEAM_COMBINE : TEAM_REBELS;
+			}
 		}
 		else
 		{
-			// teams and scores are equal, pick a team at random
-			kickTeam = (RandomInt( 0, 1 ) == 0) ? TEAM_COMBINE : TEAM_REBELS;
+			// Fallback to rebels if team objects aren't valid
+			kickTeam = TEAM_REBELS;
 		}
 
-		// attempt to kick a bot from the given team
-		if ( UTIL_KickBotFromTeam( kickTeam ) )
-			return;
+		DevMsg( "[BOT_QUOTA] Attempting to kick bot from team %d\n", kickTeam );
 
-		// if there were no bots on the team, kick a bot from the other team
-		UTIL_KickBotFromTeam( kickTeam == TEAM_COMBINE ? TEAM_REBELS : TEAM_COMBINE );
+		// Attempt to kick a bot from the chosen team
+		if ( UTIL_KickBotFromTeam( kickTeam ) )
+		{
+			DevMsg( "[BOT_QUOTA] Successfully kicked bot from team %d\n", kickTeam );
+			return;
+		}
+
+		// If no bots on that team, try the other team
+		int otherTeam = kickTeam == TEAM_COMBINE ? TEAM_REBELS : TEAM_COMBINE;
+		DevMsg( "[BOT_QUOTA] No bots on team %d, trying team %d\n", kickTeam, otherTeam );
+		UTIL_KickBotFromTeam( otherTeam );
+	}
+	else
+	{
+		DevMsg( "[BOT_QUOTA] Bot quota satisfied: %d bots (desired: %d)\n", 
+			nQuotaManagedBotsOnGameTeams, desiredBotCount );
 	}
 }
 
@@ -473,6 +661,8 @@ void CHL2MPBotManager::LevelShutdown()
 //----------------------------------------------------------------------------------------------------------------
 CHL2MPBot* CHL2MPBotManager::GetAvailableBotFromPool()
 {
+	// Look for truly disconnected or kicked bots that can be reused
+	// Avoid reusing bots that are just in spectator/unassigned as they may be transitioning
 	for ( int i = 1; i <= gpGlobals->maxClients; ++i )
 	{
 		CHL2MP_Player *pPlayer = ToHL2MPPlayer( UTIL_PlayerByIndex( i ) );
@@ -484,12 +674,15 @@ CHL2MPBot* CHL2MPBotManager::GetAvailableBotFromPool()
 		if ( ( pBot->GetFlags() & FL_FAKECLIENT ) == 0 )
 			continue;
 
-		if ( pBot->GetTeamNumber() == TEAM_SPECTATOR || pBot->GetTeamNumber() == TEAM_UNASSIGNED )
+		// Only reuse bots that are actually disconnected or in a safe reusable state
+		if ( !pBot->IsConnected() /*|| pBot->IsKicked()*/ )
 		{
 			pBot->ClearAttribute( CHL2MPBot::QUOTA_MANANGED );
 			return pBot;
 		}
 	}
+
+	// Don't reuse bots from spectator/unassigned teams to avoid slot conflicts
 	return NULL;
 }
 
