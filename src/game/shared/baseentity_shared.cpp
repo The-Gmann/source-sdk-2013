@@ -1887,15 +1887,7 @@ void CBaseEntity::FireBullets( const FireBulletsInfo_t &info )
 			}
 			else
 			{
-				// Respect DMG_NEVERGIB - don't add DMG_ALWAYSGIB if DMG_NEVERGIB is set
-				if (nDamageType & DMG_NEVERGIB)
-				{
-					nActualDamageType = nDamageType; // Keep DMG_NEVERGIB, don't add DMG_ALWAYSGIB
-				}
-				else
-				{
-					nActualDamageType = nDamageType | ((flActualDamage > 16) ? DMG_ALWAYSGIB : DMG_NEVERGIB );
-				}
+				nActualDamageType = nDamageType | ((flActualDamage > 16) ? DMG_ALWAYSGIB : DMG_NEVERGIB );
 			}
 
 			if ( !bHitWater || ((info.m_nFlags & FIRE_BULLETS_DONT_HIT_UNDERWATER) == 0) )

@@ -1335,7 +1335,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 	bool bShouldGib = false;
 	CBaseEntity *pFirstGib = NULL;  // Track the first gib for death camera
 	
-	// Check if this is a gibbing damage type - ONLY allow specific damage types
+	// Check if this is a gibbing damage type
 	if( info.GetDamageType() & ( DMG_BUCKSHOT | DMG_BLAST | DMG_ENERGYBEAM | DMG_CRUSH | DMG_ALWAYSGIB | DMG_SHOCK | DMG_FALL ) )
 	{
 		float flDamageRatio = info.GetDamage() / GetMaxHealth();

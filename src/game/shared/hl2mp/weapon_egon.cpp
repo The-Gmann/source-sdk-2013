@@ -35,7 +35,6 @@
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
     #include "ai_condition.h"
-    #include "ilagcompensationmanager.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -144,7 +143,7 @@ private:
 
     // Network variables
     CNetworkVar(float, m_flAmmoUseTime);
-    CNetworkVar(float, m_flDamageTime);
+    CNetworkVar(float, m_flNextDamageTime);
     CNetworkVar(EFireState, m_fireState);
     CNetworkVar(Vector, m_vecBeamEndPos);
 
@@ -196,12 +195,12 @@ IMPLEMENT_NETWORKCLASS_ALIASED(WeaponEgon, DT_WeaponEgon)
 BEGIN_NETWORK_TABLE(CWeaponEgon, DT_WeaponEgon)
 #ifdef CLIENT_DLL
     RecvPropFloat(RECVINFO(m_flAmmoUseTime)),
-    RecvPropFloat(RECVINFO(m_flDamageTime)),
+    RecvPropFloat(RECVINFO(m_flNextDamageTime)),
     RecvPropInt(RECVINFO(m_fireState)),
     RecvPropVector(RECVINFO(m_vecBeamEndPos)),
 #else
     SendPropFloat(SENDINFO(m_flAmmoUseTime)),
-    SendPropFloat(SENDINFO(m_flDamageTime)),
+    SendPropFloat(SENDINFO(m_flNextDamageTime)),
     SendPropInt(SENDINFO(m_fireState)),
     SendPropVector(SENDINFO(m_vecBeamEndPos)),
 #endif
@@ -211,7 +210,7 @@ END_NETWORK_TABLE()
 #ifdef CLIENT_DLL
 BEGIN_PREDICTION_DATA(CWeaponEgon)
     DEFINE_PRED_FIELD(m_flAmmoUseTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
-    DEFINE_PRED_FIELD(m_flDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+    DEFINE_PRED_FIELD(m_flNextDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_fireState, FIELD_INTEGER, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_vecBeamEndPos, FIELD_VECTOR, FTYPEDESC_INSENDTABLE),
 END_PREDICTION_DATA()
@@ -241,7 +240,7 @@ IMPLEMENT_ACTTABLE(CWeaponEgon);
 CWeaponEgon::CWeaponEgon()
 {
     m_flAmmoUseTime = 0.0f;
-    m_flDamageTime = 0.0f;
+    m_flNextDamageTime = 0.0f;
     m_fireState = FIRE_OFF;
     m_vecBeamEndPos = vec3_origin;
     m_flStartFireTime = 0.0f;
@@ -406,14 +405,12 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientNoise->AddEffects(EF_NODRAW);
     }
 
-    // Create flare sprite - position it at the hit point to prevent wall clipping
-    Vector spritePos = endPos;
-    
-    m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, spritePos, false);
+    // Create flare sprite
+    m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, endPos, false);
     if (m_pClientSprite)
     {
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
-        m_pClientSprite->SetTransparency(kRenderWorldGlow, 255, 255, 255, 255, kRenderFxNone);
+        m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNoDissipation);
         m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         
         CBasePlayer *pOwner = ToBasePlayer(GetOwner());
@@ -449,18 +446,14 @@ void CWeaponEgon::UpdateClientBeams()
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
     
-    // Calculate sprite position - position it at the actual hit point
-    // This prevents the sprite from being pushed into walls when player gets close
-    Vector spritePos = endPos;
-    
     // Ensure minimum beam length
-    float beamLength = (endPos - startPos).Length();
+    Vector beamDir = endPos - startPos;
+    float beamLength = beamDir.Length();
     
     if (beamLength < 16.0f)
     {
-        Vector beamDir = (endPos - startPos).Normalized();
+        beamDir.NormalizeInPlace();
         endPos = startPos + (beamDir * 16.0f);
-        spritePos = endPos; // Keep sprite at the end position
     }
 
     // Handle frame delay for initial positioning
@@ -484,14 +477,14 @@ void CWeaponEgon::UpdateClientBeams()
 
         if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
         {
-            m_pClientSprite->SetAbsOrigin(spritePos);
+            m_pClientSprite->SetAbsOrigin(endPos);
         }
         
         m_vecLastEndPos = endPos;
         return;
     }
 
-    // Dynamic light position uses endPos (actual surface)
+    // Create dynamic light
     if (!m_pBeamGlow)
     {
         m_pBeamGlow = effects->CL_AllocDlight(entindex());
@@ -506,16 +499,13 @@ void CWeaponEgon::UpdateClientBeams()
         }
     }
 
-    // Smooth interpolation for both beam end and sprite position
-    static Vector lastSpritePos = vec3_origin;
+    // Smooth interpolation
     if (m_vecLastEndPos != vec3_origin)
     {
         float lerpFactor = gpGlobals->frametime * 25.0f;
         endPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, endPos);
-        spritePos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), lastSpritePos, spritePos);
     }
     m_vecLastEndPos = endPos;
-    lastSpritePos = spritePos;
 
     // Create beams if they don't exist
     if (!m_pClientBeam || !m_pClientNoise || !m_pClientSprite)
@@ -557,10 +547,10 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientNoise->SetBeamFlags(m_pClientNoise->GetBeamFlags() | FBEAM_FOREVER);
     }
 
-    // Update sprite position (offset from surface)
+    // Update sprite
     if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
     {
-        m_pClientSprite->SetAbsOrigin(spritePos);
+        m_pClientSprite->SetAbsOrigin(endPos);
         
         float currentFrame = m_pClientSprite->m_flFrame;
         currentFrame += 8.0f * gpGlobals->frametime;
@@ -774,7 +764,7 @@ void CWeaponEgon::StartFiring()
     const float currentTime = gpGlobals->curtime;
     m_flAmmoUseTime = currentTime;
     m_flStartFireTime = currentTime;
-    m_flDamageTime = currentTime + EgonConstants::DAMAGE_INTERVAL;
+    m_flNextDamageTime = currentTime + EgonConstants::DAMAGE_INTERVAL;
     m_bTransitionedToCharge = false;
 
     // Audio and visual feedback using proper weapon sound system
@@ -858,18 +848,13 @@ void CWeaponEgon::HandleFireStateTransition()
 }
 
 //-----------------------------------------------------------------------------
-// Main firing logic - HL1 wide mode with lag compensation
+// Main firing logic
 //-----------------------------------------------------------------------------
 void CWeaponEgon::Fire()
 {
     CBasePlayer *pOwner = GetPlayerOwner();
     if (!pOwner)
         return;
-
-#ifndef CLIENT_DLL
-    // Move other players back to history positions based on local player's lag
-    lagcompensation->StartLagCompensation( pOwner, pOwner->GetCurrentCommand() );
-#endif
 
     // Get aim direction and source
     Vector vecAiming = pOwner->GetAutoaimVector(0);
@@ -887,22 +872,18 @@ void CWeaponEgon::Fire()
     m_flNextPrimaryAttack = gpGlobals->curtime + 0.05f;
 
 #ifndef CLIENT_DLL
-    // Process damage at timed intervals (HL1 style)
-    if (m_flDamageTime < gpGlobals->curtime)
+    // Process damage at intervals
+    if (gpGlobals->curtime >= m_flNextDamageTime)
     {
         ProcessDamage(tr, vecAiming);
-        m_flDamageTime = gpGlobals->curtime + EgonConstants::DAMAGE_INTERVAL;
+        m_flNextDamageTime = gpGlobals->curtime + EgonConstants::DAMAGE_INTERVAL;
     }
 
-    // Screen shake effect (rate limited)
-    if (m_flShakeTime < gpGlobals->curtime)
+    // Impact effects for valid surfaces
+    if (tr.fraction < 1.0f && !(tr.surface.flags & SURF_SKY))
     {
-        UTIL_ScreenShake(tr.endpos, 5.0f, 150.0f, 0.75f, 250.0f, SHAKE_START);
-        m_flShakeTime = gpGlobals->curtime + EgonConstants::SHAKE_COOLDOWN;
+        UTIL_ScreenShake(tr.endpos, 5.0f, 150.0f, 0.25f, 150.0f, SHAKE_START);
     }
-
-    // Finish lag compensation
-    lagcompensation->FinishLagCompensation( pOwner );
 #endif
 
     // Consume ammo
@@ -910,7 +891,7 @@ void CWeaponEgon::Fire()
 }
 
 //-----------------------------------------------------------------------------
-// Process damage to targets - HL1 wide mode with direct + radius damage
+// Process damage to targets
 //-----------------------------------------------------------------------------
 void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
 {
@@ -920,31 +901,29 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
         return;
 
     const float baseDamage = sk_plr_dmg_egon.GetFloat();
-    
-    // HL1 wide mode does both direct damage to entity and radius damage
-    bool hitValidTarget = false;
-    
+
     // Direct damage to hit entity
     if (tr.m_pEnt && tr.m_pEnt->m_takedamage != DAMAGE_NO)
     {
-        DevMsg("Egon (Direct): Dealing %.1f damage to %s\n", baseDamage, tr.m_pEnt->GetClassname());
-        
-        ClearMultiDamage();
         CTakeDamageInfo directDmg(this, pOwner, baseDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB);
-        Vector force = direction * baseDamage * 500.0f;
-        directDmg.SetDamageForce(force);
+        CalculateMeleeDamageForce(&directDmg, direction, tr.endpos);
         
         tr.m_pEnt->DispatchTraceAttack(directDmg, direction, const_cast<trace_t*>(&tr));
         ApplyMultiDamage();
-        hitValidTarget = true;
     }
-    
-    // Radius damage (like HL1's wide mode)
+
+    // Radius damage
     const float radiusDamage = baseDamage * EgonConstants::RADIUS_DAMAGE_MULTIPLIER;
-    DevMsg("Egon (Radius): Dealing %.1f radius damage\n", radiusDamage);
     CTakeDamageInfo radiusDmgInfo(this, pOwner, radiusDamage, 
                                  DMG_ENERGYBEAM | DMG_BLAST | DMG_ALWAYSGIB);
     RadiusDamage(radiusDmgInfo, tr.endpos, EgonConstants::DMG_RADIUS, CLASS_NONE, nullptr);
+
+    // Screen shake effect (rate limited)
+    if (m_flShakeTime < gpGlobals->curtime)
+    {
+        UTIL_ScreenShake(tr.endpos, 5.0f, 150.0f, 0.75f, 250.0f, SHAKE_START);
+        m_flShakeTime = gpGlobals->curtime + EgonConstants::SHAKE_COOLDOWN;
+    }
 #endif
 }
 

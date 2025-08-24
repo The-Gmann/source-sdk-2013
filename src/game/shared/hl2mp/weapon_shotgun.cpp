@@ -12,7 +12,6 @@
 	#include "c_hl2mp_player.h"
 #else
 	#include "hl2mp_player.h"
-	#include "ai_condition.h"
 #endif
 
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
@@ -63,7 +62,6 @@ public:
 	virtual float GetFireRate( void ) { return 0.7; };
 
 #ifndef CLIENT_DLL
-	virtual int WeaponRangeAttack2Condition( float flDot, float flDist );
 	DECLARE_ACTTABLE();
 #endif
 
@@ -102,7 +100,7 @@ LINK_ENTITY_TO_CLASS( weapon_shotgun, CWeaponShotgun );
 PRECACHE_WEAPON_REGISTER(weapon_shotgun);
 
 #ifndef CLIENT_DLL
-acttable_t CWeaponShotgun::m_acttable[] = 
+acttable_t	CWeaponShotgun::m_acttable[] = 
 {
 	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_SHOTGUN,					false },
 	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_SHOTGUN,					false },
@@ -634,24 +632,3 @@ void CWeaponShotgun::WeaponIdle( void )
 	}
 }
 */
-
-#ifndef CLIENT_DLL
-//-----------------------------------------------------------------------------
-// Bot condition for using double-barrel secondary attack
-//-----------------------------------------------------------------------------
-int CWeaponShotgun::WeaponRangeAttack2Condition( float flDot, float flDist )
-{
-	// Don't use secondary if we don't have enough ammo
-	if ( m_iClip1 < 2 )
-		return COND_NO_SECONDARY_AMMO;
-	
-	// Use double-barrel at close range for maximum damage
-	if ( flDist <= m_fMaxRange2 && flDot >= 0.5f )
-	{
-		return COND_CAN_RANGE_ATTACK2;
-	}
-	
-	// Too far for effective double-barrel
-	return COND_TOO_FAR_TO_ATTACK;
-}
-#endif
