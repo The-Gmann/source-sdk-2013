@@ -24,6 +24,7 @@
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
+    #include "ilagcompensationmanager.h"
 #endif
 
 #ifdef CLIENT_DLL
@@ -418,6 +419,11 @@ void CWeaponGauss::Fire(void)
 
     m_bCharging = false;
 
+#ifndef CLIENT_DLL
+    // Move other players back to history positions based on local player's lag
+    lagcompensation->StartLagCompensation( pOwner, pOwner->GetCurrentCommand() );
+#endif
+
     Vector startPos = pOwner->Weapon_ShootPosition();
     Vector aimDir = pOwner->GetAutoaimVector(AUTOAIM_5DEGREES);
 
@@ -518,6 +524,8 @@ void CWeaponGauss::Fire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        // Finish lag compensation
+        lagcompensation->FinishLagCompensation( pOwner );
     #endif
 
     m_flNextSecondaryAttack = gpGlobals->curtime + 1.0f;
@@ -537,6 +545,11 @@ void CWeaponGauss::ChargedFire(void)
     StopChargeSound();
     m_bCharging = false;
     m_flNextAftershock = 0;  // Reset aftershock timer
+
+#ifndef CLIENT_DLL
+    // Move other players back to history positions based on local player's lag
+    lagcompensation->StartLagCompensation( pOwner, pOwner->GetCurrentCommand() );
+#endif
 
     // Play fire sound and queue aftershock for charged shot
     WeaponSound(SINGLE);
@@ -615,6 +628,10 @@ void CWeaponGauss::ChargedFire(void)
                 dmgInfo.SetDamageForce(force);
                 dmgInfo.SetDamagePosition(tr.endpos);
                 tr.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &tr);
+                
+                // Debug output for damage dealt
+                DevMsg("Gauss hit %s for %.1f damage\n", 
+                       tr.m_pEnt->GetClassname(), flDamage);
             #endif
         }
 
@@ -628,6 +645,10 @@ void CWeaponGauss::ChargedFire(void)
             // Add radius damage for area effect - exclude owner if self damage disabled
             RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, DMG_SHOCK | DMG_BULLET), 
                         tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+                        
+            // Debug output for area effect damage
+            DevMsg("Gauss area effect: %.1f damage, radius 64.0\n", 
+                   flDamage * 0.5f);
         #endif
 
         // Stop if we hit sky
@@ -670,11 +691,19 @@ void CWeaponGauss::ChargedFire(void)
                             dmgInfo.SetDamageForce(force);
                             dmgInfo.SetDamagePosition(penetrationTrace.endpos);
                             penetrationTrace.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &penetrationTrace);
+                            
+                            // Debug output for penetration damage
+                            DevMsg("Gauss penetration hit %s for %.1f damage\n", 
+                                   penetrationTrace.m_pEnt->GetClassname(), flDamage);
                         }
                         
                         // Penetration explosion - exclude owner if self damage disabled
                         RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage, DMG_SHOCK | DMG_BLAST), 
                                     penetrationTrace.endpos, flDamage * 1.75f, CLASS_NONE, pIgnoreEntity);
+                        
+                        // Debug output for penetration explosion damage
+                        DevMsg("Gauss penetration explosion: %.1f damage, radius %.1f\n", 
+                               flDamage, flDamage * 1.75f);
                     #endif
                     
                     firstBeam = false;
@@ -703,6 +732,10 @@ void CWeaponGauss::ChargedFire(void)
                     // Reflection explosion - exclude owner if self damage disabled
                     RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * hitAngle, DMG_SHOCK), 
                                 tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+                                
+                    // Debug output for reflection explosion damage
+                    DevMsg("Gauss reflection explosion: %.1f damage, radius 64.0\n", 
+                           flDamage * hitAngle);
                 #endif
 
                 firstBeam = false;
@@ -717,6 +750,8 @@ void CWeaponGauss::ChargedFire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        // Finish lag compensation
+        lagcompensation->FinishLagCompensation( pOwner );
     #endif
 
     // Add view punch effect based on damage

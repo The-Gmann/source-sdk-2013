@@ -72,16 +72,28 @@ public:
 	
 	virtual int	GetMinBurst() 
 	{ 
+		// Bots should fire single shots rapidly instead of bursts
+		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+		if ( pOwner && pOwner->IsBot() )
+			return 1; // Always single shots for bots
 		return 1; 
 	}
 
 	virtual int	GetMaxBurst() 
 	{ 
+		// Bots should fire single shots rapidly instead of bursts
+		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+		if ( pOwner && pOwner->IsBot() )
+			return 1; // Always single shots for bots
 		return 3; 
 	}
 
 	virtual float GetFireRate( void ) 
 	{
+		// Faster firing rate for bots to encourage spam firing instead of holding
+		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
+		if ( pOwner && pOwner->IsBot() )
+			return 0.15f; // Bots fire faster - spam clicking behavior
 		return 0.5f; 
 	}
 	
