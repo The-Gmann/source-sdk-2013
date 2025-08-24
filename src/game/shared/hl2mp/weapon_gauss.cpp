@@ -472,6 +472,13 @@ void CWeaponGauss::Fire(void)
                 dmgInfo.SetDamageForce(force);
                 dmgInfo.SetDamagePosition(tr.endpos);
                 tr.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &tr);
+                
+                // Debug output for damage dealt - only show for non-worldspawn entities
+                const char* className = tr.m_pEnt->GetClassname();
+                if (className && Q_stricmp(className, "worldspawn") != 0)
+                {
+                    DevMsg("Gauss hit %s for %.1f damage\n", className, flDamage);
+                }
             #endif
         }
 
@@ -512,6 +519,10 @@ void CWeaponGauss::Fire(void)
                     CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
                     
                     RadiusDamage(radiusDmgInfo, tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+                    
+                    // Debug output for reflection explosion damage
+                    DevMsg("Gauss reflection explosion: %.1f damage, radius 64.0\n", 
+                           flDamage * hitAngle);
                 #endif
 
                 firstBeam = false;
@@ -524,6 +535,18 @@ void CWeaponGauss::Fire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        
+        // Debug: Show actual health status after damage for primary attack
+        if (tr.m_pEnt && tr.m_pEnt->IsPlayer())
+        {
+            CBasePlayer* pTargetPlayer = ToBasePlayer(tr.m_pEnt);
+            if (pTargetPlayer)
+            {
+                DevMsg("Gauss primary: Target player health now %d (armor: %d)\n", 
+                       pTargetPlayer->GetHealth(), pTargetPlayer->ArmorValue());
+            }
+        }
+        
         // Finish lag compensation
         lagcompensation->FinishLagCompensation( pOwner );
     #endif
@@ -629,9 +652,12 @@ void CWeaponGauss::ChargedFire(void)
                 dmgInfo.SetDamagePosition(tr.endpos);
                 tr.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &tr);
                 
-                // Debug output for damage dealt
-                DevMsg("Gauss hit %s for %.1f damage\n", 
-                       tr.m_pEnt->GetClassname(), flDamage);
+                // Debug output for damage dealt - only show for non-worldspawn entities
+                const char* className = tr.m_pEnt->GetClassname();
+                if (className && Q_stricmp(className, "worldspawn") != 0)
+                {
+                    DevMsg("Gauss hit %s for %.1f damage\n", className, flDamage);
+                }
             #endif
         }
 
@@ -750,6 +776,23 @@ void CWeaponGauss::ChargedFire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        
+        // Debug: Show final health/armor status after all damage for secondary attack
+        // Note: This may show multiple players if beam hit multiple targets
+        for (int i = 1; i <= gpGlobals->maxClients; i++)
+        {
+            CBasePlayer* pPlayer = UTIL_PlayerByIndex(i);
+            if (pPlayer && pPlayer->IsAlive() && pPlayer != pOwner)
+            {
+                // Check if this player was likely hit (health < 100)
+                if (pPlayer->GetHealth() < 100)
+                {
+                    DevMsg("Gauss secondary: Player %d health now %d (armor: %d)\n", 
+                           i, pPlayer->GetHealth(), pPlayer->ArmorValue());
+                }
+            }
+        }
+        
         // Finish lag compensation
         lagcompensation->FinishLagCompensation( pOwner );
     #endif
