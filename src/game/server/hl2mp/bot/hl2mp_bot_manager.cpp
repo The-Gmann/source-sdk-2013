@@ -23,7 +23,7 @@ ConVar hl2mp_bot_auto_vacate( "hl2mp_bot_auto_vacate", "1", FCVAR_NONE, "If nonz
 ConVar hl2mp_bot_offline_practice( "hl2mp_bot_offline_practice", "0", FCVAR_NONE, "Tells the server that it is in offline practice mode." );
 ConVar hl2mp_bot_melee_only( "hl2mp_bot_melee_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use melee weapons" );
 ConVar hl2mp_bot_gravgun_only( "hl2mp_bot_gravgun_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use gravity gun weapon" );
-ConVar hl2mp_bot_quota_debug( "hl2mp_bot_quota_debug", "1", FCVAR_GAMEDLL, "Enable debug output for bot quota system" );
+ConVar hl2mp_bot_quota_debug( "hl2mp_bot_quota_debug", "0", FCVAR_CHEAT, "Enable debug output for bot quota system" );
 
 extern const char *GetRandomBotName( void );
 extern void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize );
@@ -39,29 +39,31 @@ static const char *g_ppszUniqueBotNames[] =
 	"Odessa Cubbage", "Winston", "Sheckley", "Griggs", "Lars", "Lazlo",
 	"Captain Vance", "Vortigaunt", "The G-Man", "Civil Protection",
 	
-	// Obscure and Nonsensical Names
-	"Quantum Entangler", "Resonance Cascade", "Headcrab Whisperer", "Lambda Core",
-	"Antlion Tamer", "Crowbar Enthusiast", "Gravity Manipulator", "Portal Walker",
-	"Strider Bait", "Hunter Fodder", "Combine Harvester", "City 17 Refugee",
-	"Black Mesa Survivor", "Xen Tourist", "Manhack Dodger", "Turret Hugger",
-	"Barnacle Bait", "Poison Zombie Food", "Fast Zombie Runner", "Antlion Guard Puncher",
+	// Half-Life Mods & Extended Universe
+	"Adrian Shephard", "Otis Laurey", "Gina Cross", "Colette Green", "Damien Reeves",
+	"Walter Bennet", "Ivan the Space Biker", "Kate", "Richard Keller", "Dr. Rosenberg",
+	"Nick", "Pit Drone Wrangler", "Race X Survivor", "HECU Marine", "Black Ops Agent",
+	"Freeman's Mind", "Civil Protection 01", "Metrocop Beta", "Rebel Medic", "City Scanner",
 	
-	// Technical/Scientific Names
-	"Dr. Anomalous", "Prof. Theoretical", "Specimen 42", "Test Subject 7",
-	"Lab Rat", "Quantum Mechanic", "Flux Capacitor", "Temporal Anomaly",
-	"Dimensional Rift", "Particle Accelerator", "Neutron Star", "Dark Matter",
+	// Opposing Force References
+	"Corporal Shephard", "Sergeant Major", "Drill Instructor", "Bootcamp Survivor",
+	"Military Police", "Hazmat Specialist", "Gene Worm Hunter", "Portal Storm Witness",
+	"Displacer Cannon User", "Spore Launcher Expert", "Shock Trooper", "Alien Grunt Slayer",
 	
-	// Silly/Random Names
-	"Bob the Builder", "Chair Enthusiast", "Soda Can Collector", "Floor Inspector",
-	"Ceiling Watcher", "Door Knocker", "Window Peeker", "Stairs Climber",
-	"Button Pusher", "Lever Puller", "Switch Flipper", "Crate Mover",
-	"Barrel Roller", "Box Stacker", "Can Opener", "Pipe Dreamer",
+	// Blue Shift & Decay References
+	"Security Guard Calhoun", "Dr. Cross", "Dr. Green", "Maintenance Worker",
+	"Sector C Guard", "Anomalous Materials", "Lambda Complex", "Xen Borderworld",
+	"Resonance Cascade", "Black Mesa East", "Nova Prospekt", "The Citadel",
 	
-	// Mysterious Names
-	"The Wanderer", "Silent Observer", "Unknown Entity", "Anonymous User",
-	"Classified Asset", "Redacted Name", "Subject X", "Agent Zero",
-	"Ghost Protocol", "Shadow Walker", "Void Caller", "Echo Chamber",
-	"Data Stream", "Signal Lost", "Connection Error", "System Failure"
+	// Community Mod References
+	"Sweet Half-Life", "Azure Sheep", "Point of View", "They Hunger",
+	"USS Darkstar", "Wanted!", "Half-Quake", "Poke646", "Science and Industry",
+	"Sven Coop", "Natural Selection", "Day of Defeat", "Ricochet", "Deathmatch Classic",
+	
+	// HL2 Episode Characters
+	"Advisor Victim", "Strider Pilot", "Hunter Synth", "Combine Elite",
+	"Zombie Torso", "Antlion Worker", "Vortigaunt Elder", "Resistance Fighter",
+	"White Forest Base", "Episode Three", "Borealis Crew", "Aperture Scientist"
 };
 
 static int g_iNextUniqueBotNameIndex = 0;

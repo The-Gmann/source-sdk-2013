@@ -142,6 +142,15 @@ public:
 	bool IsBarrageAndReloadWeapon( CBaseHL2MPCombatWeapon *weapon ) const;	// return true if given weapon has small clip and long reload cost (ie: rocket launcher, etc)
 	bool IsQuietWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if given weapon doesn't make much sound when used (ie: spy knife, etc)
 
+	// Enhanced weapon handling methods
+	bool IsGaussWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if weapon is gauss gun
+	bool IsEgonWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if weapon is egon gun
+	bool IsPistolWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if weapon is pistol
+	bool IsGrenadeWeapon( CBaseHL2MPCombatWeapon *weapon ) const;			// return true if weapon is grenade
+	bool ShouldUseSecondaryFire( CBaseHL2MPCombatWeapon *weapon, float threatRange ) const;	// determine if secondary fire should be used
+	bool ShouldThrowGrenade( const CKnownEntity *threat ) const;			// determine if grenade should be thrown
+	bool NeedsWeaponUpgrade( void ) const;								// return true if bot should look for better weapons
+
 	bool IsEnvironmentNoisy( void ) const;							// return true if there are/have been loud noises (ie: non-quiet weapons) nearby very recently
 
 	bool IsEnemy( const CBaseEntity* them ) const OVERRIDE;

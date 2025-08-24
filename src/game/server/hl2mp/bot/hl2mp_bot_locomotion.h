@@ -5,6 +5,9 @@
 
 #include "NextBot/Player/NextBotPlayerLocomotion.h"
 
+// Forward declarations
+class CHL2MPBot;
+
 //----------------------------------------------------------------------------
 class CHL2MPBotLocomotion : public PlayerLocomotion
 {
@@ -13,6 +16,10 @@ public:
 
 	CHL2MPBotLocomotion( INextBot *bot ) : PlayerLocomotion( bot )
 	{
+		// Initialize sprint tracking variables
+		m_isSprinting = false;
+		m_sprintStartTime = 0.0f;
+		m_lastSprintButtonPress = 0.0f;
 	}
 
 	virtual ~CHL2MPBotLocomotion() { }
@@ -29,8 +36,16 @@ public:
 	virtual bool IsAreaTraversable( const CNavArea *baseArea ) const;	// return true if given area can be used for navigation
 	virtual bool IsEntityTraversable( CBaseEntity *obstacle, TraverseWhenType when = EVENTUALLY ) const;
 
+	// Sprint decision making
+	bool ShouldSprint( CHL2MPBot *me ) const;			// determine if bot should sprint based on tactical situation
+
 protected:
 	virtual void AdjustPosture( const Vector &moveGoal ) { }	// never crouch to navigate
+
+	// Sprint state tracking variables
+	bool m_isSprinting;
+	float m_sprintStartTime;
+	float m_lastSprintButtonPress;
 };
 
 inline float CHL2MPBotLocomotion::GetMaxJumpHeight( void ) const

@@ -36,6 +36,7 @@ extern ConVar hl2mp_bot_fire_weapon_min_time;
 extern ConVar hl2mp_bot_difficulty;
 extern ConVar hl2mp_bot_farthest_visible_theater_sample_count;
 extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar hl2mp_bot_grenade_throw_chance;
 
 
 
@@ -1416,6 +1417,7 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	// -------------------------------------------------------------------------------
 
 	CBaseCombatWeapon* pLongRange = NULL;
+	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_gauss" ); // Gauss gun for long range devastation
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_rpg" );
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_crossbow" );
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_357" );
@@ -1428,6 +1430,7 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( !pSMG1Fallback ) pSMG1Fallback = Weapon_OwnsThisType( "weapon_smg1" );
 
 	CBaseCombatWeapon* pCloseRangeGun = NULL;
+	if ( !pCloseRangeGun ) pCloseRangeGun = Weapon_OwnsThisType( "weapon_egon" ); // Egon for devastating close-medium range
 	if ( !pCloseRangeGun ) pCloseRangeGun = Weapon_OwnsThisType( "weapon_shotgun" );
 
 	CBaseCombatWeapon* pFallbackWeapon = NULL;
@@ -1677,7 +1680,8 @@ bool CHL2MPBot::IsContinuousFireWeapon( CBaseHL2MPCombatWeapon *weapon ) const
 
 		if ( FClassnameIs( weapon, "weapon_smg1" ) ||
 			 FClassnameIs( weapon, "weapon_ar2" ) ||
-			 FClassnameIs( weapon, "weapon_shotgun" ) )
+			 FClassnameIs( weapon, "weapon_shotgun" ) ||
+			 FClassnameIs( weapon, "weapon_egon" ) ) // Egon is continuous beam weapon
 		{
 			return true;
 		}
@@ -1689,7 +1693,169 @@ bool CHL2MPBot::IsContinuousFireWeapon( CBaseHL2MPCombatWeapon *weapon ) const
 
 
 //-----------------------------------------------------------------------------------------------------
-// return true if given weapon launches explosive projectiles with splash damage
+// Enhanced weapon handling methods
+//-----------------------------------------------------------------------------------------------------
+
+// return true if weapon is gauss gun
+bool CHL2MPBot::IsGaussWeapon( CBaseHL2MPCombatWeapon *weapon ) const
+{
+	if ( weapon == MY_CURRENT_GUN )
+	{
+		weapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	}
+
+	if ( weapon )
+	{
+		if ( FClassnameIs( weapon, "weapon_gauss" ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// return true if weapon is egon gun
+bool CHL2MPBot::IsEgonWeapon( CBaseHL2MPCombatWeapon *weapon ) const
+{
+	if ( weapon == MY_CURRENT_GUN )
+	{
+		weapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	}
+
+	if ( weapon )
+	{
+		if ( FClassnameIs( weapon, "weapon_egon" ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// return true if weapon is pistol
+bool CHL2MPBot::IsPistolWeapon( CBaseHL2MPCombatWeapon *weapon ) const
+{
+	if ( weapon == MY_CURRENT_GUN )
+	{
+		weapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	}
+
+	if ( weapon )
+	{
+		if ( FClassnameIs( weapon, "weapon_pistol" ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// return true if weapon is grenade
+bool CHL2MPBot::IsGrenadeWeapon( CBaseHL2MPCombatWeapon *weapon ) const
+{
+	if ( weapon == MY_CURRENT_GUN )
+	{
+		weapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	}
+
+	if ( weapon )
+	{
+		if ( FClassnameIs( weapon, "weapon_frag" ) )
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// determine if secondary fire should be used
+bool CHL2MPBot::ShouldUseSecondaryFire( CBaseHL2MPCombatWeapon *weapon, float threatRange ) const
+{
+	if ( weapon == MY_CURRENT_GUN )
+	{
+		weapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	}
+
+	if ( !weapon )
+		return false;
+
+	// Gauss gun - use secondary for long range or high damage situations
+	if ( IsGaussWeapon( weapon ) )
+	{
+		// Use charged shot for long range (>400 units) or if we have time to charge
+		if ( threatRange > 400.0f || GetDifficulty() >= HARD )
+		{
+			return true;
+		}
+	}
+
+	// For other weapons, check if they have useful secondary fire
+	if ( FClassnameIs( weapon, "weapon_ar2" ) && threatRange > 800.0f )
+	{
+		// AR2 alt-fire for long range
+		return true;
+	}
+
+	return false;
+}
+
+// determine if grenade should be thrown
+bool CHL2MPBot::ShouldThrowGrenade( const CKnownEntity *threat ) const
+{
+	if ( !threat || !threat->GetEntity() )
+		return false;
+
+	// Don't throw grenades if we don't have any
+	CBaseCombatWeapon *pGrenade = Weapon_OwnsThisType( "weapon_frag" );
+	if ( !pGrenade )
+		return false;
+
+	float threatRange = ( threat->GetEntity()->GetAbsOrigin() - GetAbsOrigin() ).Length();
+
+	// Ideal grenade range - not too close, not too far
+	if ( threatRange < 150.0f || threatRange > 800.0f )
+		return false;
+
+	// Only throw if enemy is visible and we have a clear line of sight
+	if ( !threat->IsVisibleRecently() || !IsLineOfFireClear( threat->GetEntity() ) )
+		return false;
+
+	// Random chance based on difficulty and ConVar
+	int throwChance = hl2mp_bot_grenade_throw_chance.GetInt();
+	if ( GetDifficulty() >= HARD )
+		throwChance += 20; // Higher chance for harder bots
+
+	return RandomInt( 0, 100 ) < throwChance;
+}
+
+// return true if bot should look for better weapons
+bool CHL2MPBot::NeedsWeaponUpgrade( void ) const
+{
+	CBaseHL2MPCombatWeapon *myWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	if ( !myWeapon )
+		return true; // No weapon, definitely need one
+
+	// If we only have melee or crowbar, look for guns
+	if ( IsBludgeon( myWeapon ) )
+		return true;
+
+	// If we only have pistol, look for better weapons
+	if ( IsPistolWeapon( myWeapon ) )
+		return true;
+
+	// If our weapon is out of ammo and we can't reload, look for new weapons
+	if ( myWeapon->Clip1() <= 0 && GetAmmoCount( myWeapon->GetPrimaryAmmoType() ) <= 0 )
+		return true;
+
+	return false;
+}
+
+//-----------------------------------------------------------------------------------------------------
+// Return true if given weapon launches explosive projectiles with splash damage
 bool CHL2MPBot::IsExplosiveProjectileWeapon( CBaseHL2MPCombatWeapon *weapon ) const
 {
 	if ( weapon == MY_CURRENT_GUN )

@@ -221,6 +221,13 @@ ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float
 
 	bool isAvailable = ( me->GetIntentionInterface()->ShouldHurry( me ) != ANSWER_YES );
 
+	// Check if we need a weapon upgrade and prioritize weapon collection
+	if ( isAvailable && me->NeedsWeaponUpgrade() )
+	{
+		// Force seek and destroy behavior to prioritize weapon collection
+		return SuspendFor( new CHL2MPBotSeekAndDestroy, "Seeking weapons for upgrade" );
+	}
+
 	// collect ammo and health kits, unless we're in a big hurry
 	if ( isAvailable )
 	{

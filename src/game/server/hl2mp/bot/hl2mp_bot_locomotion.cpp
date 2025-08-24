@@ -1,12 +1,26 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 
 #include "cbase.h"
+#include <ctime>
 
 #include "hl2mp_bot.h"
 #include "hl2mp_bot_locomotion.h"
 #include "particle_parse.h"
+#include "hl2mp_gamerules.h"
 
 extern ConVar falldamage;
+extern ConVar hl2_normspeed;
+extern ConVar hl2_sprintspeed;
+
+// Debug ConVar for sprint tracking
+ConVar hl2mp_bot_debug_sprint( "hl2mp_bot_debug_sprint", "0", FCVAR_CHEAT, "Show bot sprint debug messages with timestamps and duration" );
+
+// Sprint behavior ConVars
+ConVar hl2mp_bot_sprint_when_chasing( "hl2mp_bot_sprint_when_chasing", "1", FCVAR_CHEAT, "Bots sprint when chasing enemies" );
+ConVar hl2mp_bot_sprint_when_fleeing( "hl2mp_bot_sprint_when_fleeing", "1", FCVAR_CHEAT, "Bots sprint when fleeing from enemies" );
+ConVar hl2mp_bot_sprint_long_distance( "hl2mp_bot_sprint_long_distance", "500", FCVAR_CHEAT, "Distance threshold for sprinting to objectives" );
+ConVar hl2mp_bot_sprint_low_health( "hl2mp_bot_sprint_low_health", "30", FCVAR_CHEAT, "Health threshold for emergency sprinting" );
+ConVar hl2mp_bot_sprint_min_duration( "hl2mp_bot_sprint_min_duration", "1.0", FCVAR_CHEAT, "Minimum time to sprint before allowing state change" );
 
 //-----------------------------------------------------------------------------------------
 void CHL2MPBotLocomotion::Update( void )
@@ -19,14 +33,179 @@ void CHL2MPBotLocomotion::Update( void )
 		return;
 	}
 
-	// always 'crouch jump'
-	if ( IsOnGround() )
+	// Determine if bot should sprint based on tactical situation
+	bool shouldSprint = ShouldSprint( me );
+	
+	// Add sprint state stability - prevent rapid switching
+	if ( m_isSprinting )
 	{
-		me->ReleaseCrouchButton();
+		// If currently sprinting, require minimum duration before allowing stop
+		float sprintDuration = gpGlobals->curtime - m_sprintStartTime;
+		if ( sprintDuration < hl2mp_bot_sprint_min_duration.GetFloat() )
+		{
+			// Force continue sprinting for minimum duration
+			shouldSprint = true;
+		}
+	}
+	
+	// Enhanced debug output for sprint state analysis
+	if ( hl2mp_bot_debug_sprint.GetBool() )
+	{
+		// Calculate current movement metrics
+		Vector velocity = me->GetAbsVelocity();
+		float currentSpeed = velocity.Length2D();
+		float desiredSpeed = GetDesiredSpeed();
+		bool isMoving = (desiredSpeed > 0.0f && currentSpeed > 10.0f);
+		
+		// Get sprint decision context
+		const CKnownEntity *primaryThreat = me->GetVisionInterface()->GetPrimaryKnownThreat();
+		bool hasVisibleThreat = (primaryThreat && primaryThreat->IsVisibleRecently());
+		float threatRange = hasVisibleThreat ? me->GetRangeTo( primaryThreat->GetEntity() ) : -1.0f;
+		
+		// Determine movement state
+		const char* movementState;
+		if ( !isMoving )
+		{
+			movementState = "IDLE";
+		}
+		else if ( m_isSprinting )
+		{
+			movementState = "SPRINTING";
+		}
+		else if ( currentSpeed > hl2_normspeed.GetFloat() * 0.8f )
+		{
+			movementState = "RUNNING";
+		}
+		else
+		{
+			movementState = "WALKING";
+		}
+		
+		// Get sprint decision reason
+		const char* sprintReason = "None";
+		if ( shouldSprint )
+		{
+			if ( me->GetHealth() < (hl2mp_bot_sprint_low_health.GetInt() / 2) )
+			{
+				sprintReason = "Emergency-LowHealth";
+			}
+			else if ( hasVisibleThreat && threatRange < 300.0f )
+			{
+				sprintReason = "Combat-Fleeing";
+			}
+			else if ( hasVisibleThreat && threatRange > 200.0f && threatRange < 800.0f )
+			{
+				sprintReason = "Combat-Chasing";
+			}
+			else
+			{
+				const PathFollower *path = me->GetCurrentPath();
+				if ( path && path->IsValid() && path->GetLength() > hl2mp_bot_sprint_long_distance.GetFloat() )
+				{
+					sprintReason = "Navigation-LongDistance";
+				}
+				else
+				{
+					sprintReason = "Tactical";
+				}
+			}
+		}
+		else if ( hasVisibleThreat && threatRange < 200.0f )
+		{
+			sprintReason = "Stealth-Approach";
+		}
+		
+		// Output detailed debug information
+		if ( isMoving || m_isSprinting )
+		{
+			time_t rawtime = (time_t)gpGlobals->curtime;
+			struct tm* timeinfo = localtime(&rawtime);
+			
+			float sprintDuration = m_isSprinting ? (gpGlobals->curtime - m_sprintStartTime) : 0.0f;
+			float buttonRefreshAge = m_isSprinting ? (gpGlobals->curtime - m_lastSprintButtonPress) : 0.0f;
+			
+			DevMsg("[%02d:%02d:%02d] %s: %s | Speed: %.1f/%.1f (%.0f%%) | HP: %d | Threat: %s@%.0fu | Reason: %s",
+				timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+				me->GetPlayerName(),
+				movementState,
+				currentSpeed,
+				m_isSprinting ? hl2_sprintspeed.GetFloat() : hl2_normspeed.GetFloat(),
+				m_isSprinting ? (currentSpeed / hl2_sprintspeed.GetFloat()) * 100.0f : (currentSpeed / hl2_normspeed.GetFloat()) * 100.0f,
+				me->GetHealth(),
+				hasVisibleThreat ? "YES" : "NO",
+				threatRange,
+				sprintReason);
+			
+			if ( m_isSprinting )
+			{
+				DevMsg(" | Duration: %.2fs | Refresh: %.2fs", sprintDuration, buttonRefreshAge);
+			}
+			
+			// Add movement flags info
+			if ( me->GetFlags() & FL_DUCKING )
+			{
+				DevMsg(" | CROUCHING");
+			}
+			if ( me->GetWaterLevel() > 0 )
+			{
+				DevMsg(" | WATER:%d", me->GetWaterLevel());
+			}
+			if ( !IsOnGround() )
+			{
+				DevMsg(" | AIRBORNE");
+			}
+			
+			DevMsg("\n");
+		}
+	}
+
+	// Apply sprint state changes - use continuous button management for proper sprint behavior
+	if ( shouldSprint )
+	{
+		if ( !m_isSprinting )
+		{
+			// Start sprinting - press and hold the button for extended duration
+			me->PressWalkButton( 5.0f ); // Hold for 5 seconds
+			m_isSprinting = true;
+			m_sprintStartTime = gpGlobals->curtime;
+			m_lastSprintButtonPress = gpGlobals->curtime;
+		}
+		else
+		{
+			// Continue sprinting - refresh the button hold well before it expires
+			if ( (gpGlobals->curtime - m_lastSprintButtonPress) >= 4.0f )
+			{
+				me->PressWalkButton( 5.0f ); // Refresh button hold
+				m_lastSprintButtonPress = gpGlobals->curtime;
+			}
+		}
 	}
 	else
 	{
-		me->PressCrouchButton( 0.3f );
+		if ( m_isSprinting )
+		{
+			// Stop sprinting - explicitly release the button
+			me->ReleaseWalkButton();
+			m_isSprinting = false;
+			m_sprintStartTime = 0.0f;
+			m_lastSprintButtonPress = 0.0f;
+		}
+	}
+
+	// Manage crouch-jump behavior - but don't interfere with sprinting
+	if ( IsOnGround() )
+	{
+		// Only release crouch if we're not trying to sprint
+		if ( !shouldSprint )
+		{
+			me->ReleaseCrouchButton();
+		}
+	}
+	else
+	{
+		// In air - crouch for better jump control, but shorter duration when sprinting
+		float crouchDuration = shouldSprint ? 0.1f : 0.3f;
+		me->PressCrouchButton( crouchDuration );
 	}
 }
 
@@ -62,12 +241,86 @@ float CHL2MPBotLocomotion::GetDeathDropHeight( void ) const
 
 
 //-----------------------------------------------------------------------------------------
-// Get maximum running speed
+// Get maximum running speed - now returns normal speed, sprinting handled by button press
 float CHL2MPBotLocomotion::GetRunSpeed( void ) const
 {
+	// Return normal speed - sprinting is handled by pressing IN_SPEED button
 	return hl2_normspeed.GetFloat();
-	// TODO(misyl): Teach bots to sprint.
-	//return hl2_sprintspeed.GetFloat();
+}
+
+//-----------------------------------------------------------------------------------------
+// Determine if bot should sprint based on tactical situation
+bool CHL2MPBotLocomotion::ShouldSprint( CHL2MPBot *me ) const
+{
+	if ( !me || !me->IsAlive() )
+		return false;
+
+	// Don't sprint if crouching
+	if ( me->GetFlags() & FL_DUCKING )
+		return false;
+
+	// Don't sprint underwater
+	if ( me->GetWaterLevel() >= 3 )
+		return false;
+
+	// Get current intention and known threats
+	const CKnownEntity *primaryThreat = me->GetVisionInterface()->GetPrimaryKnownThreat();
+	bool hasVisibleThreat = (primaryThreat && primaryThreat->IsVisibleRecently());
+	
+	// Check if we're in combat or fleeing (high priority sprinting)
+	if ( hasVisibleThreat )
+	{
+		float threatRange = me->GetRangeTo( primaryThreat->GetEntity() );
+		
+		// Sprint when chasing enemies at medium-long range
+		if ( hl2mp_bot_sprint_when_chasing.GetBool() && threatRange > 200.0f && threatRange < 800.0f )
+		{
+			return true;
+		}
+		
+		// Sprint when fleeing from close threats or low health
+		if ( hl2mp_bot_sprint_when_fleeing.GetBool() )
+		{
+			if ( threatRange < 300.0f || me->GetHealth() < hl2mp_bot_sprint_low_health.GetInt() )
+			{
+				return true;
+			}
+		}
+	}
+	
+	// Sprint for long-distance navigation when no immediate threats
+	if ( !hasVisibleThreat || primaryThreat->GetTimeSinceLastSeen() > 3.0f )
+	{
+		// Check if we have a long-distance goal
+		const PathFollower *path = me->GetCurrentPath();
+		if ( path && path->IsValid() )
+		{
+			float pathLength = path->GetLength();
+			if ( pathLength > hl2mp_bot_sprint_long_distance.GetFloat() )
+			{
+				return true;
+			}
+		}
+	}
+	
+	// Sprint when health is critically low (emergency situations)
+	if ( me->GetHealth() < (hl2mp_bot_sprint_low_health.GetInt() / 2) )
+	{
+		return true;
+	}
+	
+	// Don't sprint in stealth situations (sneaking up on enemies)
+	if ( hasVisibleThreat && primaryThreat->GetTimeSinceLastSeen() < 1.0f )
+	{
+		float threatRange = me->GetRangeTo( primaryThreat->GetEntity() );
+		// Don't sprint when close to unaware enemies (stealth approach)
+		if ( threatRange < 200.0f )
+		{
+			return false;
+		}
+	}
+	
+	return false; // Default: don't sprint
 }
 
 

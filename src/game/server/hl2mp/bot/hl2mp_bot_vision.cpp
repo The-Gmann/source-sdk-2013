@@ -8,8 +8,9 @@
 #include "hl2mp_player.h"
 #include "hl2mp_gamerules.h"
 
-ConVar hl2mp_bot_choose_target_interval( "hl2mp_bot_choose_target_interval", "0.3f", FCVAR_CHEAT, "How often, in seconds, a HL2MPBot can reselect his target" );
-ConVar hl2mp_bot_sniper_choose_target_interval( "hl2mp_bot_sniper_choose_target_interval", "3.0f", FCVAR_CHEAT, "How often, in seconds, a zoomed-in Sniper can reselect his target" );
+// Unused ConVars - commented out to reduce clutter
+// ConVar hl2mp_bot_choose_target_interval( "hl2mp_bot_choose_target_interval", "0.3f", FCVAR_CHEAT, "How often, in seconds, a HL2MPBot can reselect his target" );
+// ConVar hl2mp_bot_sniper_choose_target_interval( "hl2mp_bot_sniper_choose_target_interval", "3.0f", FCVAR_CHEAT, "How often, in seconds, a zoomed-in Sniper can reselect his target" );
 
 extern ConVar hl2mp_bot_ignore_real_players;
 
