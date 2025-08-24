@@ -16,27 +16,31 @@
 #include "soundenvelope.h"
 #include "hl2mp/weapon_hl2mpbasebasebludgeon.h"
 #include "hl2mp/weapon_physcannon.h"
+#include "ammodef.h"
 
 #include "bot/behavior/hl2mp_bot_behavior.h"
 
-ConVar hl2mp_bot_notice_gunfire_range( "hl2mp_bot_notice_gunfire_range", "3000", FCVAR_GAMEDLL );
-ConVar hl2mp_bot_notice_quiet_gunfire_range( "hl2mp_bot_notice_quiet_gunfire_range", "500", FCVAR_GAMEDLL );
-ConVar hl2mp_bot_prefix_name_with_difficulty( "hl2mp_bot_prefix_name_with_difficulty", "0", FCVAR_GAMEDLL, "Append the skill level of the bot to the bot's name" );
-ConVar hl2mp_bot_near_point_travel_distance( "hl2mp_bot_near_point_travel_distance", "750", FCVAR_CHEAT, "If within this travel distance to the current point, bot is 'near' it" );
+ConVar bot_notice_gunfire_range( "bot_notice_gunfire_range", "3000", FCVAR_GAMEDLL );
+ConVar bot_notice_quiet_gunfire_range( "bot_notice_quiet_gunfire_range", "500", FCVAR_GAMEDLL );
+ConVar bot_prefix_name_with_difficulty( "bot_prefix_name_with_difficulty", "0", FCVAR_GAMEDLL, "Append the skill level of the bot to the bot's name" );
+ConVar bot_near_point_travel_distance( "bot_near_point_travel_distance", "750", FCVAR_CHEAT, "If within this travel distance to the current point, bot is 'near' it" );
 
-ConVar hl2mp_bot_debug_tags( "hl2mp_bot_debug_tags", "0", FCVAR_CHEAT, "ent_text will only show tags on bots" );
+ConVar bot_debug_tags( "bot_debug_tags", "0", FCVAR_CHEAT, "ent_text will only show tags on bots" );
 
-ConVar hl2mp_bot_ignore_real_players( "hl2mp_bot_ignore_real_players", "0", FCVAR_CHEAT );
+ConVar bot_ignore_real_players( "bot_ignore_real_players", "0", FCVAR_CHEAT );
 
-ConVar hl2mp_bot_shotgunner_range( "hl2mp_bot_shotgunner_range", "320", FCVAR_NONE );
-ConVar hl2mp_bot_prop_freak_ratio( "hl2mp_bot_prop_freak_ratio", "0.3", FCVAR_NONE );
-ConVar hl2mp_bot_prop_hater_ratio( "hl2mp_bot_prop_hater_ratio", "0.3", FCVAR_NONE );
+ConVar bot_shotgunner_range( "bot_shotgunner_range", "320", FCVAR_NONE );
+ConVar bot_prop_freak_ratio( "bot_prop_freak_ratio", "0.3", FCVAR_NONE );
+ConVar bot_prop_hater_ratio( "bot_prop_hater_ratio", "0.3", FCVAR_NONE );
 
-extern ConVar hl2mp_bot_fire_weapon_min_time;
-extern ConVar hl2mp_bot_difficulty;
-extern ConVar hl2mp_bot_farthest_visible_theater_sample_count;
-extern ConVar hl2mp_bot_path_lookahead_range;
-extern ConVar hl2mp_bot_grenade_throw_chance;
+extern ConVar bot_fire_weapon_min_time;
+extern ConVar bot_difficulty;
+extern ConVar bot_farthest_visible_theater_sample_count;
+extern ConVar bot_path_lookahead_range;
+extern ConVar bot_grenade_throw_chance;
+extern ConVar bot_debug_superweapons;
+
+extern const char* GetUniqueBotName();
 
 
 
@@ -139,7 +143,7 @@ void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, i
 	const char *pBotName = GetRandomBotName();
 	const char* pFriendlyOrEnemyTitle = "";
 	
-	const char *pDifficultyString = hl2mp_bot_prefix_name_with_difficulty.GetBool() ? DifficultyLevelToString( skill ) : "";
+	const char *pDifficultyString = bot_prefix_name_with_difficulty.GetBool() ? DifficultyLevelToString( skill ) : "";
 
 	// we use this as our formatting, because we don't know the language of the downstream clients
 	CFmtStr name( "%s%s%s", 
@@ -148,7 +152,7 @@ void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, i
 }
 
 //-----------------------------------------------------------------------------------------------------
-CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
+CON_COMMAND_F( bot_add, "Add a bot.", FCVAR_GAMEDLL )
 {
 	// Listenserver host or rcon access only!
 	if ( !UTIL_IsCommandIssuedByServerAdmin() )
@@ -158,7 +162,7 @@ CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 	int botCount = 1;
 	const char *teamname = "auto";
 	const char *pszBotNameViaArg = NULL;
-	CHL2MPBot::DifficultyType skill = clamp( (CHL2MPBot::DifficultyType)hl2mp_bot_difficulty.GetInt(), CHL2MPBot::EASY, CHL2MPBot::EXPERT );
+	CHL2MPBot::DifficultyType skill = clamp( (CHL2MPBot::DifficultyType)bot_difficulty.GetInt(), CHL2MPBot::EASY, CHL2MPBot::EXPERT );
 
 	int i;
 	for( i=1; i<args.ArgC(); ++i )
@@ -213,8 +217,8 @@ CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 
 		if ( !pszBotNameViaArg )
 		{
-			CreateBotName( iTeam, skill, name, sizeof(name) );
-			pszBotName = name;
+			// Use unique names from bot manager for manually added bots
+			pszBotName = GetUniqueBotName();
 		}
 		else
 		{
@@ -232,11 +236,11 @@ CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 
 			float flDice = RandomFloat();
 
-			if ( flDice <= hl2mp_bot_prop_freak_ratio.GetFloat() )
+			if ( flDice <= bot_prop_freak_ratio.GetFloat() )
 			{
 				pBot->SetAttribute( CHL2MPBot::PROP_FREAK );
 			}
-			else if ( flDice >= ( 1.0f - hl2mp_bot_prop_hater_ratio.GetFloat() ) )
+			else if ( flDice >= ( 1.0f - bot_prop_hater_ratio.GetFloat() ) )
 			{
 				pBot->SetAttribute( CHL2MPBot::PROP_HATER );
 			}
@@ -255,7 +259,7 @@ CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 				pszModel = g_ppszRandomCitizenModels[RandomInt( 0, ARRAYSIZE( g_ppszRandomCitizenModels ) )];
 			}
 			engine->SetFakeClientConVarValue( pBot->edict(), "cl_playermodel", pszModel );
-			engine->SetFakeClientConVarValue( pBot->edict(), "name", name );
+			engine->SetFakeClientConVarValue( pBot->edict(), "name", pszBotName );
 			pBot->HandleCommand_JoinTeam( iTeam );
 			pBot->ChangeTeam( iTeam );
 
@@ -273,7 +277,7 @@ CON_COMMAND_F( hl2mp_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 
 
 //-----------------------------------------------------------------------------------------------------
-CON_COMMAND_F( hl2mp_bot_kick, "Remove a HL2MPBot by name, or all bots (\"all\").", FCVAR_GAMEDLL )
+CON_COMMAND_F( bot_kick, "Remove a bot by name, or all bots (\"all\").", FCVAR_GAMEDLL )
 {
 	// Listenserver host or rcon access only!
 	if ( !UTIL_IsCommandIssuedByServerAdmin() )
@@ -612,7 +616,7 @@ CHL2MPBot::CHL2MPBot()
 	m_attentionFocusEntity = NULL;
 	m_noisyTimer.Invalidate();
 
-	m_difficulty = clamp( (CHL2MPBot::DifficultyType)hl2mp_bot_difficulty.GetInt(), CHL2MPBot::EASY, CHL2MPBot::EXPERT );
+	m_difficulty = clamp( (CHL2MPBot::DifficultyType)bot_difficulty.GetInt(), CHL2MPBot::EASY, CHL2MPBot::EXPERT );
 
 	m_actionPoint = NULL;
 	m_proxy = NULL;
@@ -1004,14 +1008,14 @@ void CHL2MPBot::OnWeaponFired( CBaseCombatCharacter *whoFired, CBaseCombatWeapon
 	if ( !whoFired || !whoFired->IsAlive() )
 		return;
 
-	if ( IsRangeGreaterThan( whoFired, hl2mp_bot_notice_gunfire_range.GetFloat() ) )
+	if ( IsRangeGreaterThan( whoFired, bot_notice_gunfire_range.GetFloat() ) )
 		return;
 
 	int noticeChance = 100;
 
 	if ( IsQuietWeapon( (CBaseHL2MPCombatWeapon *)weapon ) )
 	{
-		if ( IsRangeGreaterThan( whoFired, hl2mp_bot_notice_quiet_gunfire_range.GetFloat() ) )
+		if ( IsRangeGreaterThan( whoFired, bot_notice_quiet_gunfire_range.GetFloat() ) )
 		{
 			// too far away to hear in any event
 			return;
@@ -1285,7 +1289,7 @@ float CHL2MPBot::GetThreatDanger( CBaseCombatCharacter *who ) const
 		if ( player->Weapon_OwnsThisType( "weapon_shotgun" ) )
 		{
 			// Shotgunners are scary at close range
-			if ( IsRangeLessThan( player, hl2mp_bot_shotgunner_range.GetFloat() ) )
+			if ( IsRangeLessThan( player, bot_shotgunner_range.GetFloat() ) )
 			{
 				return 0.7f;
 			}
@@ -1414,10 +1418,36 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( EquipRequiredWeapon() )
 		return;
 
+	// ABSOLUTE SUPERWEAPON PROTECTION - never switch away from gauss/egon if we have ammo
+	CBaseHL2MPCombatWeapon *currentWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	if ( currentWeapon && (IsGaussWeapon( currentWeapon ) || IsEgonWeapon( currentWeapon )) )
+	{
+		int gaussAmmoCount = GetAmmoCount( GetAmmoDef()->Index("GaussEnergy") );
+		// Stay with superweapon if we have any ammo at all
+		if ( currentWeapon->Clip1() > 0 || gaussAmmoCount > 0 )
+		{
+			if ( bot_debug_superweapons.GetBool() )
+			{
+				DevMsg( "Bot %s: Keeping superweapon %s (Clip: %d, Ammo: %d)\n", 
+					GetPlayerName(), currentWeapon->GetClassname(), currentWeapon->Clip1(), gaussAmmoCount );
+			}
+			return; // Don't switch away from loaded superweapon!
+		}
+		else if ( bot_debug_superweapons.GetBool() )
+		{
+			DevMsg( "Bot %s: Superweapon %s out of ammo (Clip: %d, Ammo: %d), searching for new weapon\n", 
+				GetPlayerName(), currentWeapon->GetClassname(), currentWeapon->Clip1(), gaussAmmoCount );
+		}
+	}
+
 	// -------------------------------------------------------------------------------
 
+	CBaseCombatWeapon* pSuperWeapon = NULL;
+	// Superweapons - gauss and egon take absolute priority
+	if ( !pSuperWeapon ) pSuperWeapon = Weapon_OwnsThisType( "weapon_gauss" );
+	if ( !pSuperWeapon ) pSuperWeapon = Weapon_OwnsThisType( "weapon_egon" );
+
 	CBaseCombatWeapon* pLongRange = NULL;
-	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_gauss" ); // Gauss gun for long range devastation
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_rpg" );
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_crossbow" );
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_357" );
@@ -1430,7 +1460,6 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( !pSMG1Fallback ) pSMG1Fallback = Weapon_OwnsThisType( "weapon_smg1" );
 
 	CBaseCombatWeapon* pCloseRangeGun = NULL;
-	if ( !pCloseRangeGun ) pCloseRangeGun = Weapon_OwnsThisType( "weapon_egon" ); // Egon for devastating close-medium range
 	if ( !pCloseRangeGun ) pCloseRangeGun = Weapon_OwnsThisType( "weapon_shotgun" );
 
 	CBaseCombatWeapon* pFallbackWeapon = NULL;
@@ -1444,17 +1473,37 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( !pMelee ) pMelee = GetBludgeonWeapon();
 
 	// --------------------------------------------------------------------------------
+	// --------------------------------------------------------------------------------
+	// Special handling for superweapons - gauss and egon have different ammo requirements
+	int gaussAmmoCount = GetAmmoCount( GetAmmoDef()->Index("GaussEnergy") );
+	if ( pSuperWeapon )
+	{
+		// Superweapons need special ammo handling - but be VERY lenient
+		if ( IsGaussWeapon( dynamic_cast<CBaseHL2MPCombatWeapon*>(pSuperWeapon) ) )
+		{
+			// Gauss has clips and ammo pool - keep it unless COMPLETELY out of both
+			if ( pSuperWeapon->Clip1() <= 0 && gaussAmmoCount <= 0 )
+				pSuperWeapon = NULL;
+		}
+		else if ( IsEgonWeapon( dynamic_cast<CBaseHL2MPCombatWeapon*>(pSuperWeapon) ) )
+		{
+			// Egon has no clip, only uses ammo pool - keep it unless COMPLETELY out
+			if ( gaussAmmoCount <= 0 )
+				pSuperWeapon = NULL;
+		}
+	}
+	
 	// Don't consider weapons that we have no ammo for.
-	if ( pLongRange && ( pLongRange->Clip1() + GetAmmoCount( pLongRange->GetPrimaryAmmoCount() ) <= 0 ) )
+	if ( pLongRange && ( pLongRange->Clip1() + GetAmmoCount( pLongRange->GetPrimaryAmmoType() ) <= 0 ) )
 		pLongRange = NULL;
 
-	if ( pMachineGun && ( pMachineGun->Clip1() + GetAmmoCount( pMachineGun->GetPrimaryAmmoCount() ) <= 0 ) )
+	if ( pMachineGun && ( pMachineGun->Clip1() + GetAmmoCount( pMachineGun->GetPrimaryAmmoType() ) <= 0 ) )
 		pMachineGun = NULL;
 
-	if ( pCloseRangeGun && ( pCloseRangeGun->Clip1() + GetAmmoCount( pCloseRangeGun->GetPrimaryAmmoCount() ) <= 0 ) )
+	if ( pCloseRangeGun && ( pCloseRangeGun->Clip1() + GetAmmoCount( pCloseRangeGun->GetPrimaryAmmoType() ) <= 0 ) )
 		pCloseRangeGun = NULL;
 
-	if ( pFallbackWeapon && ( pFallbackWeapon->Clip1() + GetAmmoCount( pFallbackWeapon->GetPrimaryAmmoCount() ) <= 0 ) )
+	if ( pFallbackWeapon && ( pFallbackWeapon->Clip1() + GetAmmoCount( pFallbackWeapon->GetPrimaryAmmoType() ) <= 0 ) )
 		pFallbackWeapon = NULL;
 
 	// -------------------------------------------------------------------------------
@@ -1474,6 +1523,10 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( !threat || !threat->WasEverVisible() || threat->GetTimeSinceLastSeen() > 5.0f )
 	{
 		CBaseCombatWeapon* pChosen = NULL;
+
+		// ALWAYS prefer superweapons when available
+		if ( !pChosen && pSuperWeapon )
+			pChosen = pSuperWeapon;
 
 		// Pull out weapons we want to reload.
 		if ( !pChosen && pMachineGun && !pMachineGun->Clip1() )
@@ -1523,77 +1576,90 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 
 	CBaseCombatWeapon *pChosen = NULL;
 
-	bool bCanSeeTarget = threat->GetTimeSinceLastSeen() < 0.2f;
-
-	// Don't stay in melee if they are far away, or we don't know where they are right now.
-	bool bInMeleeRange = !IsRangeGreaterThan( threat->GetLastKnownPosition(), 127.0f ) && bCanSeeTarget;
-
-	// If difficulty is higher, add some extra flair to reload logic.
-	if ( m_difficulty >= CHL2MPBot::NORMAL )
+	// SUPERWEAPONS ALWAYS TAKE PRIORITY - never switch away from gauss or egon
+	if ( pSuperWeapon )
 	{
-		// If we are using an AR2, and out of ammo, instead of reloading, switch to SMG
-		if ( bCanSeeTarget && pMachineGun && !pMachineGun->Clip1() )
-			pMachineGun = pSMG1Fallback;
-	}
-
-	if ( pCloseRangeGun )
-	{
-		pChosen = pCloseRangeGun;
-	}
-
-	if ( pMachineGun )
-	{
-		if ( pChosen )
+		pChosen = pSuperWeapon;
+		if ( bot_debug_superweapons.GetBool() )
 		{
-			if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), 384.0f ) )
+			DevMsg( "Bot %s: Selected superweapon %s (Clip: %d, GaussAmmo: %d)\n", 
+				GetPlayerName(), pSuperWeapon->GetClassname(), pSuperWeapon->Clip1(), gaussAmmoCount );
+		}
+	}
+	else
+	{
+		bool bCanSeeTarget = threat->GetTimeSinceLastSeen() < 0.2f;
+
+		// Don't stay in melee if they are far away, or we don't know where they are right now.
+		bool bInMeleeRange = !IsRangeGreaterThan( threat->GetLastKnownPosition(), 127.0f ) && bCanSeeTarget;
+
+		// If difficulty is higher, add some extra flair to reload logic.
+		if ( m_difficulty >= CHL2MPBot::NORMAL )
+		{
+			// If we are using an AR2, and out of ammo, instead of reloading, switch to SMG
+			if ( bCanSeeTarget && pMachineGun && !pMachineGun->Clip1() )
+				pMachineGun = pSMG1Fallback;
+		}
+
+		if ( pCloseRangeGun )
+		{
+			pChosen = pCloseRangeGun;
+		}
+
+		if ( pMachineGun )
+		{
+			if ( pChosen )
+			{
+				if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), 384.0f ) )
+					pChosen = pMachineGun;
+			}
+			else
+			{
 				pChosen = pMachineGun;
+			}
 		}
-		else
-		{
-			pChosen = pMachineGun;
-		}
-	}
 
-	if ( pLongRange )
-	{
-		if ( pChosen )
+		if ( pLongRange )
 		{
-			// Prefer long range weapons more heavily if we don't have an SMG/AR2.
-			const float flLongRangeRange = pMachineGun ? 576.0f : 450.0f;
-			if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), flLongRangeRange ) )
+			if ( pChosen )
+			{
+				// Prefer long range weapons more heavily if we don't have an SMG/AR2.
+				const float flLongRangeRange = pMachineGun ? 576.0f : 450.0f;
+				if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), flLongRangeRange ) )
+					pChosen = pLongRange;
+			}
+			else
+			{
 				pChosen = pLongRange;
+			}
 		}
-		else
-		{
-			pChosen = pLongRange;
-		}
-	}
 
-	if ( pFallbackWeapon )
-	{
+		if ( pFallbackWeapon )
+		{
+			if ( !pChosen )
+			{
+				pChosen = pFallbackWeapon;
+			}
+		}
+
+		// Easy bots never melee.
+		if ( m_difficulty > CHL2MPBot::EASY )
+		{
+			// Don't pick our melee if we have something awesome like a shotgun
+			if ( pMelee && !pCloseRangeGun && bInMeleeRange )
+			{
+				pChosen = pMelee;
+			}
+		}
+
 		if ( !pChosen )
 		{
-			pChosen = pFallbackWeapon;
+			pChosen = GetWeapon( 0 );
 		}
 	}
 
-	// Easy bots never melee.
-	if ( m_difficulty > CHL2MPBot::EASY )
-	{
-		// Don't pick our melee if we have something awesome like a shotgun
-		if ( pMelee && !pCloseRangeGun && bInMeleeRange )
-		{
-			pChosen = pMelee;
-		}
-	}
-
-	if ( !pChosen )
-	{
-		pChosen = GetWeapon( 0 );
-	}
-
-	// Override with physcannon if we are holding a prop.
-	if ( Physcannon_GetHeldProp() != NULL && pPhyscannon )
+	// Override with physcannon if we are holding a prop - BUT NOT if we have a superweapon!
+	if ( Physcannon_GetHeldProp() != NULL && pPhyscannon && !pSuperWeapon )
 	{
 		pChosen = pPhyscannon;
 	}
@@ -1783,14 +1849,16 @@ bool CHL2MPBot::ShouldUseSecondaryFire( CBaseHL2MPCombatWeapon *weapon, float th
 	if ( !weapon )
 		return false;
 
-	// Gauss gun - use secondary for long range or high damage situations
+	// Gauss gun - use secondary for medium-long range for maximum damage
 	if ( IsGaussWeapon( weapon ) )
 	{
-		// Use charged shot for long range (>400 units) or if we have time to charge
-		if ( threatRange > 400.0f || GetDifficulty() >= HARD )
+		// Use charged shot for medium-long range (optimal damage)
+		if ( threatRange > 250.0f && threatRange < 1000.0f )
 		{
 			return true;
 		}
+		// Don't use secondary for very close range (too dangerous) or very long range (waste of time)
+		return false;
 	}
 
 	// For other weapons, check if they have useful secondary fire
@@ -1825,7 +1893,7 @@ bool CHL2MPBot::ShouldThrowGrenade( const CKnownEntity *threat ) const
 		return false;
 
 	// Random chance based on difficulty and ConVar
-	int throwChance = hl2mp_bot_grenade_throw_chance.GetInt();
+	int throwChance = bot_grenade_throw_chance.GetInt();
 	if ( GetDifficulty() >= HARD )
 		throwChance += 20; // Higher chance for harder bots
 
@@ -1838,6 +1906,17 @@ bool CHL2MPBot::NeedsWeaponUpgrade( void ) const
 	CBaseHL2MPCombatWeapon *myWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
 	if ( !myWeapon )
 		return true; // No weapon, definitely need one
+
+	// NEVER upgrade if we have a superweapon with ammo
+	if ( IsGaussWeapon( myWeapon ) || IsEgonWeapon( myWeapon ) )
+	{
+		int gaussAmmoCount = GetAmmoCount( GetAmmoDef()->Index("GaussEnergy") );
+		// Only look for upgrade if we're completely out of ammo for our superweapon
+		if ( myWeapon->Clip1() > 0 || gaussAmmoCount > 0 )
+			return false; // Keep the superweapon!
+		// If we're out of ammo, look for ammo first, not weapon upgrade
+		return true;
+	}
 
 	// If we only have melee or crowbar, look for guns
 	if ( IsBludgeon( myWeapon ) )
@@ -2342,7 +2421,7 @@ CHL2MP_Player *CHL2MPBot::SelectRandomReachableEnemy( void )
 	{
 		CHL2MP_Player *player = livePlayerVector[i];
 
-		if ( hl2mp_bot_ignore_real_players.GetBool() )
+		if ( bot_ignore_real_players.GetBool() )
 		{
 			if ( !player->IsBot() )
 			{
@@ -2366,7 +2445,7 @@ CHL2MP_Player *CHL2MPBot::SelectRandomReachableEnemy( void )
 // Different sized bots used different lookahead distances
 float CHL2MPBot::GetDesiredPathLookAheadRange( void ) const
 {
-	return hl2mp_bot_path_lookahead_range.GetFloat() * GetModelScale();
+	return bot_path_lookahead_range.GetFloat() * GetModelScale();
 }
 
 //-----------------------------------------------------------------------------------------
@@ -2408,7 +2487,7 @@ bool CHL2MPBot::ShouldAutoJump()
 
 int CHL2MPBot::DrawDebugTextOverlays(void)
 {
-	int offset = hl2mp_bot_debug_tags.GetBool() ? 1 : BaseClass::DrawDebugTextOverlays();
+	int offset = bot_debug_tags.GetBool() ? 1 : BaseClass::DrawDebugTextOverlays();
 
 	CUtlString strTags = "Tags : ";
 	for( int i=0; i<m_tags.Count(); ++i )
@@ -2489,7 +2568,7 @@ bool CHL2MPBot::IsEnemy( const CBaseEntity* them ) const
 	if ( !them->IsPlayer() )
 		return false;
 
-	if ( hl2mp_bot_ignore_real_players.GetBool() )
+	if ( bot_ignore_real_players.GetBool() )
 	{
 		CBasePlayer* pPlayer = ( CBasePlayer* )them;
 		if ( !pPlayer->IsBot() )

@@ -11,8 +11,8 @@
 #include "tier3/tier3.h"
 #include "vgui/ILocalize.h"
 
-extern ConVar hl2mp_bot_prefix_name_with_difficulty;
-extern ConVar hl2mp_bot_difficulty;
+extern ConVar bot_prefix_name_with_difficulty;
+extern ConVar bot_difficulty;
 
 extern void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize );
 

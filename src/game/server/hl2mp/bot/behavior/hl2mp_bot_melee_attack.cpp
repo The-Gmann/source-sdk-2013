@@ -7,7 +7,7 @@
 
 #include "nav_mesh.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
 ConVar hl2mp_bot_melee_attack_abandon_range( "hl2mp_bot_melee_attack_abandon_range", "500", FCVAR_CHEAT, "If threat is farther away than this, bot will switch back to its primary weapon and attack" );
 

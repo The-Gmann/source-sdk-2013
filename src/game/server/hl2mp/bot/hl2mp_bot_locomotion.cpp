@@ -13,14 +13,14 @@ extern ConVar hl2_normspeed;
 extern ConVar hl2_sprintspeed;
 
 // Debug ConVar for sprint tracking
-ConVar hl2mp_bot_debug_sprint( "hl2mp_bot_debug_sprint", "0", FCVAR_CHEAT, "Show bot sprint debug messages with timestamps and duration" );
+ConVar bot_debug_sprint( "bot_debug_sprint", "0", FCVAR_CHEAT, "Show bot sprint debug messages with timestamps and duration" );
 
 // Sprint behavior ConVars
-ConVar hl2mp_bot_sprint_when_chasing( "hl2mp_bot_sprint_when_chasing", "1", FCVAR_CHEAT, "Bots sprint when chasing enemies" );
-ConVar hl2mp_bot_sprint_when_fleeing( "hl2mp_bot_sprint_when_fleeing", "1", FCVAR_CHEAT, "Bots sprint when fleeing from enemies" );
-ConVar hl2mp_bot_sprint_long_distance( "hl2mp_bot_sprint_long_distance", "500", FCVAR_CHEAT, "Distance threshold for sprinting to objectives" );
-ConVar hl2mp_bot_sprint_low_health( "hl2mp_bot_sprint_low_health", "30", FCVAR_CHEAT, "Health threshold for emergency sprinting" );
-ConVar hl2mp_bot_sprint_min_duration( "hl2mp_bot_sprint_min_duration", "1.0", FCVAR_CHEAT, "Minimum time to sprint before allowing state change" );
+ConVar bot_sprint_when_chasing( "bot_sprint_when_chasing", "1", FCVAR_CHEAT, "Bots sprint when chasing enemies" );
+ConVar bot_sprint_when_fleeing( "bot_sprint_when_fleeing", "1", FCVAR_CHEAT, "Bots sprint when fleeing from enemies" );
+ConVar bot_sprint_long_distance( "bot_sprint_long_distance", "300", FCVAR_CHEAT, "Distance threshold for sprinting to objectives" );
+ConVar bot_sprint_low_health( "bot_sprint_low_health", "50", FCVAR_CHEAT, "Health threshold for emergency sprinting" );
+ConVar bot_sprint_min_duration( "bot_sprint_min_duration", "2.0", FCVAR_CHEAT, "Minimum time to sprint before allowing state change" );
 
 //-----------------------------------------------------------------------------------------
 void CHL2MPBotLocomotion::Update( void )
@@ -41,7 +41,7 @@ void CHL2MPBotLocomotion::Update( void )
 	{
 		// If currently sprinting, require minimum duration before allowing stop
 		float sprintDuration = gpGlobals->curtime - m_sprintStartTime;
-		if ( sprintDuration < hl2mp_bot_sprint_min_duration.GetFloat() )
+		if ( sprintDuration < bot_sprint_min_duration.GetFloat() )
 		{
 			// Force continue sprinting for minimum duration
 			shouldSprint = true;
@@ -49,7 +49,7 @@ void CHL2MPBotLocomotion::Update( void )
 	}
 	
 	// Enhanced debug output for sprint state analysis
-	if ( hl2mp_bot_debug_sprint.GetBool() )
+	if ( bot_debug_sprint.GetBool() )
 	{
 		// Calculate current movement metrics
 		Vector velocity = me->GetAbsVelocity();
@@ -85,7 +85,7 @@ void CHL2MPBotLocomotion::Update( void )
 		const char* sprintReason = "None";
 		if ( shouldSprint )
 		{
-			if ( me->GetHealth() < (hl2mp_bot_sprint_low_health.GetInt() / 2) )
+			if ( me->GetHealth() < (bot_sprint_low_health.GetInt() / 2) )
 			{
 				sprintReason = "Emergency-LowHealth";
 			}
@@ -100,7 +100,7 @@ void CHL2MPBotLocomotion::Update( void )
 			else
 			{
 				const PathFollower *path = me->GetCurrentPath();
-				if ( path && path->IsValid() && path->GetLength() > hl2mp_bot_sprint_long_distance.GetFloat() )
+				if ( path && path->IsValid() && path->GetLength() > bot_sprint_long_distance.GetFloat() )
 				{
 					sprintReason = "Navigation-LongDistance";
 				}
@@ -272,16 +272,16 @@ bool CHL2MPBotLocomotion::ShouldSprint( CHL2MPBot *me ) const
 	{
 		float threatRange = me->GetRangeTo( primaryThreat->GetEntity() );
 		
-		// Sprint when chasing enemies at medium-long range
-		if ( hl2mp_bot_sprint_when_chasing.GetBool() && threatRange > 200.0f && threatRange < 800.0f )
+		// Sprint when chasing enemies at medium-long range (reduced threshold)
+		if ( bot_sprint_when_chasing.GetBool() && threatRange > 150.0f && threatRange < 1000.0f )
 		{
 			return true;
 		}
 		
-		// Sprint when fleeing from close threats or low health
-		if ( hl2mp_bot_sprint_when_fleeing.GetBool() )
+		// Sprint when fleeing from close threats or low health (increased threshold)
+		if ( bot_sprint_when_fleeing.GetBool() )
 		{
-			if ( threatRange < 300.0f || me->GetHealth() < hl2mp_bot_sprint_low_health.GetInt() )
+			if ( threatRange < 400.0f || me->GetHealth() < bot_sprint_low_health.GetInt() )
 			{
 				return true;
 			}
@@ -289,32 +289,39 @@ bool CHL2MPBotLocomotion::ShouldSprint( CHL2MPBot *me ) const
 	}
 	
 	// Sprint for long-distance navigation when no immediate threats
-	if ( !hasVisibleThreat || primaryThreat->GetTimeSinceLastSeen() > 3.0f )
+	if ( !hasVisibleThreat || primaryThreat->GetTimeSinceLastSeen() > 2.0f )
 	{
 		// Check if we have a long-distance goal
 		const PathFollower *path = me->GetCurrentPath();
 		if ( path && path->IsValid() )
 		{
 			float pathLength = path->GetLength();
-			if ( pathLength > hl2mp_bot_sprint_long_distance.GetFloat() )
+			if ( pathLength > bot_sprint_long_distance.GetFloat() )
 			{
 				return true;
 			}
 		}
+		
+		// Sprint when moving at general high speed for more aggressive movement
+		Vector velocity = me->GetAbsVelocity();
+		if ( velocity.Length2D() > 100.0f )
+		{
+			return true;
+		}
 	}
 	
 	// Sprint when health is critically low (emergency situations)
-	if ( me->GetHealth() < (hl2mp_bot_sprint_low_health.GetInt() / 2) )
+	if ( me->GetHealth() < (bot_sprint_low_health.GetInt() / 2) )
 	{
 		return true;
 	}
 	
-	// Don't sprint in stealth situations (sneaking up on enemies)
+	// Don't sprint in stealth situations (sneaking up on enemies) - reduced threshold
 	if ( hasVisibleThreat && primaryThreat->GetTimeSinceLastSeen() < 1.0f )
 	{
 		float threatRange = me->GetRangeTo( primaryThreat->GetEntity() );
-		// Don't sprint when close to unaware enemies (stealth approach)
-		if ( threatRange < 200.0f )
+		// Don't sprint when very close to unaware enemies (stealth approach)
+		if ( threatRange < 100.0f )
 		{
 			return false;
 		}

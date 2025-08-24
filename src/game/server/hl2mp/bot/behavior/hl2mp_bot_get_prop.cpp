@@ -7,14 +7,14 @@
 #include "hl2mp/weapon_physcannon.h"
 #include "props.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
-ConVar hl2mp_bot_prop_search_range( "hl2mp_bot_prop_search_range", "2000", FCVAR_CHEAT, "How far prop freak bots will search to find props around them" );
-ConVar hl2mp_bot_prop_search_important_range( "hl2mp_bot_prop_search_important_range", "400", FCVAR_CHEAT, "How far prop freak bots will search to find and prefer important props around them (like explosive barrels)" );
-ConVar hl2mp_bot_prop_search_min_mass( "hl2mp_bot_prop_search_min_mass", "30", FCVAR_CHEAT, "Ignore props under this mass" );
-ConVar hl2mp_bot_prop_search_only_important( "hl2mp_bot_prop_search_only_important", "0", FCVAR_CHEAT );
-ConVar hl2mp_bot_debug_prop_scavenging( "hl2mp_bot_debug_prop_scavenging", "0", FCVAR_CHEAT );
-ConVar hl2mp_bot_disable_get_prop( "hl2mp_bot_disable_get_prop", "0", FCVAR_CHEAT );
+ConVar bot_prop_search_range( "bot_prop_search_range", "2000", FCVAR_CHEAT, "How far prop freak bots will search to find props around them" );
+ConVar bot_prop_search_important_range( "bot_prop_search_important_range", "400", FCVAR_CHEAT, "How far prop freak bots will search to find and prefer important props around them (like explosive barrels)" );
+ConVar bot_prop_search_min_mass( "bot_prop_search_min_mass", "30", FCVAR_CHEAT, "Ignore props under this mass" );
+ConVar bot_prop_search_only_important( "bot_prop_search_only_important", "0", FCVAR_CHEAT );
+ConVar bot_debug_prop_scavenging( "bot_debug_prop_scavenging", "0", FCVAR_CHEAT );
+ConVar bot_disable_get_prop( "bot_disable_get_prop", "0", FCVAR_CHEAT );
 
 
 //---------------------------------------------------------------------------------------------
@@ -79,11 +79,11 @@ public:
 		else
 		{
 			// Not worth it.
-			if ( pProp->GetMass() < hl2mp_bot_prop_search_min_mass.GetFloat() && !bIsImportant )
+			if ( pProp->GetMass() < bot_prop_search_min_mass.GetFloat() && !bIsImportant )
 				return false;
 		}
 
-		if ( !bIsImportant && hl2mp_bot_prop_search_only_important.GetBool() )
+		if ( !bIsImportant && bot_prop_search_only_important.GetBool() )
 			return false;
 
 		if ( !m_physcannon->CanPickupObject( pProp ) )
@@ -111,7 +111,7 @@ bool CHL2MPBotGetProp::IsPossible( CHL2MPBot *me )
 {
 	VPROF_BUDGET( "CHL2MPBotGetProp::IsPossible", "NextBot" );
 
-	if ( hl2mp_bot_disable_get_prop.GetBool() )
+	if ( bot_disable_get_prop.GetBool() )
 		return false;
 
 	CWeaponPhysCannon* pPhyscannon = dynamic_cast< CWeaponPhysCannon* >( me->Weapon_OwnsThisType( "weapon_physcannon" ) );
@@ -135,11 +135,11 @@ bool CHL2MPBotGetProp::IsPossible( CHL2MPBot *me )
 
 	CPropFilter<false> propFilter( me, pPhyscannon );
 	CUtlVector< CHandle< CBaseEntity > > hReachablePhysProps;
-	me->SelectReachableObjects( hPhysProps, &hReachablePhysProps, propFilter, me->GetLastKnownArea(), hl2mp_bot_prop_search_range.GetFloat() );
+	me->SelectReachableObjects( hPhysProps, &hReachablePhysProps, propFilter, me->GetLastKnownArea(), bot_prop_search_range.GetFloat() );
 
 	CPropFilter<true> importantFilter( me, pPhyscannon );
 	CUtlVector< CHandle< CBaseEntity > > hReachableImportantProps;
-	me->SelectReachableObjects( hPhysProps, &hReachableImportantProps, importantFilter, me->GetLastKnownArea(), hl2mp_bot_prop_search_important_range.GetFloat() );
+	me->SelectReachableObjects( hPhysProps, &hReachableImportantProps, importantFilter, me->GetLastKnownArea(), bot_prop_search_important_range.GetFloat() );
 
 	CBaseEntity* closestProp = hReachablePhysProps.Size() > 0 ? hReachablePhysProps[0] : NULL;
 
@@ -166,7 +166,7 @@ bool CHL2MPBotGetProp::IsPossible( CHL2MPBot *me )
 		return false;
 	}
 
-	if ( hl2mp_bot_debug_prop_scavenging.GetBool() )
+	if ( bot_debug_prop_scavenging.GetBool() )
 	{
 		NDebugOverlay::Cross3D( closestProp->WorldSpaceCenter(), 5.0f, 255, 255, 0, true, 999.9 );
 	}
@@ -184,7 +184,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetProp::OnStart( CHL2MPBot *me, Action< CHL2
 {
 	VPROF_BUDGET( "CHL2MPBotGetProp::OnStart", "NextBot" );
 
-	if ( hl2mp_bot_disable_get_prop.GetBool() )
+	if ( bot_disable_get_prop.GetBool() )
 		return Done( "Disabled." );
 
 	m_path.SetMinLookAheadDistance( me->GetDesiredPathLookAheadRange() );
@@ -215,7 +215,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetProp::Update( CHL2MPBot *me, float interva
 {
 	const CKnownEntity* threat = me->GetVisionInterface()->GetPrimaryKnownThreat();
 
-	if ( hl2mp_bot_disable_get_prop.GetBool() )
+	if ( bot_disable_get_prop.GetBool() )
 		return Done( "Disabled." );
 
 	if ( me->Physcannon_GetHeldProp() != NULL )

@@ -7,7 +7,7 @@
 
 #include "nav_mesh.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
 
 //---------------------------------------------------------------------------------------------

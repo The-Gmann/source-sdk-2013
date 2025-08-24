@@ -15,15 +15,15 @@
 // Creates and sets CHL2MPBotManager as the NextBotManager singleton
 static CHL2MPBotManager sHL2MPBotManager;
 
-ConVar hl2mp_bot_difficulty( "hl2mp_bot_difficulty", "2", FCVAR_NONE, "Defines the skill of bots joining the game.  Values are: 0=easy, 1=normal, 2=hard, 3=expert." );
-ConVar hl2mp_bot_quota( "hl2mp_bot_quota", "0", FCVAR_NONE, "Determines the total number of tf bots in the game." );
-ConVar hl2mp_bot_quota_mode( "hl2mp_bot_quota_mode", "normal", FCVAR_NONE, "Determines the type of quota.\nAllowed values: 'normal', 'fill', and 'match'.\nIf 'fill', the server will adjust bots to keep N players in the game, where N is bot_quota.\nIf 'match', the server will maintain a 1:N ratio of humans to bots, where N is bot_quota." );
-ConVar hl2mp_bot_join_after_player( "hl2mp_bot_join_after_player", "1", FCVAR_NONE, "If nonzero, bots wait until a player joins before entering the game." );
-ConVar hl2mp_bot_auto_vacate( "hl2mp_bot_auto_vacate", "1", FCVAR_NONE, "If nonzero, bots will automatically leave to make room for human players." );
-ConVar hl2mp_bot_offline_practice( "hl2mp_bot_offline_practice", "0", FCVAR_NONE, "Tells the server that it is in offline practice mode." );
-ConVar hl2mp_bot_melee_only( "hl2mp_bot_melee_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use melee weapons" );
-ConVar hl2mp_bot_gravgun_only( "hl2mp_bot_gravgun_only", "0", FCVAR_GAMEDLL, "If nonzero, HL2MPBots will only use gravity gun weapon" );
-ConVar hl2mp_bot_quota_debug( "hl2mp_bot_quota_debug", "0", FCVAR_CHEAT, "Enable debug output for bot quota system" );
+ConVar bot_difficulty( "bot_difficulty", "2", FCVAR_NONE, "Defines the skill of bots joining the game.  Values are: 0=easy, 1=normal, 2=hard, 3=expert." );
+ConVar bot_quota( "bot_quota", "0", FCVAR_NONE, "Determines the total number of bots in the game." );
+ConVar bot_quota_mode( "bot_quota_mode", "normal", FCVAR_NONE, "Determines the type of quota.\nAllowed values: 'normal', 'fill', and 'match'.\nIf 'fill', the server will adjust bots to keep N players in the game, where N is bot_quota.\nIf 'match', the server will maintain a 1:N ratio of humans to bots, where N is bot_quota." );
+ConVar bot_join_after_player( "bot_join_after_player", "1", FCVAR_NONE, "If nonzero, bots wait until a player joins before entering the game." );
+ConVar bot_auto_vacate( "bot_auto_vacate", "1", FCVAR_NONE, "If nonzero, bots will automatically leave to make room for human players." );
+ConVar bot_offline_practice( "bot_offline_practice", "0", FCVAR_NONE, "Tells the server that it is in offline practice mode." );
+ConVar bot_melee_only( "bot_melee_only", "0", FCVAR_GAMEDLL, "If nonzero, bots will only use melee weapons" );
+ConVar bot_gravgun_only( "bot_gravgun_only", "0", FCVAR_GAMEDLL, "If nonzero, bots will only use gravity gun weapon" );
+ConVar bot_quota_debug( "bot_quota_debug", "0", FCVAR_CHEAT, "Enable debug output for bot quota system" );
 
 extern const char *GetRandomBotName( void );
 extern void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize );
@@ -70,7 +70,7 @@ static int g_iNextUniqueBotNameIndex = 0;
 
 //----------------------------------------------------------------------------------------------------------------
 // Get a unique bot name from our list, cycling back to start if we run out
-static const char* GetUniqueBotName()
+const char* GetUniqueBotName()
 {
 	const char* name = g_ppszUniqueBotNames[g_iNextUniqueBotNameIndex];
 	g_iNextUniqueBotNameIndex = (g_iNextUniqueBotNameIndex + 1) % ARRAYSIZE(g_ppszUniqueBotNames);
@@ -155,12 +155,26 @@ void CHL2MPBotManager::OnMapLoaded( void )
 	NextBotManager::OnMapLoaded();
 
 	ClearStuckBotData();
+	
+	// Check bot quota immediately on map load
+	// This ensures bots are added if quota was already set before server start
+	m_flNextPeriodicThink = gpGlobals->curtime + 1.0f; // Give server 1 second to initialize
 }
 
 
 //----------------------------------------------------------------------------------------------------------------
 void CHL2MPBotManager::Update()
 {
+	// Check if it's time for the initial bot quota check
+	if ( m_flNextPeriodicThink > 0.0f && gpGlobals->curtime >= m_flNextPeriodicThink )
+	{
+		m_flNextPeriodicThink = 0.0f; // Reset so we don't do this again
+		if ( bot_quota_debug.GetBool() )
+		{
+			DevMsg( "[BOT_QUOTA] Initial bot quota check on map load\n" );
+		}
+	}
+	
 	MaintainBotQuota();
 
 	DrawStuckBotData();
@@ -364,10 +378,10 @@ void CHL2MPBotManager::MaintainBotQuota()
 	}
 
 	// Calculate desired bot count based on quota mode
-	int desiredBotCount = hl2mp_bot_quota.GetInt();
+	int desiredBotCount = bot_quota.GetInt();
 	int nTotalHumans = nConnectedClients - nQuotaManagedBots;
 
-	if ( hl2mp_bot_quota_debug.GetBool() )
+	if ( bot_quota_debug.GetBool() )
 	{
 		DevMsg( "[BOT_QUOTA] === Bot Quota Debug Info ===\n" );
 		DevMsg( "[BOT_QUOTA] Teamplay Mode: %s\n", bIsTeamplay ? "YES" : "NO" );
@@ -378,26 +392,26 @@ void CHL2MPBotManager::MaintainBotQuota()
 		DevMsg( "[BOT_QUOTA] Team Populations - Rebels: %d+%d, Combine: %d+%d, Unassigned: %d+%d (Human+Bot)\n",
 			nRebelPlayers, nRebelBots, nCombinePlayers, nCombineBots, nUnassignedPlayers, nUnassignedBots );
 		DevMsg( "[BOT_QUOTA] Raw Desired Bot Count: %d, Quota Mode: %s\n", 
-			desiredBotCount, hl2mp_bot_quota_mode.GetString() );
+			desiredBotCount, bot_quota_mode.GetString() );
 	}
 
-	if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "fill" ) )
+	if ( FStrEq( bot_quota_mode.GetString(), "fill" ) )
 	{
 		// Fill mode: maintain N total players (bots + humans)
 		desiredBotCount = MAX( 0, desiredBotCount - nHumanPlayersOnGameTeams );
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 			DevMsg( "[BOT_QUOTA] Fill mode: Adjusted desired count = %d\n", desiredBotCount );
 	}
-	else if ( FStrEq( hl2mp_bot_quota_mode.GetString(), "match" ) )
+	else if ( FStrEq( bot_quota_mode.GetString(), "match" ) )
 	{
 		// Match mode: maintain ratio of bots to humans
-		desiredBotCount = (int)MAX( 0, hl2mp_bot_quota.GetFloat() * nHumanPlayersOnGameTeams );
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		desiredBotCount = (int)MAX( 0, bot_quota.GetFloat() * nHumanPlayersOnGameTeams );
+		if ( bot_quota_debug.GetBool() )
 			DevMsg( "[BOT_QUOTA] Match mode: Adjusted desired count = %d\n", desiredBotCount );
 	}
 
 	// Wait for a player to join, if necessary - but be more lenient in deathmatch
-	if ( hl2mp_bot_join_after_player.GetBool() )
+	if ( bot_join_after_player.GetBool() )
 	{
 		if ( bIsTeamplay )
 		{
@@ -405,7 +419,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 			if ( ( nHumanPlayersOnGameTeams == 0 ) && ( nSpectators == 0 ) )
 			{
 				desiredBotCount = 0;
-				if ( hl2mp_bot_quota_debug.GetBool() )
+				if ( bot_quota_debug.GetBool() )
 					DevMsg( "[BOT_QUOTA] Teamplay: Waiting for human players, setting desired count to 0\n" );
 			}
 		}
@@ -415,17 +429,17 @@ void CHL2MPBotManager::MaintainBotQuota()
 			if ( nTotalHumans == 0 )
 			{
 				desiredBotCount = 0;
-				if ( hl2mp_bot_quota_debug.GetBool() )
+				if ( bot_quota_debug.GetBool() )
 					DevMsg( "[BOT_QUOTA] Deathmatch: No humans connected, setting desired count to 0\n" );
 			}
 		}
 	}
 
 	// Reserve slots for humans if auto-vacate is enabled
-	if ( hl2mp_bot_auto_vacate.GetBool() )
+	if ( bot_auto_vacate.GetBool() )
 	{
 		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalHumans - 1 );
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 			DevMsg( "[BOT_QUOTA] Auto-vacate enabled: Adjusted desired count = %d\n", desiredBotCount );
 	}
 	else
@@ -433,7 +447,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 		desiredBotCount = MIN( desiredBotCount, gpGlobals->maxClients - nTotalHumans );
 	}
 
-	if ( hl2mp_bot_quota_debug.GetBool() )
+	if ( bot_quota_debug.GetBool() )
 	{
 		DevMsg( "[BOT_QUOTA] Final desired bot count: %d, Current bots on game teams: %d\n", 
 			desiredBotCount, nQuotaManagedBotsOnGameTeams );
@@ -442,7 +456,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 	// Add bots if necessary
 	if ( desiredBotCount > nQuotaManagedBotsOnGameTeams )
 	{
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 		{
 			DevMsg( "[BOT_QUOTA] Need to add bots: %d desired, %d current\n", 
 				desiredBotCount, nQuotaManagedBotsOnGameTeams );
@@ -468,7 +482,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 				// Teams are balanced, randomly assign
 				targetTeam = (RandomInt( 0, 1 ) == 0) ? TEAM_REBELS : TEAM_COMBINE;
 			}
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 			{
 				DevMsg( "[BOT_QUOTA] Teamplay mode: Assigning bot to team %d (Rebels=%d, Combine=%d)\n", 
 					targetTeam, totalRebels, totalCombine );
@@ -478,7 +492,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 		{
 			// Deathmatch mode - use unassigned team
 			targetTeam = TEAM_UNASSIGNED;
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 			{
 				DevMsg( "[BOT_QUOTA] Deathmatch mode: Assigning bot to TEAM_UNASSIGNED\n" );
 			}
@@ -489,19 +503,19 @@ void CHL2MPBotManager::MaintainBotQuota()
 		if ( pBot == NULL )
 		{
 			// Create a new bot
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Creating new bot from scratch\n" );
 			pBot = NextBotCreatePlayerBot< CHL2MPBot >( GetUniqueBotName() );
 		}
 		else
 		{
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Reusing bot from pool\n" );
 		}
 
 		if ( pBot )
 		{
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Bot created successfully, configuring...\n" );
 			// Set quota management flag
 			pBot->SetAttribute( CHL2MPBot::QUOTA_MANANGED );
@@ -511,12 +525,12 @@ void CHL2MPBotManager::MaintainBotQuota()
 			if ( iTeam == TEAM_UNASSIGNED && bIsTeamplay )
 			{
 				// Fallback safety - should not happen with new logic above
-				if ( hl2mp_bot_quota_debug.GetBool() )
+				if ( bot_quota_debug.GetBool() )
 					DevMsg( "[BOT_QUOTA] WARNING: Fallback team assignment in teamplay mode!\n" );
 				iTeam = TEAM_REBELS;
 			}
 
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Assigning bot to team %d\n", iTeam );
 
 			// Set appropriate model based on team
@@ -537,7 +551,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 			// Generate unique bot name
 			const char* uniqueName = GetUniqueBotName();
 			
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Bot configured - Name: %s, Model: %s, Team: %d\n", uniqueName, pszModel, iTeam );
 
 			// Configure bot
@@ -545,7 +559,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 			engine->SetFakeClientConVarValue( pBot->edict(), "name", uniqueName );
 
 			// Join team - this is critical for proper spawning
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Joining bot to team %d...\n", iTeam );
 			pBot->HandleCommand_JoinTeam( iTeam );
 			pBot->ChangeTeam( iTeam );
@@ -553,25 +567,25 @@ void CHL2MPBotManager::MaintainBotQuota()
 			// Force spawn if the bot doesn't spawn automatically
 			if ( !pBot->IsAlive() )
 			{
-				if ( hl2mp_bot_quota_debug.GetBool() )
+				if ( bot_quota_debug.GetBool() )
 					DevMsg( "[BOT_QUOTA] Bot not alive, forcing respawn...\n" );
 				pBot->ForceRespawn();
 			}
 			else
 			{
-				if ( hl2mp_bot_quota_debug.GetBool() )
+				if ( bot_quota_debug.GetBool() )
 					DevMsg( "[BOT_QUOTA] Bot spawned successfully\n" );
 			}
 		}
 		else
 		{
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevWarning( "[BOT_QUOTA] Failed to create bot!\n" );
 		}
 	}
 	else if ( desiredBotCount < nQuotaManagedBotsOnGameTeams )
 	{
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 		{
 			DevMsg( "[BOT_QUOTA] Need to remove bots: %d desired, %d current\n", 
 				desiredBotCount, nQuotaManagedBotsOnGameTeams );
@@ -581,7 +595,7 @@ void CHL2MPBotManager::MaintainBotQuota()
 		// First try to remove unassigned bots (cleanup)
 		if ( UTIL_KickBotFromTeam( TEAM_UNASSIGNED ) )
 		{
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Removed unassigned bot\n" );
 			return;
 		}
@@ -626,26 +640,26 @@ void CHL2MPBotManager::MaintainBotQuota()
 			kickTeam = TEAM_REBELS;
 		}
 
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 			DevMsg( "[BOT_QUOTA] Attempting to kick bot from team %d\n", kickTeam );
 
 		// Attempt to kick a bot from the chosen team
 		if ( UTIL_KickBotFromTeam( kickTeam ) )
 		{
-			if ( hl2mp_bot_quota_debug.GetBool() )
+			if ( bot_quota_debug.GetBool() )
 				DevMsg( "[BOT_QUOTA] Successfully kicked bot from team %d\n", kickTeam );
 			return;
 		}
 
 		// If no bots on that team, try the other team
 		int otherTeam = kickTeam == TEAM_COMBINE ? TEAM_REBELS : TEAM_COMBINE;
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 			DevMsg( "[BOT_QUOTA] No bots on team %d, trying team %d\n", kickTeam, otherTeam );
 		UTIL_KickBotFromTeam( otherTeam );
 	}
 	else
 	{
-		if ( hl2mp_bot_quota_debug.GetBool() )
+		if ( bot_quota_debug.GetBool() )
 		{
 			DevMsg( "[BOT_QUOTA] Bot quota satisfied: %d bots (desired: %d)\n", 
 				nQuotaManagedBotsOnGameTeams, desiredBotCount );
@@ -690,39 +704,39 @@ bool CHL2MPBotManager::IsAllBotTeam( int iTeam )
 //----------------------------------------------------------------------------------------------------------------
 void CHL2MPBotManager::SetIsInOfflinePractice(bool bIsInOfflinePractice)
 {
-	hl2mp_bot_offline_practice.SetValue( bIsInOfflinePractice ? 1 : 0 );
+	bot_offline_practice.SetValue( bIsInOfflinePractice ? 1 : 0 );
 }
 
 
 //----------------------------------------------------------------------------------------------------------------
 bool CHL2MPBotManager::IsInOfflinePractice() const
 {
-	return hl2mp_bot_offline_practice.GetInt() != 0;
+	return bot_offline_practice.GetInt() != 0;
 }
 
 
 //----------------------------------------------------------------------------------------------------------------
 bool CHL2MPBotManager::IsMeleeOnly() const
 {
-	return hl2mp_bot_melee_only.GetBool();
+	return bot_melee_only.GetBool();
 }
 
 
 //----------------------------------------------------------------------------------------------------------------
 bool CHL2MPBotManager::IsGravGunOnly() const
 {
-	return hl2mp_bot_gravgun_only.GetBool();
+	return bot_gravgun_only.GetBool();
 }
 
 
 //----------------------------------------------------------------------------------------------------------------
 void CHL2MPBotManager::RevertOfflinePracticeConvars()
 {
-	hl2mp_bot_quota.Revert();
-	hl2mp_bot_quota_mode.Revert();
-	hl2mp_bot_auto_vacate.Revert();
-	hl2mp_bot_difficulty.Revert();
-	hl2mp_bot_offline_practice.Revert();
+	bot_quota.Revert();
+	bot_quota_mode.Revert();
+	bot_auto_vacate.Revert();
+	bot_difficulty.Revert();
+	bot_offline_practice.Revert();
 }
 
 
@@ -770,7 +784,7 @@ CHL2MPBot* CHL2MPBotManager::GetAvailableBotFromPool()
 //----------------------------------------------------------------------------------------------------------------
 void CHL2MPBotManager::OnForceAddedBots( int iNumAdded )
 {
-	hl2mp_bot_quota.SetValue( hl2mp_bot_quota.GetInt() + iNumAdded );
+	bot_quota.SetValue( bot_quota.GetInt() + iNumAdded );
 	m_flNextPeriodicThink = gpGlobals->curtime + 1.0f;
 }
 
@@ -778,7 +792,7 @@ void CHL2MPBotManager::OnForceAddedBots( int iNumAdded )
 //----------------------------------------------------------------------------------------------------------------
 void CHL2MPBotManager::OnForceKickedBots( int iNumKicked )
 {
-	hl2mp_bot_quota.SetValue( MAX( hl2mp_bot_quota.GetInt() - iNumKicked, 0 ) );
+	bot_quota.SetValue( MAX( bot_quota.GetInt() - iNumKicked, 0 ) );
 	// allow time for the bots to be kicked
 	m_flNextPeriodicThink = gpGlobals->curtime + 2.0f;
 }

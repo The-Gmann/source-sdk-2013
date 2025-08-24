@@ -18,39 +18,43 @@
 #include "bot/behavior/hl2mp_bot_tactical_monitor.h"
 
 
-extern ConVar hl2mp_bot_health_ok_ratio;
+extern ConVar bot_health_ok_ratio;
 
-ConVar hl2mp_bot_path_lookahead_range( "hl2mp_bot_path_lookahead_range", "300" );
+ConVar bot_path_lookahead_range( "bot_path_lookahead_range", "300" );
 // Unused ConVars - commented out to reduce clutter
-// ConVar hl2mp_bot_sniper_aim_error( "hl2mp_bot_sniper_aim_error", "0.01", FCVAR_CHEAT );
-// ConVar hl2mp_bot_sniper_aim_steady_rate( "hl2mp_bot_sniper_aim_steady_rate", "10", FCVAR_CHEAT );
-// ConVar hl2mp_bot_debug_sniper( "hl2mp_bot_debug_sniper", "0", FCVAR_CHEAT );
-ConVar hl2mp_bot_fire_weapon_min_time( "hl2mp_bot_fire_weapon_min_time", "0.1", FCVAR_CHEAT ); // Reduced for faster firing
-ConVar hl2mp_bot_taunt_victim_chance( "hl2mp_bot_taunt_victim_chance", "20" );		// community requested this not be a cheat cvar
+// ConVar bot_sniper_aim_error( "bot_sniper_aim_error", "0.01", FCVAR_CHEAT );
+// ConVar bot_sniper_aim_steady_rate( "bot_sniper_aim_steady_rate", "10", FCVAR_CHEAT );
+// ConVar bot_debug_sniper( "bot_debug_sniper", "0", FCVAR_CHEAT );
+ConVar bot_fire_weapon_min_time( "bot_fire_weapon_min_time", "0.1", FCVAR_CHEAT ); // Reduced for faster firing
+ConVar bot_taunt_victim_chance( "bot_taunt_victim_chance", "20" );		// community requested this not be a cheat cvar
 
 // Unused ConVars - commented out to reduce clutter
 // ConVar hl2mp_bot_notice_backstab_chance( "hl2mp_bot_notice_backstab_chance", "25", FCVAR_CHEAT );
 // ConVar hl2mp_bot_notice_backstab_min_range( "hl2mp_bot_notice_backstab_min_range", "100", FCVAR_CHEAT );
 // ConVar hl2mp_bot_notice_backstab_max_range( "hl2mp_bot_notice_backstab_max_range", "750", FCVAR_CHEAT );
 
-ConVar hl2mp_bot_ballistic_elevation_rate( "hl2mp_bot_ballistic_elevation_rate", "0.01", FCVAR_CHEAT, "When lobbing grenades at far away targets, this is the degree/range slope to raise our aim" );
+ConVar bot_ballistic_elevation_rate( "bot_ballistic_elevation_rate", "0.01", FCVAR_CHEAT, "When lobbing grenades at far away targets, this is the degree/range slope to raise our aim" );
 
-ConVar hl2mp_bot_hitscan_range_limit( "hl2mp_bot_hitscan_range_limit", "1800", FCVAR_CHEAT );
+ConVar bot_hitscan_range_limit( "bot_hitscan_range_limit", "1800", FCVAR_CHEAT );
 
 // Unused ConVar - commented out
 // ConVar hl2mp_bot_always_full_reload( "hl2mp_bot_always_full_reload", "0", FCVAR_CHEAT );
 
-ConVar hl2mp_bot_fire_weapon_allowed( "hl2mp_bot_fire_weapon_allowed", "1", FCVAR_CHEAT, "If zero, HL2MPBots will not pull the trigger of their weapons (but will act like they did)" );
+ConVar bot_fire_weapon_allowed( "bot_fire_weapon_allowed", "1", FCVAR_CHEAT, "If zero, bots will not pull the trigger of their weapons (but will act like they did)" );
 
-ConVar hl2mp_bot_allow_retreat( "hl2mp_bot_allow_retreat", "1", FCVAR_CHEAT, "If zero, bots will not attempt to retreat if they are are in a bad situation." );
-ConVar hl2mp_bot_physcannon_wait_fire_time( "hl2mp_bot_physcannon_wait_fire_time", "1", FCVAR_CHEAT, "Time to wait after picking up a prop to firing." );
+ConVar bot_allow_retreat( "bot_allow_retreat", "1", FCVAR_CHEAT, "If zero, bots will not attempt to retreat if they are are in a bad situation." );
+ConVar bot_physcannon_wait_fire_time( "bot_physcannon_wait_fire_time", "1", FCVAR_CHEAT, "Time to wait after picking up a prop to firing." );
 
 // New ConVars for enhanced weapon handling
-ConVar hl2mp_bot_pistol_fire_rate( "hl2mp_bot_pistol_fire_rate", "0.15", FCVAR_CHEAT, "Fire rate for pistol spam firing" );
-ConVar hl2mp_bot_gauss_charge_time( "hl2mp_bot_gauss_charge_time", "2.0", FCVAR_CHEAT, "Time to charge gauss gun secondary fire" );
-ConVar hl2mp_bot_egon_max_range( "hl2mp_bot_egon_max_range", "512", FCVAR_CHEAT, "Maximum effective range for egon gun" );
-ConVar hl2mp_bot_grenade_throw_chance( "hl2mp_bot_grenade_throw_chance", "30", FCVAR_CHEAT, "Chance to throw grenade when tactical" );
-ConVar hl2mp_bot_weapon_collection_range( "hl2mp_bot_weapon_collection_range", "800", FCVAR_CHEAT, "Range to search for weapons" );
+ConVar bot_pistol_fire_rate( "bot_pistol_fire_rate", "0.15", FCVAR_CHEAT, "Fire rate for pistol spam firing" );
+ConVar bot_gauss_charge_time( "bot_gauss_charge_time", "1.2", FCVAR_CHEAT, "Time to charge gauss gun secondary fire" );
+ConVar bot_egon_max_range( "bot_egon_max_range", "512", FCVAR_CHEAT, "Maximum effective range for egon gun" );
+ConVar bot_grenade_throw_chance( "bot_grenade_throw_chance", "30", FCVAR_CHEAT, "Chance to throw grenade when tactical" );
+ConVar bot_debug_superweapons( "bot_debug_superweapons", "0", FCVAR_CHEAT, "Debug superweapon behavior" );
+ConVar bot_weapon_collection_range( "bot_weapon_collection_range", "800", FCVAR_CHEAT, "Range to search for weapons" );
+
+// External reference for cross-file usage
+extern ConVar bot_debug_superweapons;
 
 //---------------------------------------------------------------------------------------------
 Action< CHL2MPBot > *CHL2MPBotMainAction::InitialContainedAction( CHL2MPBot *me )
@@ -319,7 +323,7 @@ Vector CHL2MPBotMainAction::SelectTargetPoint( const INextBot *meBot, const CBas
 			{
 				Vector toThreat = subject->GetAbsOrigin() - me->GetAbsOrigin();
 				float threatRange = toThreat.NormalizeInPlace();
-				float elevationAngle = threatRange * hl2mp_bot_ballistic_elevation_rate.GetFloat();
+				float elevationAngle = threatRange * bot_ballistic_elevation_rate.GetFloat();
 
 				if ( elevationAngle > 45.0f )
 				{
@@ -537,7 +541,7 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 	if ( me->HasAttribute( CHL2MPBot::IGNORE_ENEMIES ) )
 		return;
 
-	if ( !hl2mp_bot_fire_weapon_allowed.GetBool() )
+	if ( !bot_fire_weapon_allowed.GetBool() )
 	{
 		return;
 	}
@@ -618,7 +622,7 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 			if ( me->Physcannon_GetHeldProp() != NULL )
 			{
 				// misyl: Wait a second so the prop can move and we can look at the right entity...
-				if ( gpGlobals->curtime > me->GetPhyscannonPickupTime() + hl2mp_bot_physcannon_wait_fire_time.GetFloat() )
+				if ( gpGlobals->curtime > me->GetPhyscannonPickupTime() + bot_physcannon_wait_fire_time.GetFloat() )
 				{
 					me->PressFireButton();
 				}
@@ -626,21 +630,76 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 			// Handle special weapon types
 			else if ( me->IsGaussWeapon( myWeapon ) )
 			{
-				// Gauss gun handling - use secondary fire for charged shots at range
-				if ( me->ShouldUseSecondaryFire( myWeapon, threatRange ) )
+				// Gauss gun handling - enhanced with charge state tracking
+				bool isLowHealth = me->GetHealth() < 30;
+				bool isVeryLowHealth = me->GetHealth() < 15;
+				bool isCharging = (me->m_nButtons & IN_ATTACK2) != 0;
+				
+				// Track charge start time to prevent infinite charging
+				static float chargeStartTime = 0.0f;
+				if ( isCharging && chargeStartTime == 0.0f )
 				{
-					me->PressAltFireButton( hl2mp_bot_gauss_charge_time.GetFloat() );
+					chargeStartTime = gpGlobals->curtime;
 				}
+				else if ( !isCharging )
+				{
+					chargeStartTime = 0.0f;
+				}
+				
+				// Force fire if we've been charging too long (prevent infinite charge)
+				bool hasChargedTooLong = isCharging && (gpGlobals->curtime - chargeStartTime) > bot_gauss_charge_time.GetFloat();
+				
+				// Emergency firing - immediate threat or very low health
+				if ( (isVeryLowHealth && threatRange < 400.0f) || hasChargedTooLong )
+				{
+					if ( bot_debug_superweapons.GetBool() )
+					{
+						DevMsg( "Bot %s: Emergency gauss fire! LowHP: %s, ChargedTooLong: %s\n", 
+							me->GetPlayerName(), isVeryLowHealth ? "Yes" : "No", hasChargedTooLong ? "Yes" : "No" );
+					}
+					if ( isCharging )
+					{
+						// Release charge to fire now
+						me->ReleaseAltFireButton();
+					}
+					else
+					{
+						// Quick primary fire for immediate response
+						me->PressFireButton( 0.15f );
+					}
+				}
+				// Use charged secondary fire for optimal range (best damage)
+				else if ( threatRange > 200.0f && threatRange < 1200.0f && !isLowHealth )
+				{
+					if ( !isCharging )
+					{
+						me->PressAltFireButton( bot_gauss_charge_time.GetFloat() );
+					}
+				}
+				// Use primary fire for close range (faster, safer)
+				else if ( threatRange <= 200.0f || isLowHealth )
+				{
+					if ( isCharging )
+					{
+						// Stop charging for close range
+						me->ReleaseAltFireButton();
+					}
+					// Quick primary fire
+					me->PressFireButton( 0.2f );
+				}
+				// Long range - also use charged shots
 				else
 				{
-					// Rapid primary fire for close range
-					me->PressFireButton( 0.1f );
+					if ( !isCharging )
+					{
+						me->PressAltFireButton( bot_gauss_charge_time.GetFloat() );
+					}
 				}
 			}
 			else if ( me->IsEgonWeapon( myWeapon ) )
 			{
 				// Egon gun - continuous beam at medium-short range
-				if ( threatRange <= hl2mp_bot_egon_max_range.GetFloat() )
+				if ( threatRange <= bot_egon_max_range.GetFloat() )
 				{
 					me->PressFireButton( 2.0f ); // Hold fire for continuous beam
 				}
@@ -648,7 +707,7 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 			else if ( me->IsPistolWeapon( myWeapon ) )
 			{
 				// Pistol - spam fire rapidly instead of slow shooting
-				me->PressFireButton( hl2mp_bot_pistol_fire_rate.GetFloat() );
+				me->PressFireButton( bot_pistol_fire_rate.GetFloat() );
 			}
 			else if ( me->IsGrenadeWeapon( myWeapon ) && me->ShouldThrowGrenade( threat ) )
 			{
@@ -658,7 +717,7 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 			else if ( me->IsContinuousFireWeapon( MY_CURRENT_GUN ) )
 			{
 				// spray for a bit
-				me->PressFireButton( hl2mp_bot_fire_weapon_min_time.GetFloat() );
+				me->PressFireButton( bot_fire_weapon_min_time.GetFloat() );
 			}
 			else 
 			{
@@ -704,7 +763,7 @@ QueryResultType	CHL2MPBotMainAction::ShouldRetreat( const INextBot *bot ) const
 {
 	CHL2MPBot *me = (CHL2MPBot *)bot->GetEntity();
 
-	if ( !hl2mp_bot_allow_retreat.GetBool() )
+	if ( !bot_allow_retreat.GetBool() )
 		return ANSWER_NO;
 
 	// don't retreat if we're in "melee only" mode

@@ -23,8 +23,8 @@
 #include "bot/behavior/hl2mp_bot_scenario_monitor.h"
 
 
-extern ConVar hl2mp_bot_health_ok_ratio;
-extern ConVar hl2mp_bot_health_critical_ratio;
+extern ConVar bot_health_ok_ratio;
+extern ConVar bot_health_critical_ratio;
 
 
 //-----------------------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 #include "bot/hl2mp_bot.h"
 #include "bot/behavior/hl2mp_bot_retreat_to_cover.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 ConVar hl2mp_bot_retreat_to_cover_range( "hl2mp_bot_retreat_to_cover_range", "1000", FCVAR_CHEAT );
 ConVar hl2mp_bot_debug_retreat_to_cover( "hl2mp_bot_debug_retreat_to_cover", "0", FCVAR_CHEAT );
 ConVar hl2mp_bot_wait_in_cover_min_time( "hl2mp_bot_wait_in_cover_min_time", "1", FCVAR_CHEAT );

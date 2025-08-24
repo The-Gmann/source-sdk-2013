@@ -10,10 +10,10 @@
 #include "bot/behavior/hl2mp_bot_get_prop.h"
 #include "nav_mesh.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
-extern ConVar hl2mp_bot_offense_must_push_time;
-extern ConVar hl2mp_bot_defense_must_defend_time;
-extern ConVar hl2mp_bot_weapon_collection_range;
+extern ConVar bot_path_lookahead_range;
+extern ConVar bot_offense_must_push_time;
+extern ConVar bot_defense_must_defend_time;
+extern ConVar bot_weapon_collection_range;
 
 ConVar hl2mp_bot_debug_seek_and_destroy( "hl2mp_bot_debug_seek_and_destroy", "0", FCVAR_CHEAT );
 ConVar hl2mp_bot_disable_seek_and_destroy( "hl2mp_bot_disable_seek_and_destroy", "0", FCVAR_CHEAT );
@@ -313,7 +313,7 @@ void CHL2MPBotSeekAndDestroy::RecomputeSeekPath( CHL2MPBot *me )
 		CBaseEntity* pSearch = NULL;
 		
 		// Search for weapons within collection range
-		float searchRange = hl2mp_bot_weapon_collection_range.GetFloat();
+		float searchRange = bot_weapon_collection_range.GetFloat();
 		Vector myPos = me->GetAbsOrigin();
 		
 		while ( ( pSearch = gEntList.FindEntityByClassname( pSearch, "weapon_*", &weaponFilter ) ) != NULL )

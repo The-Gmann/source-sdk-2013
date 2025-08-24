@@ -21,8 +21,8 @@
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_move_to.h"
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_wait.h"
 
-extern ConVar hl2mp_bot_health_ok_ratio;
-extern ConVar hl2mp_bot_health_critical_ratio;
+extern ConVar bot_health_ok_ratio;
+extern ConVar bot_health_critical_ratio;
 
 ConVar hl2mp_bot_force_jump( "hl2mp_bot_force_jump", "0", FCVAR_CHEAT, "Force bots to continuously jump" );
 
@@ -235,7 +235,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float
 		{
 			m_maintainTimer.Start( RandomFloat( 0.3f, 0.5f ) );
 
-			bool isHurt = ( me->GetFlags() & FL_ONFIRE ) || ( ( float )me->GetHealth() / ( float )me->GetMaxHealth() ) < hl2mp_bot_health_ok_ratio.GetFloat();
+			bool isHurt = ( me->GetFlags() & FL_ONFIRE ) || ( ( float )me->GetHealth() / ( float )me->GetMaxHealth() ) < bot_health_ok_ratio.GetFloat();
 
 			if ( isHurt && CHL2MPBotGetHealth::IsPossible( me ) )
 			{

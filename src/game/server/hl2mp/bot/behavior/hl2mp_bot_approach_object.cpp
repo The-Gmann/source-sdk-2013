@@ -6,7 +6,7 @@
 #include "bot/hl2mp_bot.h"
 #include "bot/behavior/hl2mp_bot_approach_object.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
 //---------------------------------------------------------------------------------------------
 CHL2MPBotApproachObject::CHL2MPBotApproachObject( CBaseEntity *loot, float range )

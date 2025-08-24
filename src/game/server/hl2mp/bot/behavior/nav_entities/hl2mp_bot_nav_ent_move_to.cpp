@@ -6,7 +6,7 @@
 #include "bot/hl2mp_bot.h"
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_move_to.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
 //---------------------------------------------------------------------------------------------
 CHL2MPBotNavEntMoveTo::CHL2MPBotNavEntMoveTo( const CFuncNavPrerequisite *prereq )

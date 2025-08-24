@@ -6,14 +6,14 @@
 #include "item_healthkit.h"
 #include "bot/behavior/hl2mp_bot_get_health.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
-ConVar hl2mp_bot_health_critical_ratio( "hl2mp_bot_health_critical_ratio", "0.3", FCVAR_CHEAT );
-ConVar hl2mp_bot_health_ok_ratio( "hl2mp_bot_health_ok_ratio", "0.65", FCVAR_CHEAT );
-ConVar hl2mp_bot_health_search_near_range( "hl2mp_bot_health_search_near_range", "1000", FCVAR_CHEAT );
-ConVar hl2mp_bot_health_search_far_range( "hl2mp_bot_health_search_far_range", "2000", FCVAR_CHEAT );
+ConVar bot_health_critical_ratio( "bot_health_critical_ratio", "0.3", FCVAR_CHEAT );
+ConVar bot_health_ok_ratio( "bot_health_ok_ratio", "0.65", FCVAR_CHEAT );
+ConVar bot_health_search_near_range( "bot_health_search_near_range", "1000", FCVAR_CHEAT );
+ConVar bot_health_search_far_range( "bot_health_search_far_range", "2000", FCVAR_CHEAT );
 
-ConVar hl2mp_bot_debug_health_scavenging( "hl2mp_bot_debug_ammo_scavenging", "0", FCVAR_CHEAT );
+ConVar bot_debug_health_scavenging( "bot_debug_health_scavenging", "0", FCVAR_CHEAT );
 
 //---------------------------------------------------------------------------------------------
 class CHealthFilter : public INextBotFilter
@@ -77,7 +77,7 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 
 	float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
 
-	float t = ( healthRatio - hl2mp_bot_health_critical_ratio.GetFloat() ) / ( hl2mp_bot_health_ok_ratio.GetFloat() - hl2mp_bot_health_critical_ratio.GetFloat() );
+	float t = ( healthRatio - bot_health_critical_ratio.GetFloat() ) / ( bot_health_ok_ratio.GetFloat() - bot_health_critical_ratio.GetFloat() );
 	t = clamp( t, 0.0f, 1.0f );
 
 	if ( me->GetFlags() & FL_ONFIRE )
@@ -87,7 +87,7 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 	}
 
 	// the more we are hurt, the farther we'll travel to get health
-	float searchRange = hl2mp_bot_health_search_far_range.GetFloat() + t * ( hl2mp_bot_health_search_near_range.GetFloat() - hl2mp_bot_health_search_far_range.GetFloat() );
+	float searchRange = bot_health_search_far_range.GetFloat() + t * ( bot_health_search_near_range.GetFloat() - bot_health_search_far_range.GetFloat() );
 
 	CBaseEntity* healthkit = NULL;
 	CUtlVector< CHandle< CBaseEntity > > hHealthKits;
@@ -213,7 +213,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 				}
 
 				float healthRatio = ( float )me->GetHealth() / ( float )me->GetMaxHealth();
-				bool bLowHealth = healthRatio > hl2mp_bot_health_critical_ratio.GetFloat();
+				bool bLowHealth = healthRatio > bot_health_critical_ratio.GetFloat();
 
 				// don't wait if I'm in combat
 				if ( !bLowHealth && me->GetVisionInterface()->GetPrimaryKnownThreat() )

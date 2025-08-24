@@ -5,11 +5,12 @@
 #include "bot/hl2mp_bot.h"
 #include "bot/behavior/hl2mp_bot_get_ammo.h"
 #include "items.h"
+#include "ammodef.h"
 
-extern ConVar hl2mp_bot_path_lookahead_range;
+extern ConVar bot_path_lookahead_range;
 
-ConVar hl2mp_bot_ammo_search_range( "hl2mp_bot_ammo_search_range", "5000", FCVAR_CHEAT, "How far bots will search to find ammo around them" );
-ConVar hl2mp_bot_debug_ammo_scavenging( "hl2mp_bot_debug_ammo_scavenging", "0", FCVAR_CHEAT );
+ConVar bot_ammo_search_range( "bot_ammo_search_range", "5000", FCVAR_CHEAT, "How far bots will search to find ammo around them" );
+ConVar bot_debug_ammo_scavenging( "bot_debug_ammo_scavenging", "0", FCVAR_CHEAT );
 
 
 //---------------------------------------------------------------------------------------------
@@ -51,22 +52,37 @@ public:
 		if ( !pItem )
 			return false;
 
+		// PRIORITY 1: GaussEnergy ammo is ALWAYS valuable if we have gauss/egon weapons
+		if ( FClassnameIs( candidate, "item_ammo_gaussenergy" ) )
+		{
+			// Check if we have gauss or egon weapons
+			CBaseCombatWeapon* pGauss = m_me->Weapon_OwnsThisType( "weapon_gauss" );
+			CBaseCombatWeapon* pEgon = m_me->Weapon_OwnsThisType( "weapon_egon" );
+			
+			if ( pGauss || pEgon )
+			{
+				// Check if we need more GaussEnergy ammo
+				int gaussAmmoType = GetAmmoDef()->Index("GaussEnergy");
+				if ( gaussAmmoType != -1 && m_me->GetAmmoCount( gaussAmmoType ) < m_me->GetMaxAmmo( gaussAmmoType ) )
+				{
+					return true; // Always prioritize superweapon ammo!
+				}
+			}
+		}
+
 		const char* pszWeaponClass = pItem->GetWeaponClassForAmmo();
 		if ( !pszWeaponClass || !*pszWeaponClass )
 			return false;
 
-		//CBaseCombatWeapon* pWeapon = m_me->Weapon_OwnsThisType( pszWeaponClass );
-		CBaseCombatWeapon* pWeapon = m_me->GetActiveWeapon();
+		// Check if we own this weapon type (not just active weapon)
+		CBaseCombatWeapon* pWeapon = m_me->Weapon_OwnsThisType( pszWeaponClass );
 		if ( !pWeapon )
 			return false;
 
 		if ( m_me->IsBludgeon( pWeapon ) || pWeapon->GetPrimaryAmmoType() == -1 )
 			return false;
 
-		// Only hunt for ammo for our active weapon.
-		if ( !pWeapon->ClassMatches( pszWeaponClass ) )
-			return false;
-
+		// Check if we need ammo for this weapon type
 		return m_me->GetAmmoCount( pWeapon->GetPrimaryAmmoType() ) < m_me->GetMaxAmmo( pWeapon->GetPrimaryAmmoType() );
 	}
 
@@ -88,10 +104,17 @@ bool CHL2MPBotGetAmmo::IsPossible( CHL2MPBot *me )
 {
 	VPROF_BUDGET( "CHL2MPBotGetAmmo::IsPossible", "NextBot" );
 
-	float searchRange = hl2mp_bot_ammo_search_range.GetFloat();
+	float searchRange = bot_ammo_search_range.GetFloat();
 
 	CBaseEntity* ammo = NULL;
 	CUtlVector< CHandle< CBaseEntity > > hAmmos;
+	
+	// Search for all ammo items (not just health)
+	while ( ( ammo = gEntList.FindEntityByClassname( ammo, "item_ammo_*" ) ) != NULL )
+	{
+		hAmmos.AddToTail( ammo );
+	}
+	// Also search for health items
 	while ( ( ammo = gEntList.FindEntityByClassname( ammo, "*_health*" ) ) != NULL )
 	{
 		hAmmos.AddToTail( ammo );
@@ -112,7 +135,7 @@ bool CHL2MPBotGetAmmo::IsPossible( CHL2MPBot *me )
 		return false;
 	}
 
-	if ( hl2mp_bot_debug_ammo_scavenging.GetBool() )
+	if ( bot_debug_ammo_scavenging.GetBool() )
 	{
 		NDebugOverlay::Cross3D( closestAmmo->WorldSpaceCenter(), 5.0f, 255, 255, 0, true, 999.9 );
 	}
