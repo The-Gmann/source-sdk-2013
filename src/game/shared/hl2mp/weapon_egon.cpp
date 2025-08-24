@@ -34,6 +34,7 @@
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
+    #include "ai_condition.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -66,7 +67,7 @@ namespace EgonConstants
     static constexpr float DMG_RADIUS = 128.0f;
     static constexpr float RADIUS_DAMAGE_MULTIPLIER = 0.25f;
     
-    // Sound names
+    // Sound names (kept for reference, but using WeaponSound system now)
     static const char* SOUND_START = "Weapon_Gluon.Start";
     static const char* SOUND_RUN = "Weapon_Gluon.Run";
     static const char* SOUND_OFF = "Weapon_Gluon.Off";
@@ -121,6 +122,16 @@ public:
 
     // Public utility methods
     bool HasAmmo() const;
+    
+    // Bot-friendly firing behavior
+    virtual float GetFireRate() { return 0.05f; }  // Fast continuous firing rate for bots
+    virtual bool CanHolster() { return m_fireState == FIRE_OFF; } // Only holster when not firing
+    virtual float GetMinRestTime() { return 0.1f; }  // Short rest time for continuous beam
+    virtual float GetMaxRestTime() { return 0.3f; }  // Keep firing aggressively
+    
+#ifndef CLIENT_DLL
+    virtual int WeaponRangeAttack1Condition(float flDot, float flDist);
+#endif
 
 private:
     enum EFireState 
@@ -135,7 +146,6 @@ private:
     CNetworkVar(float, m_flNextDamageTime);
     CNetworkVar(EFireState, m_fireState);
     CNetworkVar(Vector, m_vecBeamEndPos);
-    CNetworkVar(bool, m_bRunSoundPlaying);
 
 #ifdef CLIENT_DLL
     // Client-only beam rendering
@@ -154,6 +164,7 @@ private:
     float m_flShakeTime;
     float m_flStartSoundDuration;
     bool m_bTransitionedToCharge;
+    bool m_bRunSoundPlaying; // Track if run sound is currently playing
 
     // Core weapon methods
     void StartFiring();
@@ -187,13 +198,11 @@ BEGIN_NETWORK_TABLE(CWeaponEgon, DT_WeaponEgon)
     RecvPropFloat(RECVINFO(m_flNextDamageTime)),
     RecvPropInt(RECVINFO(m_fireState)),
     RecvPropVector(RECVINFO(m_vecBeamEndPos)),
-    RecvPropBool(RECVINFO(m_bRunSoundPlaying)),
 #else
     SendPropFloat(SENDINFO(m_flAmmoUseTime)),
     SendPropFloat(SENDINFO(m_flNextDamageTime)),
     SendPropInt(SENDINFO(m_fireState)),
     SendPropVector(SENDINFO(m_vecBeamEndPos)),
-    SendPropBool(SENDINFO(m_bRunSoundPlaying)),
 #endif
 END_NETWORK_TABLE()
 
@@ -204,7 +213,6 @@ BEGIN_PREDICTION_DATA(CWeaponEgon)
     DEFINE_PRED_FIELD(m_flNextDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_fireState, FIELD_INTEGER, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_vecBeamEndPos, FIELD_VECTOR, FTYPEDESC_INSENDTABLE),
-    DEFINE_PRED_FIELD(m_bRunSoundPlaying, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE),
 END_PREDICTION_DATA()
 #endif
 
@@ -218,10 +226,10 @@ acttable_t CWeaponEgon::m_acttable[] =
     { ACT_HL2MP_RUN,                     ACT_HL2MP_RUN_AR2,                     false },
     { ACT_HL2MP_IDLE_CROUCH,            ACT_HL2MP_IDLE_CROUCH_AR2,             false },
     { ACT_HL2MP_WALK_CROUCH,            ACT_HL2MP_WALK_CROUCH_AR2,             false },
-    { ACT_HL2MP_GESTURE_RANGE_ATTACK,    ACT_HL2MP_GESTURE_RANGE_ATTACK_AR2,    false },
+    // Removed: ACT_HL2MP_GESTURE_RANGE_ATTACK to disable third-person attack animation
     { ACT_HL2MP_GESTURE_RELOAD,          ACT_HL2MP_GESTURE_RELOAD_AR2,          false },
     { ACT_HL2MP_JUMP,                    ACT_HL2MP_JUMP_AR2,                    false },
-    { ACT_RANGE_ATTACK1,                 ACT_RANGE_ATTACK_AR2,                  false }
+    // Removed: ACT_RANGE_ATTACK1 to disable NPC attack animation
 };
 
 IMPLEMENT_ACTTABLE(CWeaponEgon);
@@ -240,6 +248,12 @@ CWeaponEgon::CWeaponEgon()
     m_flStartSoundDuration = EgonConstants::DEFAULT_SOUND_DURATION;
     m_bTransitionedToCharge = false;
     m_bRunSoundPlaying = false;
+
+    // Bot-friendly range configuration  
+    m_fMinRange1 = 256.0f;  // Increased minimum range - bots should stay back and use range advantage
+    m_fMaxRange1 = EgonConstants::BEAM_LENGTH; // Maximum range matches beam length
+    m_fMinRange2 = 0.0f;    // No secondary attack
+    m_fMaxRange2 = 0.0f;
 
 #ifdef CLIENT_DLL
     m_pClientBeam = nullptr;
@@ -277,11 +291,15 @@ void CWeaponEgon::Precache()
     PrecacheScriptSound(EgonConstants::SOUND_RUN);
     PrecacheScriptSound(EgonConstants::SOUND_OFF);
 
-    // Get actual sound duration for timing
-    CSoundParameters params;
-    if (GetParametersForSound(EgonConstants::SOUND_START, params, nullptr))
+    // Get actual sound duration for timing from weapon script
+    const char *startSound = GetShootSound(SINGLE);
+    if (startSound && startSound[0])
     {
-        m_flStartSoundDuration = enginesound->GetSoundDuration(params.soundname);
+        CSoundParameters params;
+        if (GetParametersForSound(startSound, params, nullptr))
+        {
+            m_flStartSoundDuration = enginesound->GetSoundDuration(params.soundname);
+        }
     }
 
     BaseClass::Precache();
@@ -289,7 +307,7 @@ void CWeaponEgon::Precache()
 
 #ifdef CLIENT_DLL
 //-----------------------------------------------------------------------------
-// Get muzzle position from attachment
+// Get muzzle position from attachment - handles both first and third person
 //-----------------------------------------------------------------------------
 Vector CWeaponEgon::GetMuzzlePosition()
 {
@@ -297,21 +315,37 @@ Vector CWeaponEgon::GetMuzzlePosition()
     if (!pOwner)
         return GetAbsOrigin();
 
-    C_BaseViewModel *pViewModel = pOwner->GetViewModel();
-    if (!pViewModel)
-        return GetAbsOrigin();
-
     Vector muzzlePos;
     QAngle muzzleAng;
     
-    // Try to get muzzle attachment point from viewmodel
-    int attachment = pViewModel->LookupAttachment("muzzle");
-    if (attachment == -1)
-        attachment = pViewModel->LookupAttachment("0");
-        
-    if (attachment != -1 && pViewModel->GetAttachment(attachment, muzzlePos, muzzleAng))
+    // Check if we should use viewmodel (first person) or world model (third person)
+    if (ShouldDrawUsingViewModel())
     {
-        return muzzlePos;
+        // First person - use viewmodel attachments
+        C_BaseViewModel *pViewModel = pOwner->GetViewModel();
+        if (pViewModel)
+        {
+            int attachment = pViewModel->LookupAttachment("muzzle");
+            if (attachment == -1)
+                attachment = pViewModel->LookupAttachment("0");
+                
+            if (attachment != -1 && pViewModel->GetAttachment(attachment, muzzlePos, muzzleAng))
+            {
+                return muzzlePos;
+            }
+        }
+    }
+    else
+    {
+        // Third person - use world model attachments
+        int attachment = LookupAttachment("muzzle");
+        if (attachment == -1)
+            attachment = LookupAttachment("0");
+            
+        if (attachment != -1 && GetAttachment(attachment, muzzlePos, muzzleAng))
+        {
+            return muzzlePos;
+        }
     }
     
     // Fallback to owner's shoot position
@@ -331,8 +365,14 @@ void CWeaponEgon::CreateClientBeams()
     // Wait for proper positioning data
     m_nBeamDelayFrames = 8;
 
+    // Choose beam sprite based on viewmodel usage
+    // Use xbeam1 for third-person (others), xbeam_nodepth for first-person (owner)
+    const char* beamSprite = ShouldDrawUsingViewModel() ? 
+                            EgonConstants::BEAM_SPRITE_NODEPTH : 
+                            EgonConstants::BEAM_SPRITE;
+
     // Create primary beam
-    m_pClientBeam = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::BEAM_WIDTH);
+    m_pClientBeam = CBeam::BeamCreate(beamSprite, EgonConstants::BEAM_WIDTH);
     if (m_pClientBeam)
     {
         m_pClientBeam->SetStartPos(startPos);
@@ -349,7 +389,7 @@ void CWeaponEgon::CreateClientBeams()
     }
 
     // Create noise beam
-    m_pClientNoise = CBeam::BeamCreate(EgonConstants::BEAM_SPRITE_NODEPTH, EgonConstants::NOISE_WIDTH);
+    m_pClientNoise = CBeam::BeamCreate(beamSprite, EgonConstants::NOISE_WIDTH);
     if (m_pClientNoise)
     {
         m_pClientNoise->SetStartPos(startPos);
@@ -636,12 +676,11 @@ bool CWeaponEgon::Deploy()
 //-----------------------------------------------------------------------------
 bool CWeaponEgon::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
-    // Stop all sounds and play off sound
-    StopSound(EgonConstants::SOUND_START);
-    StopSound(EgonConstants::SOUND_RUN);
+    // Stop all sounds using proper weapon sound system
+    StopWeaponSound(SINGLE);    // Stop start sound
+    StopWeaponSound(SPECIAL1);  // Stop run sound
     
     StopFiring();
-    m_bRunSoundPlaying = false;
     
     return BaseClass::Holster(pSwitchingTo);
 }
@@ -728,11 +767,14 @@ void CWeaponEgon::StartFiring()
     m_flNextDamageTime = currentTime + EgonConstants::DAMAGE_INTERVAL;
     m_bTransitionedToCharge = false;
 
-    // Audio and visual feedback
-    EmitSound(EgonConstants::SOUND_START);
+    // Audio and visual feedback using proper weapon sound system
+    WeaponSound(SINGLE);  // Play start sound
     SendWeaponAnim(ACT_VM_PULLBACK);
     
     m_fireState = FIRE_STARTUP;
+    
+    // Set immediate next attack for continuous firing (important for bots)
+    m_flNextPrimaryAttack = gpGlobals->curtime + 0.1f;
 
 #ifdef CLIENT_DLL
     m_nBeamDelayFrames = 6;
@@ -753,15 +795,12 @@ void CWeaponEgon::StopFiring()
     if (m_fireState == FIRE_OFF)
         return;
 
-    // Stop all firing sounds
-    StopSound(EgonConstants::SOUND_START);
-    StopSound(EgonConstants::SOUND_RUN);
-    EmitSound(EgonConstants::SOUND_OFF);
+    // Stop all firing sounds and play off sound using proper weapon sound system
+    StopWeaponSound(SINGLE);     // Stop start sound
+    StopWeaponSound(SPECIAL1);   // Stop run sound
+    WeaponSound(SPECIAL2);       // Play off sound
     
-    if (m_bRunSoundPlaying)
-    {
-        m_bRunSoundPlaying = false;
-    }
+    m_bRunSoundPlaying = false;
     
     // Reset animation and effects
     SendWeaponAnim(ACT_VM_IDLE);
@@ -794,29 +833,14 @@ void CWeaponEgon::HandleFireStateTransition()
         !m_bTransitionedToCharge &&
         gpGlobals->curtime >= (m_flStartFireTime + m_flStartSoundDuration))
     {
-        // Stop the start sound before playing run sound
-        StopSound(EgonConstants::SOUND_START);
+        // Stop the start sound and play run sound using proper weapon sound system
+        StopWeaponSound(SINGLE);     // Stop start sound
         
-#ifdef CLIENT_DLL
-        // Client side - server will handle run sound
-#else
-        // Server side - control run sound
         if (!m_bRunSoundPlaying)
         {
-            CBasePlayer *pOwner = GetPlayerOwner();
-            if (pOwner)
-            {
-                CPASAttenuationFilter filter(pOwner, ATTN_NORM);
-                EmitSound(filter, entindex(), EgonConstants::SOUND_RUN);
-            }
-            else
-            {
-                EmitSound(EgonConstants::SOUND_RUN);
-            }
-            
+            WeaponSound(SPECIAL1);   // Play run sound
             m_bRunSoundPlaying = true;
         }
-#endif
         
         m_fireState = FIRE_CHARGE;
         m_bTransitionedToCharge = true;
@@ -843,6 +867,9 @@ void CWeaponEgon::Fire()
 
     // Update beam end position for networking
     m_vecBeamEndPos = tr.endpos;
+
+    // Set rapid fire rate for continuous beam (important for bot AI)
+    m_flNextPrimaryAttack = gpGlobals->curtime + 0.05f;
 
 #ifndef CLIENT_DLL
     // Process damage at intervals
@@ -976,3 +1003,36 @@ void CWeaponEgon::ItemPostFrame()
 
     BaseClass::ItemPostFrame();
 }
+
+#ifndef CLIENT_DLL
+//-----------------------------------------------------------------------------
+// Bot firing condition - when is it appropriate to use the egon?
+//-----------------------------------------------------------------------------
+int CWeaponEgon::WeaponRangeAttack1Condition(float flDot, float flDist)
+{
+    // Don't fire if no ammo
+    if (!HasAmmo())
+        return COND_NO_PRIMARY_AMMO;
+    
+    // Egon excels at medium to long range - encourage bots to keep distance
+    if (flDist >= m_fMinRange1 && flDist <= m_fMaxRange1)
+    {
+        // More lenient aim requirement since it's a continuous beam
+        if (flDot >= 0.5f) // ~60 degree cone - more forgiving
+        {
+            return COND_CAN_RANGE_ATTACK1;
+        }
+        else
+        {
+            return COND_NOT_FACING_ATTACK; // Need to turn toward target first
+        }
+    }
+    
+    // Too close - encourage bots to back up and use range advantage
+    if (flDist < m_fMinRange1)
+        return COND_TOO_CLOSE_TO_ATTACK;
+    
+    // Too far away
+    return COND_TOO_FAR_TO_ATTACK;
+}
+#endif
