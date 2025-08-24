@@ -265,9 +265,6 @@ void CWeaponGauss::SecondaryAttack(void)
     {
         if (m_bCharging)
         {
-            #ifndef CLIENT_DLL
-                DevMsg("[GAUSS SECONDARY] Player died/invalid while charging - stopping charge\n");
-            #endif
             StopChargeSound();
             m_bCharging = false;
         }
@@ -277,16 +274,7 @@ void CWeaponGauss::SecondaryAttack(void)
     if (!m_bCharging)
     {
         if (pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
-        {
-            #ifndef CLIENT_DLL
-                DevMsg("[GAUSS SECONDARY] Cannot start charging - no ammo available\n");
-            #endif
             return;
-        }
-
-        #ifndef CLIENT_DLL
-            DevMsg("[GAUSS SECONDARY] Starting charge with %d ammo\n", pOwner->GetAmmoCount(m_iPrimaryAmmoType));
-        #endif
 
         // Start looping animation
         SendWeaponAnim(ACT_VM_PULLBACK);
@@ -314,10 +302,6 @@ void CWeaponGauss::SecondaryAttack(void)
 
         // Decrement initial power
         pOwner->RemoveAmmo(1, m_iPrimaryAmmoType);
-        
-        #ifndef CLIENT_DLL
-            DevMsg("[GAUSS SECONDARY] Charge started - ammo now %d\n", pOwner->GetAmmoCount(m_iPrimaryAmmoType));
-        #endif
     }
 
     // Don't call IncreaseCharge here - it will be called in ItemPostFrame
@@ -408,10 +392,6 @@ void CWeaponGauss::IncreaseCharge(void)
         // If we're out of ammo, fire now
         if (pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
         {
-            #ifndef CLIENT_DLL
-                float currentChargeTime = gpGlobals->curtime - m_flChargeStartTime;
-                DevMsg("[GAUSS SECONDARY] Out of ammo - firing with charge time %.2fs\n", currentChargeTime);
-            #endif
             ChargedFire();
             return;
         }
@@ -419,20 +399,11 @@ void CWeaponGauss::IncreaseCharge(void)
         // Otherwise consume ammo and continue charging
         pOwner->RemoveAmmo(1, m_iPrimaryAmmoType);
         m_flNextChargeTime = gpGlobals->curtime + GAUSS_CHARGE_TIME;
-        
-        #ifndef CLIENT_DLL
-            float currentChargeTime = gpGlobals->curtime - m_flChargeStartTime;
-            DevMsg("[GAUSS SECONDARY] Consumed ammo - charge time: %.2fs, ammo remaining: %d\n", 
-                   currentChargeTime, pOwner->GetAmmoCount(m_iPrimaryAmmoType));
-        #endif
 
         // Check if we've reached max charge
         if ((gpGlobals->curtime - m_flChargeStartTime) >= MAX_GAUSS_CHARGE_TIME)
         {
             m_flNextChargeTime = 1000;  // Stop consuming ammo
-            #ifndef CLIENT_DLL
-                DevMsg("[GAUSS SECONDARY] Reached maximum charge time - no longer consuming ammo\n");
-            #endif
         }
     }
 }
@@ -565,18 +536,14 @@ void CWeaponGauss::Fire(void)
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
         
-        // Debug: Show health/armor status for all players that took damage in primary attack
-        for (int i = 1; i <= gpGlobals->maxClients; i++)
+        // Debug: Show actual health status after damage for primary attack
+        if (tr.m_pEnt && tr.m_pEnt->IsPlayer())
         {
-            CBasePlayer* pPlayer = UTIL_PlayerByIndex(i);
-            if (pPlayer && pPlayer->IsAlive() && pPlayer != pOwner)
+            CBasePlayer* pTargetPlayer = ToBasePlayer(tr.m_pEnt);
+            if (pTargetPlayer)
             {
-                // Check if this player was likely hit (health < 100 or has armor damage)
-                if (pPlayer->GetHealth() < 100 || pPlayer->ArmorValue() < 100)
-                {
-                    DevMsg("Gauss primary: Player %d health now %d (armor: %d)\n", 
-                           i, pPlayer->GetHealth(), pPlayer->ArmorValue());
-                }
+                DevMsg("Gauss primary: Target player health now %d (armor: %d)\n", 
+                       pTargetPlayer->GetHealth(), pTargetPlayer->ArmorValue());
             }
         }
         
@@ -639,19 +606,6 @@ void CWeaponGauss::ChargedFire(void)
         // Scale from minimum 50 to maximum 200 based on charge time
         flDamage = 50 + (150 * (chargeTime / MAX_GAUSS_CHARGE_TIME));
     }
-    
-    #ifndef CLIENT_DLL
-        // Debug: Show charge time and calculated damage
-        DevMsg("[GAUSS SECONDARY] Charge time: %.2fs (max: %.2fs), Initial damage: %.1f\n", 
-               chargeTime, MAX_GAUSS_CHARGE_TIME, flDamage);
-        
-        // Debug: Show knockback calculation
-        Vector originalVelocity = pOwner->GetAbsVelocity();
-        Vector knockbackForce = aimDir * flDamage * 5;
-        DevMsg("[GAUSS SECONDARY] Player velocity before: (%.1f, %.1f, %.1f), knockback force: (%.1f, %.1f, %.1f)\n",
-               originalVelocity.x, originalVelocity.y, originalVelocity.z,
-               knockbackForce.x, knockbackForce.y, knockbackForce.z);
-    #endif
 
     Vector endPos = startPos + (aimDir * MAX_TRACE_LENGTH);
     int nMaxHits = 10;
@@ -702,20 +656,7 @@ void CWeaponGauss::ChargedFire(void)
                 const char* className = tr.m_pEnt->GetClassname();
                 if (className && Q_stricmp(className, "worldspawn") != 0)
                 {
-                    DevMsg("[GAUSS SECONDARY] Hit %s (entindex: %d) for %.1f damage at (%.1f, %.1f, %.1f)\n", 
-                           className, tr.m_pEnt->entindex(), flDamage, 
-                           tr.endpos.x, tr.endpos.y, tr.endpos.z);
-                    
-                    // Show health status for players
-                    if (tr.m_pEnt->IsPlayer())
-                    {
-                        CBasePlayer* pHitPlayer = ToBasePlayer(tr.m_pEnt);
-                        if (pHitPlayer)
-                        {
-                            DevMsg("[GAUSS SECONDARY] Player %d health before hit: %d (armor: %d)\n",
-                                   pHitPlayer->entindex(), pHitPlayer->GetHealth(), pHitPlayer->ArmorValue());
-                        }
-                    }
+                    DevMsg("Gauss hit %s for %.1f damage\n", className, flDamage);
                 }
             #endif
         }
@@ -732,8 +673,8 @@ void CWeaponGauss::ChargedFire(void)
                         tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                         
             // Debug output for area effect damage
-            DevMsg("[GAUSS SECONDARY] Area effect at (%.1f, %.1f, %.1f): %.1f damage, radius 64.0\n", 
-                   tr.endpos.x, tr.endpos.y, tr.endpos.z, flDamage * 0.5f);
+            DevMsg("Gauss area effect: %.1f damage, radius 64.0\n", 
+                   flDamage * 0.5f);
         #endif
 
         // Stop if we hit sky
@@ -778,20 +719,8 @@ void CWeaponGauss::ChargedFire(void)
                             penetrationTrace.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &penetrationTrace);
                             
                             // Debug output for penetration damage
-                            DevMsg("[GAUSS SECONDARY] Penetration hit %s (entindex: %d) for %.1f damage at (%.1f, %.1f, %.1f)\n", 
-                                   penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.m_pEnt->entindex(), 
-                                   flDamage, penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z);
-                            
-                            // Show health status for players hit by penetration
-                            if (penetrationTrace.m_pEnt->IsPlayer())
-                            {
-                                CBasePlayer* pHitPlayer = ToBasePlayer(penetrationTrace.m_pEnt);
-                                if (pHitPlayer)
-                                {
-                                    DevMsg("[GAUSS SECONDARY] Penetration - Player %d health before hit: %d (armor: %d)\n",
-                                           pHitPlayer->entindex(), pHitPlayer->GetHealth(), pHitPlayer->ArmorValue());
-                                }
-                            }
+                            DevMsg("Gauss penetration hit %s for %.1f damage\n", 
+                                   penetrationTrace.m_pEnt->GetClassname(), flDamage);
                         }
                         
                         // Penetration explosion - exclude owner if self damage disabled
@@ -799,8 +728,7 @@ void CWeaponGauss::ChargedFire(void)
                                     penetrationTrace.endpos, flDamage * 1.75f, CLASS_NONE, pIgnoreEntity);
                         
                         // Debug output for penetration explosion damage
-                        DevMsg("[GAUSS SECONDARY] Penetration explosion at (%.1f, %.1f, %.1f): %.1f damage, radius %.1f\n", 
-                               penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z,
+                        DevMsg("Gauss penetration explosion: %.1f damage, radius %.1f\n", 
                                flDamage, flDamage * 1.75f);
                     #endif
                     
@@ -832,8 +760,8 @@ void CWeaponGauss::ChargedFire(void)
                                 tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                                 
                     // Debug output for reflection explosion damage
-                    DevMsg("[GAUSS SECONDARY] Reflection explosion at (%.1f, %.1f, %.1f): %.1f damage, radius 64.0, hit angle: %.2f\n", 
-                           tr.endpos.x, tr.endpos.y, tr.endpos.z, flDamage * hitAngle, hitAngle);
+                    DevMsg("Gauss reflection explosion: %.1f damage, radius 64.0\n", 
+                           flDamage * hitAngle);
                 #endif
 
                 firstBeam = false;
@@ -850,32 +778,20 @@ void CWeaponGauss::ChargedFire(void)
         ApplyMultiDamage();
         
         // Debug: Show final health/armor status after all damage for secondary attack
-        DevMsg("[GAUSS SECONDARY] === Final damage summary ===\n");
-        
-        // Show all players' status after damage
+        // Note: This may show multiple players if beam hit multiple targets
         for (int i = 1; i <= gpGlobals->maxClients; i++)
         {
             CBasePlayer* pPlayer = UTIL_PlayerByIndex(i);
-            if (pPlayer && pPlayer->IsAlive())
+            if (pPlayer && pPlayer->IsAlive() && pPlayer != pOwner)
             {
-                if (pPlayer == pOwner)
+                // Check if this player was likely hit (health < 100)
+                if (pPlayer->GetHealth() < 100)
                 {
-                    DevMsg("[GAUSS SECONDARY] Shooter (Player %d) final health: %d (armor: %d)\n", 
-                           i, pPlayer->GetHealth(), pPlayer->ArmorValue());
-                }
-                else if (pPlayer->GetHealth() < 100 || pPlayer->ArmorValue() < 100)
-                {
-                    DevMsg("[GAUSS SECONDARY] Hit target (Player %d) final health: %d (armor: %d)\n", 
+                    DevMsg("Gauss secondary: Player %d health now %d (armor: %d)\n", 
                            i, pPlayer->GetHealth(), pPlayer->ArmorValue());
                 }
             }
         }
-        
-        // Show final velocity of shooter after knockback
-        Vector finalVelocity = pOwner->GetAbsVelocity();
-        DevMsg("[GAUSS SECONDARY] Player velocity after knockback: (%.1f, %.1f, %.1f)\n",
-               finalVelocity.x, finalVelocity.y, finalVelocity.z);
-        DevMsg("[GAUSS SECONDARY] === End damage summary ===\n");
         
         // Finish lag compensation
         lagcompensation->FinishLagCompensation( pOwner );
@@ -1163,10 +1079,6 @@ void CWeaponGauss::ItemPostFrame(void)
     {
         if (m_bCharging)
         {
-            #ifndef CLIENT_DLL
-                float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
-                DevMsg("[GAUSS SECONDARY] Button released - firing with charge time %.2fs\n", chargeTime);
-            #endif
             ChargedFire();
         }
     }
