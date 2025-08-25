@@ -15,8 +15,8 @@ extern ConVar bot_offense_must_push_time;
 extern ConVar bot_defense_must_defend_time;
 extern ConVar bot_weapon_collection_range;
 
-ConVar hl2mp_bot_debug_seek_and_destroy( "hl2mp_bot_debug_seek_and_destroy", "0", FCVAR_CHEAT );
-ConVar hl2mp_bot_disable_seek_and_destroy( "hl2mp_bot_disable_seek_and_destroy", "0", FCVAR_CHEAT );
+ConVar bot_debug_seek_and_destroy( "bot_debug_seek_and_destroy", "0", FCVAR_CHEAT );
+ConVar bot_disable_seek_and_destroy( "bot_disable_seek_and_destroy", "0", FCVAR_CHEAT );
 
 
 //---------------------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotSeekAndDestroy::OnStart( CHL2MPBot *me, Actio
 		m_giveUpTimer.Reset();
 	}
 
-	if ( hl2mp_bot_disable_seek_and_destroy.GetBool() )
+	if ( bot_disable_seek_and_destroy.GetBool() )
 	{
 		return Done( "Disabled." );
 	}
@@ -59,7 +59,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotSeekAndDestroy::Update( CHL2MPBot *me, float 
 		return Done( "Behavior duration elapsed" );
 	}
 
-	if ( hl2mp_bot_disable_seek_and_destroy.GetBool() )
+	if ( bot_disable_seek_and_destroy.GetBool() )
 	{
 		return Done( "Disabled." );
 	}

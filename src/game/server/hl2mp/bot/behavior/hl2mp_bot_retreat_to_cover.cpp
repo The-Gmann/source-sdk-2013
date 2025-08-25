@@ -6,10 +6,10 @@
 #include "bot/behavior/hl2mp_bot_retreat_to_cover.h"
 
 extern ConVar bot_path_lookahead_range;
-ConVar hl2mp_bot_retreat_to_cover_range( "hl2mp_bot_retreat_to_cover_range", "1000", FCVAR_CHEAT );
-ConVar hl2mp_bot_debug_retreat_to_cover( "hl2mp_bot_debug_retreat_to_cover", "0", FCVAR_CHEAT );
-ConVar hl2mp_bot_wait_in_cover_min_time( "hl2mp_bot_wait_in_cover_min_time", "1", FCVAR_CHEAT );
-ConVar hl2mp_bot_wait_in_cover_max_time( "hl2mp_bot_wait_in_cover_max_time", "2", FCVAR_CHEAT );
+ConVar bot_retreat_to_cover_range( "bot_retreat_to_cover_range", "1000", FCVAR_CHEAT );
+ConVar bot_debug_retreat_to_cover( "bot_debug_retreat_to_cover", "0", FCVAR_CHEAT );
+ConVar bot_wait_in_cover_min_time( "bot_wait_in_cover_min_time", "1", FCVAR_CHEAT );
+ConVar bot_wait_in_cover_max_time( "bot_wait_in_cover_max_time", "2", FCVAR_CHEAT );
 
 
 //---------------------------------------------------------------------------------------------
@@ -74,7 +74,7 @@ public:
 		m_me = me;
 		m_minExposureCount = 9999;
 
-		if ( hl2mp_bot_debug_retreat_to_cover.GetBool() )
+		if ( bot_debug_retreat_to_cover.GetBool() )
 			TheNavMesh->ClearSelectedSet();
 	}
 
@@ -106,7 +106,7 @@ public:
 	// return true if 'adjArea' should be included in the ongoing search
 	virtual bool ShouldSearch( CNavArea *adjArea, CNavArea *currentArea, float travelDistanceSoFar ) 
 	{
-		if ( travelDistanceSoFar > hl2mp_bot_retreat_to_cover_range.GetFloat() )
+		if ( travelDistanceSoFar > bot_retreat_to_cover_range.GetFloat() )
 			return false;
 
 		// allow falling off ledges, but don't jump up - too slow
@@ -115,7 +115,7 @@ public:
 
 	virtual void PostSearch( void )
 	{
-		if ( hl2mp_bot_debug_retreat_to_cover.GetBool() )
+		if ( bot_debug_retreat_to_cover.GetBool() )
 		{
 			for( int i=0; i<m_coverAreaVector.Count(); ++i )
 				TheNavMesh->AddToSelectedSet( m_coverAreaVector[i] );
@@ -161,7 +161,7 @@ ActionResult< CHL2MPBot >	CHL2MPBotRetreatToCover::OnStart( CHL2MPBot *me, Actio
 
 	if ( m_hideDuration < 0.0f )
 	{
-		m_hideDuration = RandomFloat( hl2mp_bot_wait_in_cover_min_time.GetFloat(), hl2mp_bot_wait_in_cover_max_time.GetFloat() );
+		m_hideDuration = RandomFloat( bot_wait_in_cover_min_time.GetFloat(), bot_wait_in_cover_max_time.GetFloat() );
 	}
 
 	m_waitInCoverTimer.Start( m_hideDuration );
