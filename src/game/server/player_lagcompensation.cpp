@@ -346,6 +346,9 @@ void CLagCompensationManager::StartLagCompensation( CBasePlayer *player, CUserCm
 {
 	Assert( !m_isCurrentlyDoingCompensation );
 
+	DevMsg("[LAG COMP] StartLagCompensation called for player (cmd: %d, buttons: %d)\n", 
+		cmd->command_number, cmd->buttons);
+
 	//DONT LAG COMP AGAIN THIS FRAME IF THERES ALREADY ONE IN PROGRESS
 	//IF YOU'RE HITTING THIS THEN IT MEANS THERES A CODE BUG
 	if ( m_pCurrentPlayer )

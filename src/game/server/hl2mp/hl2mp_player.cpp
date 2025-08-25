@@ -711,8 +711,12 @@ bool CHL2MP_Player::WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, co
 {
 	// No need to lag compensate at all if we're not attacking in this command and
 	// we haven't attacked recently.
-	if ( !( pCmd->buttons & IN_ATTACK ) && (pCmd->command_number - m_iLastWeaponFireUsercmd > 5) )
+	if ( !( pCmd->buttons & (IN_ATTACK | IN_ATTACK2) ) && (pCmd->command_number - m_iLastWeaponFireUsercmd > 5) )
+	{
+		DevMsg("[LAG COMP] Player: Rejected lag comp - No IN_ATTACK/IN_ATTACK2 and cmd gap too big (cmd: %d, last fire: %d, gap: %d)\n", 
+			pCmd->command_number, m_iLastWeaponFireUsercmd, pCmd->command_number - m_iLastWeaponFireUsercmd);
 		return false;
+	}
 
 	// If this entity hasn't been transmitted to us and acked, then don't bother lag compensating it.
 	if ( pEntityTransmitBits && !pEntityTransmitBits->Get( pPlayer->entindex() ) )
@@ -738,8 +742,13 @@ bool CHL2MP_Player::WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, co
 
 	float flCosAngle = 0.707107f;	// 45 degree angle
 	if ( vForward.Dot( vDiff ) < flCosAngle )
+	{
+		DevMsg("[LAG COMP] Player: Rejected lag comp - Target not in 45deg cone\n");
 		return false;
+	}
 
+	DevMsg("[LAG COMP] Player: ACCEPTED lag comp (buttons: %d, IN_ATTACK: %s, IN_ATTACK2: %s)\n", 
+		pCmd->buttons, (pCmd->buttons & IN_ATTACK) ? "YES" : "NO", (pCmd->buttons & IN_ATTACK2) ? "YES" : "NO");
 	return true;
 }
 

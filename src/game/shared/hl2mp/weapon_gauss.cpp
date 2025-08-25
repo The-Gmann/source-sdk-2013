@@ -21,9 +21,11 @@
     #include "c_hl2mp_player.h"
     #include "ClientEffectPrecacheSystem.h"
     #include "c_te_effect_dispatch.h"
+    #include "prediction.h"
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
+    #include "ilagcompensationmanager.h"
 #endif
 
 #ifdef CLIENT_DLL
@@ -91,7 +93,9 @@ public:
     void    StopChargeSound(void);
     void    PlayAfterShock(void);
 
+#ifndef CLIENT_DLL
     DECLARE_ACTTABLE();
+#endif
 
 protected:
     CSoundPatch    *m_sndCharge;
@@ -133,6 +137,7 @@ BEGIN_NETWORK_TABLE(CWeaponGauss, DT_WeaponGauss)
         RecvPropFloat(RECVINFO(m_flCoilVelocity)),
         RecvPropFloat(RECVINFO(m_flCoilAngle)),
         RecvPropFloat(RECVINFO(m_flPlayAftershock)),
+        RecvPropFloat(RECVINFO(m_flNextAftershock)),
         RecvPropEHandle(RECVINFO(m_pBeam))
     #else
         SendPropBool(SENDINFO(m_bCharging)),
@@ -142,13 +147,22 @@ BEGIN_NETWORK_TABLE(CWeaponGauss, DT_WeaponGauss)
         SendPropFloat(SENDINFO(m_flCoilVelocity)),
         SendPropFloat(SENDINFO(m_flCoilAngle)),
         SendPropFloat(SENDINFO(m_flPlayAftershock)),
+        SendPropFloat(SENDINFO(m_flNextAftershock)),
         SendPropEHandle(SENDINFO(m_pBeam))
     #endif
 END_NETWORK_TABLE()
 
 #ifdef CLIENT_DLL
     BEGIN_PREDICTION_DATA(CWeaponGauss)
-        DEFINE_PRED_FIELD(m_pBeam, FIELD_EHANDLE, FTYPEDESC_INSENDTABLE)
+        DEFINE_PRED_FIELD(m_bCharging, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flNextChargeTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flChargeStartTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flCoilMaxVelocity, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flCoilVelocity, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flCoilAngle, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flPlayAftershock, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_flNextAftershock, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
+        DEFINE_PRED_FIELD(m_pBeam, FIELD_EHANDLE, FTYPEDESC_INSENDTABLE),
     END_PREDICTION_DATA()
 #endif
 
@@ -159,6 +173,7 @@ END_NETWORK_TABLE()
 LINK_ENTITY_TO_CLASS(weapon_gauss, CWeaponGauss);
 PRECACHE_WEAPON_REGISTER(weapon_gauss);
 
+#ifndef CLIENT_DLL
 acttable_t CWeaponGauss::m_acttable[] = 
 {
     { ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_AR2,                    false },
@@ -172,6 +187,7 @@ acttable_t CWeaponGauss::m_acttable[] =
 };
 
 IMPLEMENT_ACTTABLE(CWeaponGauss);
+#endif
 
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // Constructor & Core Functions
@@ -239,11 +255,16 @@ void CWeaponGauss::PrimaryAttack(void)
         return;
     }
 
+#ifndef CLIENT_DLL
+    // Manual lag compensation will be handled in Fire() function
+#endif
+
     // Play fire sound - NO aftershock for primary fire
     WeaponSound(SINGLE);
     pOwner->DoMuzzleFlash();
 
     SendWeaponAnim(ACT_VM_PRIMARYATTACK);
+    pOwner->SetAnimation(PLAYER_ATTACK1);
 
     m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
     pOwner->RemoveAmmo(2, m_iPrimaryAmmoType); // Use 2 ammo for primary fire
@@ -440,6 +461,14 @@ void CWeaponGauss::Fire(void)
     Vector lastHitPos = startPos;  // Track last hit position for beam connections
 
     #ifndef CLIENT_DLL
+        // Move other players back to history positions based on local player's lag
+        CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(pOwner);
+        if (pHL2Player)
+        {
+            pHL2Player->NoteWeaponFired(); // Update last weapon fire command for lag compensation
+            lagcompensation->StartLagCompensation(pHL2Player, pHL2Player->GetCurrentCommand());
+        }
+        
         ClearMultiDamage();
     #endif
 
@@ -518,10 +547,28 @@ void CWeaponGauss::Fire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        
+        // Finish lag compensation - reuse pHL2Player from above
+        if (pHL2Player)
+        {
+            lagcompensation->FinishLagCompensation(pHL2Player);
+        }
     #endif
 
     m_flNextSecondaryAttack = gpGlobals->curtime + 1.0f;
     AddViewKick();
+
+#ifdef CLIENT_DLL
+    // Client-side view punch for prediction
+    if (prediction->IsFirstTimePredicted())
+    {
+        QAngle viewPunch;
+        viewPunch.x = random->RandomFloat(-1.0f, -2.0f);
+        viewPunch.y = random->RandomFloat(-0.25f, 0.25f);
+        viewPunch.z = 0;
+        pOwner->ViewPunch(viewPunch);
+    }
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -538,12 +585,17 @@ void CWeaponGauss::ChargedFire(void)
     m_bCharging = false;
     m_flNextAftershock = 0;  // Reset aftershock timer
 
+#ifndef CLIENT_DLL
+    // Manual lag compensation will be handled in ChargedFire() function
+#endif
+
     // Play fire sound and queue aftershock for charged shot
     WeaponSound(SINGLE);
     m_flPlayAftershock = gpGlobals->curtime + random->RandomFloat(0.3f, 0.8f);
     pOwner->DoMuzzleFlash();
 
     SendWeaponAnim(ACT_VM_SECONDARYATTACK);
+    pOwner->SetAnimation(PLAYER_ATTACK1);
 
     // Reset charge state
     m_flNextSecondaryAttack = gpGlobals->curtime + 1.0f;
@@ -586,6 +638,14 @@ void CWeaponGauss::ChargedFire(void)
         
         // Determine if we should ignore the owner for explosion damage
         CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
+        
+        // Move other players back to history positions based on local player's lag
+        CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(pOwner);
+        if (pHL2Player)
+        {
+            pHL2Player->NoteWeaponFired(); // Update last weapon fire command for lag compensation
+            lagcompensation->StartLagCompensation(pHL2Player, pHL2Player->GetCurrentCommand());
+        }
         
         ClearMultiDamage();
     #endif
@@ -717,6 +777,12 @@ void CWeaponGauss::ChargedFire(void)
 
     #ifndef CLIENT_DLL
         ApplyMultiDamage();
+        
+        // Finish lag compensation - reuse pHL2Player from above
+        if (pHL2Player)
+        {
+            lagcompensation->FinishLagCompensation(pHL2Player);
+        }
     #endif
 
     // Add view punch effect based on damage
@@ -726,6 +792,19 @@ void CWeaponGauss::ChargedFire(void)
     viewPunch.y = random->RandomFloat(-0.25f, 0.25f);
     viewPunch.z = 0;
     pOwner->ViewPunch(viewPunch);
+
+#ifdef CLIENT_DLL
+    // Additional client-side prediction effects
+    if (prediction->IsFirstTimePredicted())
+    {
+        // Enhanced view punch for charged shots on client
+        QAngle extraPunch;
+        extraPunch.x = random->RandomFloat(-0.5f * punchMultiplier, -1.0f * punchMultiplier);
+        extraPunch.y = random->RandomFloat(-0.1f, 0.1f);
+        extraPunch.z = 0;
+        pOwner->ViewPunch(extraPunch);
+    }
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -928,12 +1007,24 @@ void CWeaponGauss::AddViewKick(void)
     if (!pPlayer)
         return;
 
+#ifdef CLIENT_DLL
+    // Client-side view punch with prediction check
+    if (prediction->IsFirstTimePredicted())
+    {
+        QAngle viewPunch;
+        viewPunch.x = random->RandomFloat(-2.0f, -1.0f);
+        viewPunch.y = random->RandomFloat(-0.5f, 0.5f);
+        viewPunch.z = 0;
+        pPlayer->ViewPunch(viewPunch);
+    }
+#else
+    // Server-side view punch
     QAngle viewPunch;
     viewPunch.x = random->RandomFloat(-2.0f, -1.0f);
     viewPunch.y = random->RandomFloat(-0.5f, 0.5f);
     viewPunch.z = 0;
-
     pPlayer->ViewPunch(viewPunch);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -943,14 +1034,17 @@ void CWeaponGauss::PlayAfterShock(void)
 {
     if (m_flPlayAftershock && m_flPlayAftershock < gpGlobals->curtime)
     {
+#ifndef CLIENT_DLL
+        // Server plays the sound for all clients
         // Randomly select from three aftershock sounds
         switch (random->RandomInt(0, 3))
         {
             case 0: EmitSound("Weapon_Gauss.Electro1"); break;
             case 1: EmitSound("Weapon_Gauss.Electro2"); break;
             case 2: EmitSound("Weapon_Gauss.Electro3"); break;
-			case 3: break;
+            case 3: break;
         }
+#endif
         m_flPlayAftershock = 0.0f;
     }
 }
