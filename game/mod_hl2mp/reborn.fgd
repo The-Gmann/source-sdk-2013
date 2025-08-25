@@ -1,0 +1,21 @@
+//-------------------------------------------------------------------------
+//
+// Game data for Half-Life 2 Deathmatch Reborn.
+//
+//-------------------------------------------------------------------------
+
+@include "halflife2.fgd"
+
+@PointClass base(Weapon) studio("models/weapons/w_gauss.mdl") = weapon_gauss : "Gauss Gun"
+[
+    StartingAmmoAmount(integer) : "Starting Ammo" : 30 : "Amount of ammo given when picked up"
+]
+
+@PointClass base(Weapon) studio("models/weapons/w_egon.mdl") = weapon_egon : "Gluon Gun"
+[
+    StartingAmmoAmount(integer) : "Starting Ammo" : 30 : "Amount of ammo given when picked up"
+]
+
+@PointClass base(Item) studio("models/items/w_gaussammo.mdl") = item_ammo_gaussenergy : "Gauss Energy"
+[
+]

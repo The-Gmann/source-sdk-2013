@@ -1,0 +1,15 @@
+VertexLitGeneric
+{
+	"$basetexture"							"models\weapons\malorian_3515\grip_diffuse"
+	"$bumpmap" 								"models\weapons\malorian_3515\grip_normal"
+	"$color2"								"[0.15 0.075 0.075]"
+	
+	"$alphatest" 							"1"
+	"$allowalphatocoverage"					"1"
+
+	"$phong"                        		"1"	
+	"$phongboost" 							"5"
+	"$phongexponent"						"10"
+	"$phongtint"							"[0.3 0.15 0.15]"
+	"$phongfresnelranges"           		"[0.25 1.25 2.15]"
+}

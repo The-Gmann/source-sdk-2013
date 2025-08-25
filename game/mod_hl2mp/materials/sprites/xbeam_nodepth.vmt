@@ -1,0 +1,11 @@
+"Sprite"
+{
+	"$spriteorientation" "vp_parallel_oriented"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$basetexture" "sprites/xbeam1"
+	"$znearer" "0"
+	"$zwrite" "0"
+	"$ignorez" "1"
+	"$nocull" "1"
+}
+

@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/weapons/v_irifle/v_irifle"
+	"$bumpmap" "models/weapons/v_irifle/v_irifle_normal"
+	"$selfillum" "1"
+	"360?$color2" "[ 0.8 0.8 0.8 ]"
+	"$phong" "1"
+	"$phongexponent" "31"
+	"$phongboost"	"2"
+	"$phongfresnelranges"	"[.1 0.4 3]"
+}

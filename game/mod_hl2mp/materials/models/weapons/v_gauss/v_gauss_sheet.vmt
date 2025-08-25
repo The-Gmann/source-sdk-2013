@@ -1,0 +1,11 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/weapons/v_gauss/v_gauss_sheet"
+	"$bumpmap" "models/weapons/v_gauss/v_gauss_sheet_normal"
+	"$phong" "1"
+	"$phongexponent" "60"
+	"$phongboost"	"1"
+	"$phongfresnelranges"	"[.2 4 1]"
+	"$selfillum"	"1"
+	"360?$color2" "[ 0.4 0.4 0.4 ]"
+}

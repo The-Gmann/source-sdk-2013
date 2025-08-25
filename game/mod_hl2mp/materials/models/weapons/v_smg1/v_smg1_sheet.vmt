@@ -1,0 +1,10 @@
+"VertexLitGeneric"
+{
+	"$baseTexture" "models/weapons/v_smg1/v_smg1_sheet"
+	"$bumpmap" "models/weapons/v_smg1/smg1_normal"
+	"$phong" "1"
+	"$phongexponent" "60"
+	"$phongboost"	"1"
+	"$phongfresnelranges"	"[.2 4 1]"
+	"$selfillum"	"1"
+}

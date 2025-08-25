@@ -754,5 +754,11 @@
 		"enabled"		"1"
 		"bgcolor_override"	"0 0 0 0"
 		"PaintBackgroundType"	"0" // rounded corners
+	}
+	"HudScope"
+	{
+		"fieldName"		"HudScope"
+		"visible"		"0"
+		"enabled"		"0"
 	}	
 }

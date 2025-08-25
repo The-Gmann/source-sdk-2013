@@ -1,0 +1,7 @@
+"UnlitGeneric"
+{
+	// Original shader: BaseTimesLightmap
+	"$basetexture" "Metal/metaldoor032a_nolight2"
+	"$surfaceprop" "metal"
+	"%keywords" "borealis"
+}

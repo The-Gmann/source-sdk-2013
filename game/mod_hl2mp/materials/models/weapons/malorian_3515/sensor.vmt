@@ -1,0 +1,8 @@
+VertexLitGeneric
+{    
+    "$basetexture" 							"models\weapons\malorian_3515\illumn"
+	
+	"$selfillum"                    		"1"
+	"$selfillumtint"						"[1.0 0.0 0.0]"
+	"$selfillummask"                		"models\weapons\malorian_3515\illumn"
+}

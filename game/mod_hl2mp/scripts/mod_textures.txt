@@ -208,6 +208,16 @@
 				"font"		"HL2MPTypeDeath"
 				"character"	"6"
 		}
+		"death_gauss"
+		{
+				"font"		"HL2MPTypeDeath"
+				"character"	"6"
+		}
+		"death_egon"
+		{
+				"font"		"HL2MPTypeDeath"
+				"character"	"6"
+		}
 		"voice_player"
 		{
 				"file"		"voice/icntlk_sv"

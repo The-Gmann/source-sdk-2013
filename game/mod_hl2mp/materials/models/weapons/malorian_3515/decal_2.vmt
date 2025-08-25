@@ -1,0 +1,14 @@
+VertexLitGeneric
+{
+	"$basetexture"							"models\weapons\malorian_3515\decal_2_diffuse"
+	"$bumpmap" 								"models\weapons\malorian_3515\decal_2_normal"
+	
+	"$alphatest"							"1"
+	"$allowalphatocoverage"					"1"
+
+	"$phong"                        		"1"
+	"$phongboost" 							"4"
+	"$phongexponent" 						"120"
+	"$phongfresnelranges"           		"[2.5 4.5 6.3]" 
+	"$phongtint"							"[0.6 0.8 1]"
+}

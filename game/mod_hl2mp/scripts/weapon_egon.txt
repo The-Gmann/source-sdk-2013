@@ -1,0 +1,68 @@
+// Egon/Gluon Gun
+
+WeaponData
+{
+    "printname"        "#HL2_EGON"
+    "viewmodel"        "models/weapons/v_egon.mdl"
+    "playermodel"      "models/weapons/w_egon.mdl"
+    "anim_prefix"      "egon"
+    "bucket"           "4"
+    "bucket_position"  "2"
+
+    "clip_size"        "-1"
+    "clip2_size"       "-1"
+    "default_clip"     "20"
+    "default_clip2"    "-1"
+
+    "primary_ammo"     "GaussEnergy"
+    "secondary_ammo"   "None"
+
+    "weight"           "8"
+    "item_flags"       "0"
+    "damage"           "15"
+
+    SoundData
+    {
+        "empty"             "Weapon_Pistol.Empty"
+        "single_shot"       "Weapon_Gluon.Start"
+        "special1"          "Weapon_Gluon.Run"
+        "special2"          "Weapon_Gluon.Off"
+    }
+
+    TextureData
+    {
+        "weapon"
+        {
+            "font"        "WeaponIcons"
+            "character"   "l"
+        }
+        "weapon_s"
+        {   
+            "font"        "WeaponIconsSelected"
+            "character"   "l"
+        }
+        "weapon_small"
+        {
+            "font"        "WeaponIconsSmall"
+            "character"   "l"
+        }
+        "ammo"
+        {
+            "font"        "WeaponIconsSmall"
+            "character"   "y"
+        }
+        "crosshair"
+        {
+            "font"        "Crosshairs"
+            "character"   "Q"
+        }
+        "autoaim"
+        {
+            "file"        "sprites/crosshairs"
+            "x"           "0"
+            "y"           "48"
+            "width"       "24"
+            "height"      "24"
+        }
+    }
+}
