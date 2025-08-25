@@ -68,8 +68,8 @@ ActionResult< CHL2MPBot >	CHL2MPBotScenarioMonitor::OnStart( CHL2MPBot *me, Acti
 }
 
 
-ConVar bot_fetch_lost_flag_time( "bot_fetch_lost_flag_time", "10", FCVAR_CHEAT, "How long busy HL2MPBots will ignore the dropped flag before they give up what they are doing and go after it" );
-ConVar bot_flag_kill_on_touch( "bot_flag_kill_on_touch", "0", FCVAR_CHEAT, "If nonzero, any bot that picks up the flag dies. For testing." );
+ConVar hl2mp_bot_fetch_lost_flag_time( "hl2mp_bot_fetch_lost_flag_time", "10", FCVAR_CHEAT, "How long busy HL2MPBots will ignore the dropped flag before they give up what they are doing and go after it" );
+ConVar hl2mp_bot_flag_kill_on_touch( "hl2mp_bot_flag_kill_on_touch", "0", FCVAR_CHEAT, "If nonzero, any bot that picks up the flag dies. For testing." );
 
 
 //-----------------------------------------------------------------------------------------

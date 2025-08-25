@@ -9,13 +9,13 @@
 
 extern ConVar bot_path_lookahead_range;
 
-ConVar bot_melee_attack_abandon_range( "bot_melee_attack_abandon_range", "500", FCVAR_CHEAT, "If threat is farther away than this, bot will switch back to its primary weapon and attack" );
+ConVar hl2mp_bot_melee_attack_abandon_range( "hl2mp_bot_melee_attack_abandon_range", "500", FCVAR_CHEAT, "If threat is farther away than this, bot will switch back to its primary weapon and attack" );
 
 
 //---------------------------------------------------------------------------------------------
 CHL2MPBotMeleeAttack::CHL2MPBotMeleeAttack( float giveUpRange )
 {
-	m_giveUpRange = giveUpRange < 0.0f ? bot_melee_attack_abandon_range.GetFloat() : giveUpRange;
+	m_giveUpRange = giveUpRange < 0.0f ? hl2mp_bot_melee_attack_abandon_range.GetFloat() : giveUpRange;
 }
 
 

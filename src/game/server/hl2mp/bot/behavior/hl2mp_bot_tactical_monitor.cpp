@@ -24,7 +24,7 @@
 extern ConVar bot_health_ok_ratio;
 extern ConVar bot_health_critical_ratio;
 
-ConVar bot_force_jump( "bot_force_jump", "0", FCVAR_CHEAT, "Force bots to continuously jump" );
+ConVar hl2mp_bot_force_jump( "hl2mp_bot_force_jump", "0", FCVAR_CHEAT, "Force bots to continuously jump" );
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -176,7 +176,7 @@ void CHL2MPBotTacticalMonitor::AvoidBumpingEnemies( CHL2MPBot *me )
 //-----------------------------------------------------------------------------------------
 ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float interval )
 {
-	if ( bot_force_jump.GetBool() )
+	if ( hl2mp_bot_force_jump.GetBool() )
 	{
 		if ( !me->GetLocomotionInterface()->IsClimbingOrJumping() )
 		{
