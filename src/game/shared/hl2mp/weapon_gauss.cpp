@@ -1,14 +1,12 @@
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-//
-// GAUSS GUN IMPLEMENTATION
+//=============================================================================
+// GAUSS WEAPON IMPLEMENTATION
 // Half-Life 2: Deathmatch Reborn
 // Credit to SIOSPHERE/Sub-Zero
-//
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 
-//----------------------------------------
+//-----------------------------------------------------------------------------
 // Includes
-//----------------------------------------
+//-----------------------------------------------------------------------------
 #include "cbase.h"
 #include "beam_shared.h"
 #include "AmmoDef.h"
@@ -17,6 +15,7 @@
 #include "soundenvelope.h"
 #include "effect_dispatch_data.h"
 
+// Client/Server specific includes
 #ifdef CLIENT_DLL
     #include "c_hl2mp_player.h"
     #include "ClientEffectPrecacheSystem.h"
@@ -28,34 +27,35 @@
     #include "ilagcompensationmanager.h"
 #endif
 
+// Client-side class definition
 #ifdef CLIENT_DLL
     #define CWeaponGauss C_WeaponGauss
 #endif
 
-//----------------------------------------
+//-----------------------------------------------------------------------------
 // Definitions
-//----------------------------------------
+//-----------------------------------------------------------------------------
 #define GAUSS_BEAM_SPRITE              "sprites/laserbeam.vmt"
-#define GAUSS_CHARGE_TIME              0.3f
-#define MAX_GAUSS_CHARGE               16.0f
-#define MAX_GAUSS_CHARGE_TIME          3.0f
-#define DANGER_GAUSS_CHARGE_TIME       10.0f
+#define GAUSS_CHARGE_TIME              0.3f          // Time between ammo consumption during charging
+#define MAX_GAUSS_CHARGE               16.0f         // Maximum ammo that can be consumed
+#define MAX_GAUSS_CHARGE_TIME          3.0f          // Time to reach maximum charge
+#define DANGER_GAUSS_CHARGE_TIME       10.0f         // Time after which overcharge damage occurs
 
-// memdbgon must be the last include file in a .cpp file!!!
+// Memory debugging system
 #include "tier0/memdbgon.h"
 
-//----------------------------------------
+//-----------------------------------------------------------------------------
 // Client Effect Registration
-//----------------------------------------
+//-----------------------------------------------------------------------------
 #ifdef CLIENT_DLL
     CLIENTEFFECT_REGISTER_BEGIN(PrecacheEffectGauss)
         CLIENTEFFECT_MATERIAL("sprites/laserbeam")
     CLIENTEFFECT_REGISTER_END()
 #endif
 
-//----------------------------------------
+//-----------------------------------------------------------------------------
 // Weapon Class Declaration
-//----------------------------------------
+//-----------------------------------------------------------------------------
 class CWeaponGauss : public CBaseHL2MPCombatWeapon
 {
 public:
@@ -65,7 +65,7 @@ public:
 
     CWeaponGauss(void);
 
-    // Core weapon functions
+    // Core weapon lifecycle functions
     void    Spawn(void);
     void    Precache(void);
     bool    Holster(CBaseCombatWeapon *pSwitchingTo = NULL);
@@ -82,14 +82,14 @@ public:
     void    ChargedFireFirstBeam(void);
     void    IncreaseCharge(void);
 
-    // Effect functions
+    // Visual and physical effects
     void    AddViewKick(void);
     void    DrawBeam(const Vector &startPos, const Vector &endPos, float width, bool useMuzzle = true);
     void    DoWallBreak(Vector startPos, Vector endPos, Vector aimDir, trace_t *ptr, CBasePlayer *pOwner, bool m_bBreakAll);
     bool    DidPunchThrough(trace_t *tr);
     void    DoImpactEffect(trace_t &tr, int nDamageType);
 
-    // Sound functions
+    // Audio functions
     void    StopChargeSound(void);
     void    PlayAfterShock(void);
 
@@ -100,36 +100,44 @@ public:
 protected:
     CSoundPatch    *m_sndCharge;
 
-    // Network variables
-    CNetworkVar(bool, m_bCharging);
-    CNetworkVar(float, m_flNextChargeTime);
-    CNetworkVar(float, m_flChargeStartTime);
-    CNetworkVar(float, m_flCoilMaxVelocity);
-    CNetworkVar(float, m_flCoilVelocity);
-    CNetworkVar(float, m_flCoilAngle);
-    CNetworkVar(float, m_flPlayAftershock);
-    CNetworkVar(float, m_flNextAftershock);  // For periodic aftershock sounds during charging
+    // Network synchronized variables for multiplayer consistency
+    CNetworkVar(bool, m_bCharging);              // Whether the weapon is currently charging
+    CNetworkVar(float, m_flNextChargeTime);      // Next time to consume ammo during charging
+    CNetworkVar(float, m_flChargeStartTime);     // Time when charging started
+    CNetworkVar(float, m_flCoilMaxVelocity);     // Maximum coil velocity (visual effect)
+    CNetworkVar(float, m_flCoilVelocity);        // Current coil velocity (visual effect)
+    CNetworkVar(float, m_flCoilAngle);           // Coil rotation angle (visual effect)
+    CNetworkVar(float, m_flPlayAftershock);      // Time to play aftershock sound
+    CNetworkVar(float, m_flNextAftershock);      // Next time to play periodic aftershock sounds
+    CNetworkHandle(CBeam, m_pBeam);              // Beam effect handle
 
-    CNetworkHandle(CBeam, m_pBeam);
-
-	int m_iSavedAmmo;  // Ammo preservation
+	int m_iSavedAmmo;  // Ammo preservation during weapon drop/pickup
 };
 
-//----------------------------------------
+//-----------------------------------------------------------------------------
 // ConVars
-//----------------------------------------
+//-----------------------------------------------------------------------------
+// Player damage settings
 ConVar sk_plr_dmg_gauss("sk_plr_dmg_gauss", "20", FCVAR_REPLICATED);
 ConVar sk_plr_max_dmg_gauss("sk_plr_max_dmg_gauss", "200", FCVAR_REPLICATED);
+
+// Gameplay settings
 ConVar rb_selfgauss("rb_selfgauss", "1", FCVAR_REPLICATED, "Enable self damage from gauss gun reflections and explosions (1=enabled, 0=disabled)");
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Network Implementation
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// This section defines how the weapon's state is synchronized between client 
+// and server in multiplayer. All network variables use CNetworkVar/CNetworkHandle
+// to ensure proper replication and prediction.
+//=============================================================================
 
 IMPLEMENT_NETWORKCLASS_ALIASED(WeaponGauss, DT_WeaponGauss)
 
+// Network table - defines which variables are sent between client and server
 BEGIN_NETWORK_TABLE(CWeaponGauss, DT_WeaponGauss)
     #ifdef CLIENT_DLL
+        // Client receives these variables from server
         RecvPropBool(RECVINFO(m_bCharging)),
         RecvPropFloat(RECVINFO(m_flNextChargeTime)),
         RecvPropFloat(RECVINFO(m_flChargeStartTime)),
@@ -140,6 +148,7 @@ BEGIN_NETWORK_TABLE(CWeaponGauss, DT_WeaponGauss)
         RecvPropFloat(RECVINFO(m_flNextAftershock)),
         RecvPropEHandle(RECVINFO(m_pBeam))
     #else
+        // Server sends these variables to clients
         SendPropBool(SENDINFO(m_bCharging)),
         SendPropFloat(SENDINFO(m_flNextChargeTime)),
         SendPropFloat(SENDINFO(m_flChargeStartTime)),
@@ -152,6 +161,7 @@ BEGIN_NETWORK_TABLE(CWeaponGauss, DT_WeaponGauss)
     #endif
 END_NETWORK_TABLE()
 
+// Prediction data - defines which variables are predicted on client
 #ifdef CLIENT_DLL
     BEGIN_PREDICTION_DATA(CWeaponGauss)
         DEFINE_PRED_FIELD(m_bCharging, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE),
@@ -166,14 +176,19 @@ END_NETWORK_TABLE()
     END_PREDICTION_DATA()
 #endif
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Weapon Registration and Activity Table
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// The activity table maps generic HL2MP activities to specific animations for
+// this weapon. This ensures proper animation playback in multiplayer.
+//=============================================================================
 
 LINK_ENTITY_TO_CLASS(weapon_gauss, CWeaponGauss);
 PRECACHE_WEAPON_REGISTER(weapon_gauss);
 
 #ifndef CLIENT_DLL
+// Activity table - maps generic activities to weapon-specific animations
+// Uses AR2 animations as fallback since gauss has similar handling characteristics
 acttable_t CWeaponGauss::m_acttable[] = 
 {
     { ACT_HL2MP_IDLE,                    ACT_HL2MP_IDLE_AR2,                    false },
@@ -189,12 +204,17 @@ acttable_t CWeaponGauss::m_acttable[] =
 IMPLEMENT_ACTTABLE(CWeaponGauss);
 #endif
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Constructor & Core Functions
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// These functions handle weapon initialization, spawning, and basic lifecycle
+// management. The constructor initializes all network variables to safe defaults.
+//=============================================================================
 
 //-----------------------------------------------------------------------------
-// Purpose: Constructor
+// Purpose: Constructor - Initialize all member variables to safe defaults
+// All network variables must be initialized to ensure consistent state
+// between client and server in multiplayer.
 //-----------------------------------------------------------------------------
 CWeaponGauss::CWeaponGauss(void)
 {
@@ -208,7 +228,8 @@ CWeaponGauss::CWeaponGauss(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Precache weapon assets
+// Purpose: Precache all weapon assets to prevent runtime loading delays
+// This function is called during map load to preload models and sounds.
 //-----------------------------------------------------------------------------
 void CWeaponGauss::Precache(void)
 {
@@ -226,7 +247,8 @@ void CWeaponGauss::Precache(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Spawn the weapon
+// Purpose: Spawn the weapon entity in the game world
+// Sets the initial activity state for proper animation playback.
 //-----------------------------------------------------------------------------
 void CWeaponGauss::Spawn(void)
 {
@@ -234,12 +256,17 @@ void CWeaponGauss::Spawn(void)
     SetActivity(ACT_HL2MP_IDLE);
 }
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Attack Functions
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// These functions implement the weapon's primary and secondary attack behaviors.
+// Primary attack is an instant-hit beam, while secondary attack is a chargeable
+// beam with reflections, penetration, and area damage effects.
+//=============================================================================
 
 //-----------------------------------------------------------------------------
-// Purpose: Primary fire attack
+// Purpose: Primary fire attack - Instant hit beam weapon
+// Consumes 2 ammo and fires a single instant-hit beam with no charging.
 //-----------------------------------------------------------------------------
 void CWeaponGauss::PrimaryAttack(void)
 {
@@ -276,12 +303,12 @@ void CWeaponGauss::PrimaryAttack(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Secondary fire attack - Charge weapon
+// Purpose: Secondary fire attack - Charge weapon for powerful beam
+// This function initiates the charging process when IN_ATTACK2 is pressed.
+// The actual firing occurs when the button is released in ItemPostFrame.
 //-----------------------------------------------------------------------------
 void CWeaponGauss::SecondaryAttack(void)
 {
-    DevMsg("Gauss: SecondaryAttack() called\n");
-    
     CBasePlayer *pOwner = ToBasePlayer(GetOwner());
     if (!pOwner || !pOwner->IsAlive())
     {
@@ -295,8 +322,6 @@ void CWeaponGauss::SecondaryAttack(void)
 
     if (!m_bCharging)
     {
-        DevMsg("Gauss: Starting charge\n");
-        
         if (pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
             return;
 
@@ -332,7 +357,12 @@ void CWeaponGauss::SecondaryAttack(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Handle weapon charge increase
+// Purpose: Handle weapon charge increase during hold
+// This function is called every frame while the weapon is charging to:
+// 1. Handle overcharge damage to the player
+// 2. Play periodic aftershock sounds
+// 3. Consume ammo at regular intervals
+// 4. Fire the weapon when ammo is depleted
 //-----------------------------------------------------------------------------
 void CWeaponGauss::IncreaseCharge(void)
 {
@@ -433,7 +463,8 @@ void CWeaponGauss::IncreaseCharge(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Fire the weapon normally
+// Purpose: Fire the weapon normally (primary attack)
+// Fires a single instant-hit beam with fixed damage and no charging effects.
 //-----------------------------------------------------------------------------
 void CWeaponGauss::Fire(void)
 {
@@ -576,12 +607,17 @@ void CWeaponGauss::Fire(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Fire charged shot with reflections
+// Purpose: Fire charged shot with reflections, penetration, and area effects
+// This is the core of the gauss weapon's secondary attack, implementing:
+// 1. Charge-based damage scaling (50-200 damage)
+// 2. Beam reflections off surfaces
+// 3. Wall penetration for highly charged shots
+// 4. Area damage effects
+// 5. Player knockback
+// 6. Visual and audio effects
 //-----------------------------------------------------------------------------
 void CWeaponGauss::ChargedFire(void)
 {
-    DevMsg("Gauss secondary attack: ChargedFire() called\n");
-    
     CBasePlayer *pOwner = ToBasePlayer(GetOwner());
     if (!pOwner)
         return;
@@ -590,10 +626,6 @@ void CWeaponGauss::ChargedFire(void)
     StopChargeSound();
     m_bCharging = false;
     m_flNextAftershock = 0;  // Reset aftershock timer
-
-#ifndef CLIENT_DLL
-    // Manual lag compensation will be handled in ChargedFire() function
-#endif
 
     // Play fire sound and queue aftershock for charged shot
     WeaponSound(SINGLE);
@@ -619,22 +651,14 @@ void CWeaponGauss::ChargedFire(void)
     float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
     float flDamage = 50.0f; // Minimum damage for any charge
     
-    DevMsg("Gauss secondary attack: Charge time = %.2f seconds\n", chargeTime);
-    
     if (chargeTime >= MAX_GAUSS_CHARGE_TIME)
     {
         flDamage = 200;
-        DevMsg("Gauss secondary attack: Fully charged shot, damage = %.1f\n", flDamage);
     }
     else if (chargeTime > 0)
     {
         // Scale from minimum 50 to maximum 200 based on charge time
         flDamage = 50 + (150 * (chargeTime / MAX_GAUSS_CHARGE_TIME));
-        DevMsg("Gauss secondary attack: Partially charged shot, damage = %.1f\n", flDamage);
-    }
-    else
-    {
-        DevMsg("Gauss secondary attack: No charge, damage = %.1f\n", flDamage);
     }
 
     Vector endPos = startPos + (aimDir * MAX_TRACE_LENGTH);
@@ -645,7 +669,7 @@ void CWeaponGauss::ChargedFire(void)
     Vector lastHitPos = startPos; // Track the last position for beam segments
 
     #ifndef CLIENT_DLL
-        // Apply knockback like HL1
+        // Apply knockback like HL1 - push player backward based on shot power
         Vector vecVelocity = pOwner->GetAbsVelocity();
         vecVelocity = vecVelocity - aimDir * flDamage * 5;
         pOwner->SetAbsVelocity(vecVelocity);
@@ -661,7 +685,6 @@ void CWeaponGauss::ChargedFire(void)
             lagcompensation->StartLagCompensation(pHL2Player, pHL2Player->GetCurrentCommand());
         }
         
-        DevMsg("Gauss secondary attack: Clearing multi-damage\n");
         ClearMultiDamage();
     #endif
 
@@ -694,15 +717,6 @@ void CWeaponGauss::ChargedFire(void)
                 {
                     // Add gibbing for well-charged shots
                     damageType |= DMG_ALWAYSGIB;
-                    DevMsg("Gauss secondary attack: Well-charged shot applying gib damage\n");
-                }
-                
-                // Log victim health before damage
-                if (tr.m_pEnt)
-                {
-                    CBaseEntity *pEntity = tr.m_pEnt;
-                    DevMsg("Gauss secondary attack: Victim %s had %.1f health before damage\n", 
-                           pEntity->GetClassname(), pEntity->GetHealth());
                 }
                 
                 CTakeDamageInfo dmgInfo(this, pOwner, flDamage, damageType);
@@ -710,31 +724,16 @@ void CWeaponGauss::ChargedFire(void)
                 dmgInfo.SetDamageForce(force);
                 dmgInfo.SetDamagePosition(tr.endpos);
                 
-                // Log secondary attack damage application
-                DevMsg("Gauss secondary attack: Applying %.1f damage (type: %d) to %s at position (%.2f, %.2f, %.2f)\n", 
-                       flDamage, damageType, tr.m_pEnt->GetClassname(), tr.endpos.x, tr.endpos.y, tr.endpos.z);
-                
                 tr.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &tr);
                 
                 // Apply damage immediately for direct hits to ensure it takes effect
-                DevMsg("Gauss secondary attack: Calling ApplyMultiDamage()\n");
                 ApplyMultiDamage();
-                DevMsg("Gauss secondary attack: ApplyMultiDamage() completed\n");
                 
-                // Log victim health after damage
-                if (tr.m_pEnt)
+                // If the victim is dead or at 0 health, don't apply additional damage
+                if (tr.m_pEnt->GetHealth() <= 0)
                 {
-                    CBaseEntity *pEntity = tr.m_pEnt;
-                    DevMsg("Gauss secondary attack: Victim %s has %.1f health after damage\n", 
-                           pEntity->GetClassname(), pEntity->GetHealth());
-                    
-                    // If the victim is dead or at 0 health, don't apply additional damage
-                    if (pEntity->GetHealth() <= 0)
-                    {
-                        DevMsg("Gauss secondary attack: Victim is dead, skipping additional damage\n");
-                        // Don't apply radius damage or continue with reflections/penetration
-                        break;
-                    }
+                    // Don't apply radius damage or continue with reflections/penetration
+                    break;
                 }
             #endif
         }
@@ -759,17 +758,10 @@ void CWeaponGauss::ChargedFire(void)
                 {
                     // Add gibbing for well-charged shots
                     radiusDamageType |= DMG_ALWAYSGIB;
-                    DevMsg("Gauss secondary attack: Well-charged shot applying gib radius damage\n");
                 }
                 
-                DevMsg("Gauss secondary attack: Applying radius damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
-                       flDamage * 0.5f, tr.endpos.x, tr.endpos.y, tr.endpos.z);
                 RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, radiusDamageType), 
                             tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
-            }
-            else
-            {
-                DevMsg("Gauss secondary attack: Skipping radius damage as direct hit target is dead\n");
             }
         #endif
 
@@ -817,32 +809,24 @@ void CWeaponGauss::ChargedFire(void)
                             {
                                 // Add gibbing for well-charged shots
                                 damageType |= DMG_ALWAYSGIB;
-                                DevMsg("Gauss secondary attack (penetration): Well-charged shot applying gib damage\n");
                             }
-                            
-                            // Log victim health before damage
-                            DevMsg("Gauss secondary attack (penetration): Victim %s had %.1f health before damage\n", 
-                                   penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.m_pEnt->GetHealth());
                             
                             CTakeDamageInfo dmgInfo(this, pOwner, flDamage, damageType);
                             Vector force = aimDir * flDamage * 500.0f;
                             dmgInfo.SetDamageForce(force);
                             dmgInfo.SetDamagePosition(penetrationTrace.endpos);
                             
-                            // Log secondary attack penetration damage application
-                            DevMsg("Gauss secondary attack (penetration): Applying %.1f damage (type: %d) to %s at position (%.2f, %.2f, %.2f)\n", 
-                                   flDamage, damageType, penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z);
-                            
                             penetrationTrace.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &penetrationTrace);
                             
                             // Apply damage immediately for penetration hits
-                            DevMsg("Gauss secondary attack (penetration): Calling ApplyMultiDamage()\n");
                             ApplyMultiDamage();
-                            DevMsg("Gauss secondary attack (penetration): ApplyMultiDamage() completed\n");
                             
-                            // Log victim health after damage
-                            DevMsg("Gauss secondary attack (penetration): Victim %s has %.1f health after damage\n", 
-                                   penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.m_pEnt->GetHealth());
+                            // If the victim is dead or at 0 health, don't apply additional damage
+                            if (penetrationTrace.m_pEnt->GetHealth() <= 0)
+                            {
+                                // Don't apply blast damage
+                                continue;
+                            }
                         }
                         
                         // Penetration explosion - exclude owner if self damage disabled
@@ -855,11 +839,8 @@ void CWeaponGauss::ChargedFire(void)
                         {
                             // Add gibbing for well-charged shots
                             blastDamageType |= DMG_ALWAYSGIB;
-                            DevMsg("Gauss secondary attack (penetration): Well-charged shot applying gib blast damage\n");
                         }
                         
-                        DevMsg("Gauss secondary attack (penetration): Applying blast radius damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
-                               flDamage, penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z);
                         RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage, blastDamageType), 
                                     penetrationTrace.endpos, flDamage * 1.75f, CLASS_NONE, pIgnoreEntity);
                     #endif
@@ -888,8 +869,6 @@ void CWeaponGauss::ChargedFire(void)
 
                 #ifndef CLIENT_DLL
                     // Reflection explosion - exclude owner if self damage disabled
-                    DevMsg("Gauss secondary attack (reflection): Applying reflection damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
-                           flDamage * hitAngle, tr.endpos.x, tr.endpos.y, tr.endpos.z);
                     RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * hitAngle, DMG_SHOCK), 
                                 tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                 #endif
@@ -905,7 +884,6 @@ void CWeaponGauss::ChargedFire(void)
     }
 
     #ifndef CLIENT_DLL
-        DevMsg("Gauss secondary attack: Applying final multi-damage\n");
         ApplyMultiDamage();
         
         // Finish lag compensation - reuse pHL2Player from above
@@ -946,9 +924,12 @@ void CWeaponGauss::ChargedFireFirstBeam(void)
     // Keeping it for compatibility but it doesn't need to do anything
 }
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Utility Functions
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//
+// These functions provide supporting functionality for the weapon's core
+// behaviors, including wall breaking logic, beam drawing, and impact effects.
+//=============================================================================
 
 //-----------------------------------------------------------------------------
 // Purpose: Check if beam punched through surface
@@ -1158,6 +1139,35 @@ void CWeaponGauss::AddViewKick(void)
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Charged fire impact glow
+//-----------------------------------------------------------------------------
+void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
+{
+    // Check if we hit a player - if so, don't create impact effects
+    if (tr.m_pEnt)
+    {
+        CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(tr.m_pEnt);
+        if (pHitPlayer)
+        {
+            // Don't create impact effects when hitting players
+            BaseClass::DoImpactEffect(tr, nDamageType);
+            return;
+        }
+    }
+
+    CEffectData data;
+    data.m_vOrigin = tr.endpos + (tr.plane.normal * 1.0f);
+    data.m_vNormal = tr.plane.normal;
+
+    if (tr.fraction != 1.0 && !(tr.surface.flags & SURF_SKY))
+    {
+        DispatchEffect("GaussImpact", data);
+    }
+
+    BaseClass::DoImpactEffect(tr, nDamageType);
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Play aftershock sound effect
 //-----------------------------------------------------------------------------
 void CWeaponGauss::PlayAfterShock(void)
@@ -1193,9 +1203,9 @@ void CWeaponGauss::StopChargeSound(void)
     #endif
 }
 
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 // Frame and State Functions
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+//=============================================================================
 
 //-----------------------------------------------------------------------------
 // Purpose: Handle weapon state changes and updates
@@ -1242,7 +1252,7 @@ void CWeaponGauss::ItemPostFrame(void)
 //-----------------------------------------------------------------------------
 bool CWeaponGauss::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
-    DevMsg("Gauss: Holster() called\n");
+    // Gauss: Holster() called
     StopChargeSound();
     m_bCharging = false;
     m_flNextAftershock = 0; // Reset aftershock timer
@@ -1267,7 +1277,7 @@ void CWeaponGauss::Drop(const Vector &vecVelocity)
         // Save ammo count before dropping
         m_iSavedAmmo = pOwner->GetAmmoCount(m_iPrimaryAmmoType);
 
-		StopChargeSound();
+        StopChargeSound();
         // If we're charging, stop everything without firing
         if (m_bCharging)
         {
@@ -1302,33 +1312,4 @@ void CWeaponGauss::Equip(CBaseCombatCharacter *pOwner)
             pPlayer->SetAmmoCount(m_iSavedAmmo, m_iPrimaryAmmoType);
         }
     }
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Charged fire impact glow
-//-----------------------------------------------------------------------------
-void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
-{
-    // Check if we hit a player - if so, don't create impact effects
-    if (tr.m_pEnt)
-    {
-        CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(tr.m_pEnt);
-        if (pHitPlayer)
-        {
-            // Don't create impact effects when hitting players
-            BaseClass::DoImpactEffect(tr, nDamageType);
-            return;
-        }
-    }
-
-    CEffectData data;
-    data.m_vOrigin = tr.endpos + (tr.plane.normal * 1.0f);
-    data.m_vNormal = tr.plane.normal;
-
-    if (tr.fraction != 1.0 && !(tr.surface.flags & SURF_SKY))
-    {
-        DispatchEffect("GaussImpact", data);
-    }
-
-    BaseClass::DoImpactEffect(tr, nDamageType);
 }
