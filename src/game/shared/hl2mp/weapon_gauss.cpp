@@ -280,6 +280,8 @@ void CWeaponGauss::PrimaryAttack(void)
 //-----------------------------------------------------------------------------
 void CWeaponGauss::SecondaryAttack(void)
 {
+    DevMsg("Gauss: SecondaryAttack() called\n");
+    
     CBasePlayer *pOwner = ToBasePlayer(GetOwner());
     if (!pOwner || !pOwner->IsAlive())
     {
@@ -293,6 +295,8 @@ void CWeaponGauss::SecondaryAttack(void)
 
     if (!m_bCharging)
     {
+        DevMsg("Gauss: Starting charge\n");
+        
         if (pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
             return;
 
@@ -576,6 +580,8 @@ void CWeaponGauss::Fire(void)
 //-----------------------------------------------------------------------------
 void CWeaponGauss::ChargedFire(void)
 {
+    DevMsg("Gauss secondary attack: ChargedFire() called\n");
+    
     CBasePlayer *pOwner = ToBasePlayer(GetOwner());
     if (!pOwner)
         return;
@@ -613,14 +619,22 @@ void CWeaponGauss::ChargedFire(void)
     float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
     float flDamage = 50.0f; // Minimum damage for any charge
     
+    DevMsg("Gauss secondary attack: Charge time = %.2f seconds\n", chargeTime);
+    
     if (chargeTime >= MAX_GAUSS_CHARGE_TIME)
     {
         flDamage = 200;
+        DevMsg("Gauss secondary attack: Fully charged shot, damage = %.1f\n", flDamage);
     }
     else if (chargeTime > 0)
     {
         // Scale from minimum 50 to maximum 200 based on charge time
         flDamage = 50 + (150 * (chargeTime / MAX_GAUSS_CHARGE_TIME));
+        DevMsg("Gauss secondary attack: Partially charged shot, damage = %.1f\n", flDamage);
+    }
+    else
+    {
+        DevMsg("Gauss secondary attack: No charge, damage = %.1f\n", flDamage);
     }
 
     Vector endPos = startPos + (aimDir * MAX_TRACE_LENGTH);
@@ -647,6 +661,7 @@ void CWeaponGauss::ChargedFire(void)
             lagcompensation->StartLagCompensation(pHL2Player, pHL2Player->GetCurrentCommand());
         }
         
+        DevMsg("Gauss secondary attack: Clearing multi-damage\n");
         ClearMultiDamage();
     #endif
 
@@ -670,11 +685,57 @@ void CWeaponGauss::ChargedFire(void)
         if (tr.m_pEnt)
         {
             #ifndef CLIENT_DLL
-                CTakeDamageInfo dmgInfo(this, pOwner, flDamage, DMG_SHOCK | DMG_BULLET);
+                // Determine damage type - add gibbing for well-charged shots (half charge or more)
+                int damageType = DMG_SHOCK | DMG_BULLET;
+                
+                // Check if this is a well-charged shot (half charge or more)
+                float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
+                if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
+                {
+                    // Add gibbing for well-charged shots
+                    damageType |= DMG_ALWAYSGIB;
+                    DevMsg("Gauss secondary attack: Well-charged shot applying gib damage\n");
+                }
+                
+                // Log victim health before damage
+                if (tr.m_pEnt)
+                {
+                    CBaseEntity *pEntity = tr.m_pEnt;
+                    DevMsg("Gauss secondary attack: Victim %s had %.1f health before damage\n", 
+                           pEntity->GetClassname(), pEntity->GetHealth());
+                }
+                
+                CTakeDamageInfo dmgInfo(this, pOwner, flDamage, damageType);
                 Vector force = aimDir * flDamage * 500.0f;
                 dmgInfo.SetDamageForce(force);
                 dmgInfo.SetDamagePosition(tr.endpos);
+                
+                // Log secondary attack damage application
+                DevMsg("Gauss secondary attack: Applying %.1f damage (type: %d) to %s at position (%.2f, %.2f, %.2f)\n", 
+                       flDamage, damageType, tr.m_pEnt->GetClassname(), tr.endpos.x, tr.endpos.y, tr.endpos.z);
+                
                 tr.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &tr);
+                
+                // Apply damage immediately for direct hits to ensure it takes effect
+                DevMsg("Gauss secondary attack: Calling ApplyMultiDamage()\n");
+                ApplyMultiDamage();
+                DevMsg("Gauss secondary attack: ApplyMultiDamage() completed\n");
+                
+                // Log victim health after damage
+                if (tr.m_pEnt)
+                {
+                    CBaseEntity *pEntity = tr.m_pEnt;
+                    DevMsg("Gauss secondary attack: Victim %s has %.1f health after damage\n", 
+                           pEntity->GetClassname(), pEntity->GetHealth());
+                    
+                    // If the victim is dead or at 0 health, don't apply additional damage
+                    if (pEntity->GetHealth() <= 0)
+                    {
+                        DevMsg("Gauss secondary attack: Victim is dead, skipping additional damage\n");
+                        // Don't apply radius damage or continue with reflections/penetration
+                        break;
+                    }
+                }
             #endif
         }
 
@@ -686,8 +747,30 @@ void CWeaponGauss::ChargedFire(void)
 
         #ifndef CLIENT_DLL
             // Add radius damage for area effect - exclude owner if self damage disabled
-            RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, DMG_SHOCK | DMG_BULLET), 
-                        tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+            // But only if we didn't already kill the direct hit target
+            if (!tr.m_pEnt || tr.m_pEnt->GetHealth() > 0)
+            {
+                // Determine damage type - add gibbing for well-charged shots (half charge or more)
+                int radiusDamageType = DMG_SHOCK | DMG_BULLET;
+                
+                // Check if this is a well-charged shot (half charge or more)
+                float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
+                if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
+                {
+                    // Add gibbing for well-charged shots
+                    radiusDamageType |= DMG_ALWAYSGIB;
+                    DevMsg("Gauss secondary attack: Well-charged shot applying gib radius damage\n");
+                }
+                
+                DevMsg("Gauss secondary attack: Applying radius damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
+                       flDamage * 0.5f, tr.endpos.x, tr.endpos.y, tr.endpos.z);
+                RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, radiusDamageType), 
+                            tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+            }
+            else
+            {
+                DevMsg("Gauss secondary attack: Skipping radius damage as direct hit target is dead\n");
+            }
         #endif
 
         // Stop if we hit sky
@@ -725,15 +808,59 @@ void CWeaponGauss::ChargedFire(void)
                         // Handle penetration damage
                         if (penetrationTrace.m_pEnt)
                         {
-                            CTakeDamageInfo dmgInfo(this, pOwner, flDamage, DMG_SHOCK | DMG_BULLET);
+                            // Determine damage type - add gibbing for well-charged shots (half charge or more)
+                            int damageType = DMG_SHOCK | DMG_BULLET;
+                            
+                            // Check if this is a well-charged shot (half charge or more)
+                            float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
+                            if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
+                            {
+                                // Add gibbing for well-charged shots
+                                damageType |= DMG_ALWAYSGIB;
+                                DevMsg("Gauss secondary attack (penetration): Well-charged shot applying gib damage\n");
+                            }
+                            
+                            // Log victim health before damage
+                            DevMsg("Gauss secondary attack (penetration): Victim %s had %.1f health before damage\n", 
+                                   penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.m_pEnt->GetHealth());
+                            
+                            CTakeDamageInfo dmgInfo(this, pOwner, flDamage, damageType);
                             Vector force = aimDir * flDamage * 500.0f;
                             dmgInfo.SetDamageForce(force);
                             dmgInfo.SetDamagePosition(penetrationTrace.endpos);
+                            
+                            // Log secondary attack penetration damage application
+                            DevMsg("Gauss secondary attack (penetration): Applying %.1f damage (type: %d) to %s at position (%.2f, %.2f, %.2f)\n", 
+                                   flDamage, damageType, penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z);
+                            
                             penetrationTrace.m_pEnt->DispatchTraceAttack(dmgInfo, aimDir, &penetrationTrace);
+                            
+                            // Apply damage immediately for penetration hits
+                            DevMsg("Gauss secondary attack (penetration): Calling ApplyMultiDamage()\n");
+                            ApplyMultiDamage();
+                            DevMsg("Gauss secondary attack (penetration): ApplyMultiDamage() completed\n");
+                            
+                            // Log victim health after damage
+                            DevMsg("Gauss secondary attack (penetration): Victim %s has %.1f health after damage\n", 
+                                   penetrationTrace.m_pEnt->GetClassname(), penetrationTrace.m_pEnt->GetHealth());
                         }
                         
                         // Penetration explosion - exclude owner if self damage disabled
-                        RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage, DMG_SHOCK | DMG_BLAST), 
+                        // Determine damage type - add gibbing for well-charged shots (half charge or more)
+                        int blastDamageType = DMG_SHOCK | DMG_BLAST;
+                        
+                        // Check if this is a well-charged shot (half charge or more)
+                        float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
+                        if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
+                        {
+                            // Add gibbing for well-charged shots
+                            blastDamageType |= DMG_ALWAYSGIB;
+                            DevMsg("Gauss secondary attack (penetration): Well-charged shot applying gib blast damage\n");
+                        }
+                        
+                        DevMsg("Gauss secondary attack (penetration): Applying blast radius damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
+                               flDamage, penetrationTrace.endpos.x, penetrationTrace.endpos.y, penetrationTrace.endpos.z);
+                        RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage, blastDamageType), 
                                     penetrationTrace.endpos, flDamage * 1.75f, CLASS_NONE, pIgnoreEntity);
                     #endif
                     
@@ -761,6 +888,8 @@ void CWeaponGauss::ChargedFire(void)
 
                 #ifndef CLIENT_DLL
                     // Reflection explosion - exclude owner if self damage disabled
+                    DevMsg("Gauss secondary attack (reflection): Applying reflection damage of %.1f at position (%.2f, %.2f, %.2f)\n", 
+                           flDamage * hitAngle, tr.endpos.x, tr.endpos.y, tr.endpos.z);
                     RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * hitAngle, DMG_SHOCK), 
                                 tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                 #endif
@@ -776,6 +905,7 @@ void CWeaponGauss::ChargedFire(void)
     }
 
     #ifndef CLIENT_DLL
+        DevMsg("Gauss secondary attack: Applying final multi-damage\n");
         ApplyMultiDamage();
         
         // Finish lag compensation - reuse pHL2Player from above
@@ -1112,6 +1242,7 @@ void CWeaponGauss::ItemPostFrame(void)
 //-----------------------------------------------------------------------------
 bool CWeaponGauss::Holster(CBaseCombatWeapon *pSwitchingTo)
 {
+    DevMsg("Gauss: Holster() called\n");
     StopChargeSound();
     m_bCharging = false;
     m_flNextAftershock = 0; // Reset aftershock timer
@@ -1178,6 +1309,18 @@ void CWeaponGauss::Equip(CBaseCombatCharacter *pOwner)
 //-----------------------------------------------------------------------------
 void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
 {
+    // Check if we hit a player - if so, don't create impact effects
+    if (tr.m_pEnt)
+    {
+        CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(tr.m_pEnt);
+        if (pHitPlayer)
+        {
+            // Don't create impact effects when hitting players
+            BaseClass::DoImpactEffect(tr, nDamageType);
+            return;
+        }
+    }
+
     CEffectData data;
     data.m_vOrigin = tr.endpos + (tr.plane.normal * 1.0f);
     data.m_vNormal = tr.plane.normal;
