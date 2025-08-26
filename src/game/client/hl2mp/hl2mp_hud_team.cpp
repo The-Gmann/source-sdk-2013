@@ -138,7 +138,8 @@ void CTeamPlayHud::OnThink()
 	if ( pLocalPlayer == NULL )
 		 return;
 
-	if ( HL2MPRules()->IsTeamplay() == false )
+	CHL2MPRules *pRules = HL2MPRulesSafe();
+	if ( !pRules || pRules->IsTeamplay() == false )
 		 return;
 
 	if ( pLocalPlayer->IsAlive() == false )

@@ -184,7 +184,8 @@ void C_HL2MP_Player::TraceAttack( const CTakeDamageInfo &info, const Vector &vec
 
 		if ( pAttacker )
 		{
-			if ( HL2MPRules()->IsTeamplay() && pAttacker->InSameTeam( this ) == true )
+			CHL2MPRules *pRules = HL2MPRulesSafe();
+			if ( pRules && pRules->IsTeamplay() && pAttacker->InSameTeam( this ) == true )
 				return;
 		}
 

@@ -24,8 +24,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-// Forward declaration of our custom color function
-extern Color GetCustomSchemeColor( const char *colorName );
+
 
 #define INIT_BAT	-1
 
@@ -45,7 +44,6 @@ public:
 	void MsgFunc_Battery(bf_read &msg );
 	bool ShouldDraw();
 	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
-	virtual void Paint( void );
 	
 private:
 	int		m_iBat;	
@@ -92,14 +90,14 @@ void CHudBattery::VidInit( void )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Apply scheme settings and use custom HUD colors
+// Purpose: 
 //-----------------------------------------------------------------------------
 void CHudBattery::ApplySchemeSettings( vgui::IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
 	
-	// Don't cache rb_hud_color values here - we'll read them dynamically in Paint method
-	// to ensure real-time color updates (following suit power pattern)
+	// Override with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -163,20 +161,4 @@ void CHudBattery::MsgFunc_Battery( bf_read &msg )
 	m_iNewBat = msg.ReadShort();
 }
 
-//-----------------------------------------------------------------------------
-// Purpose: Override Paint to use rb_hud_color dynamically (suit battery never uses danger color)
-//-----------------------------------------------------------------------------
-void CHudBattery::Paint( void )
-{
-	// Read rb_hud_color dynamically every frame (like suit power does)
-	extern ConVar rb_hud_color;
-	int r = 255, g = 255, b = 255;
-	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
-	Color batteryColor(r, g, b, 255);
-	
-	// Suit battery always uses normal HUD color, never danger color
-	SetFgColor( batteryColor );
-	
-	// Call base class to render with our color
-	BaseClass::Paint();
-}
+

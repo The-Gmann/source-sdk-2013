@@ -23,8 +23,13 @@ using namespace vgui;
 
 // Forward declaration of our custom color function
 extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
+extern Color GetTransitionedColor( Color normalColor, Color dangerColor, float transitionProgress );
 
 DECLARE_HUDELEMENT( CHudSuitPower );
+
+// Suit power color transition duration constant
+const float CHudSuitPower::SUITPOWER_COLOR_TRANSITION_DURATION = 0.5f;
 
 #define SUITPOWER_INIT -1
 
@@ -35,6 +40,10 @@ CHudSuitPower::CHudSuitPower( const char *pElementName ) : CHudElement( pElement
 {
 	vgui::Panel *pParent = g_pClientMode->GetViewport();
 	SetParent( pParent );
+
+	// Initialize color transition system
+	m_bSuitPowerInDangerState = false;
+	m_flSuitPowerColorTransitionTime = 0.0f;
 
 	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 }
@@ -55,6 +64,10 @@ void CHudSuitPower::Init( void )
 void CHudSuitPower::Reset( void )
 {
 	Init();
+	
+	// Reset color transition system
+	m_bSuitPowerInDangerState = false;
+	m_flSuitPowerColorTransitionTime = 0.0f;
 }
 
 //-----------------------------------------------------------------------------
@@ -167,25 +180,41 @@ void CHudSuitPower::Paint()
 	if ( !pPlayer )
 		return;
 
-	// Read rb_hud_color dynamically every frame
-	extern ConVar rb_hud_color;
-	int r = 255, g = 255, b = 255;
-	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
-	
 	// Check if suit power is at 10% or below for danger color
 	bool isLowPower = (m_flSuitPower <= 10.0f);
-	Color auxPowerColor;
-	if (isLowPower)
+	
+	// Handle color transition for aux power
+	if ( isLowPower != m_bSuitPowerInDangerState )
 	{
-		// Use danger color (full red) when suit power is 10% or below
-		extern Color GetDangerColor();
-		auxPowerColor = GetDangerColor();
+		// State changed, start transition
+		m_bSuitPowerInDangerState = isLowPower;
+		m_flSuitPowerColorTransitionTime = gpGlobals->curtime + SUITPOWER_COLOR_TRANSITION_DURATION;
+	}
+	
+	// Calculate transition progress
+	float transitionProgress = 0.0f;
+	if ( m_flSuitPowerColorTransitionTime > gpGlobals->curtime )
+	{
+		// Transition in progress
+		float timeRemaining = m_flSuitPowerColorTransitionTime - gpGlobals->curtime;
+		transitionProgress = 1.0f - (timeRemaining / SUITPOWER_COLOR_TRANSITION_DURATION);
+		
+		if ( !m_bSuitPowerInDangerState )
+		{
+			// Transitioning back to normal, reverse the progress
+			transitionProgress = 1.0f - transitionProgress;
+		}
 	}
 	else
 	{
-		// Use normal HUD color for suit power above 10%
-		auxPowerColor = Color(r, g, b, 255);
+		// Transition complete
+		transitionProgress = m_bSuitPowerInDangerState ? 1.0f : 0.0f;
 	}
+	
+	// Get the appropriate color with smooth transition
+	Color normalColor = GetCustomSchemeColor( "FgColor" );
+	Color dangerColor = GetDangerColor();
+	Color auxPowerColor = GetTransitionedColor( normalColor, dangerColor, transitionProgress );
 
 	// get bar chunks
 	int chunkCount = m_flBarWidth / (m_flBarChunkWidth + m_flBarChunkGap);

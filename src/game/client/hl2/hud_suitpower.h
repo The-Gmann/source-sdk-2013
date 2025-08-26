@@ -53,6 +53,11 @@ private:
 	float m_flSuitPower;
 	int m_nSuitPowerLow;
 	int m_iActiveSuitDevices;
+	
+	// Color transition system
+	bool m_bSuitPowerInDangerState;
+	float m_flSuitPowerColorTransitionTime;
+	static const float SUITPOWER_COLOR_TRANSITION_DURATION; // 0.5 seconds
 };	
 
 #endif // HUD_SUITPOWER_H

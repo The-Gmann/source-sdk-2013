@@ -174,4 +174,13 @@ inline CHL2MPRules* HL2MPRules()
 	return static_cast<CHL2MPRules*>(g_pGameRules);
 }
 
+// Safe version that checks for null pointer
+inline CHL2MPRules* HL2MPRulesSafe()
+{
+	CGameRules* pRules = g_pGameRules;
+	if (!pRules)
+		return nullptr;
+	return static_cast<CHL2MPRules*>(pRules);
+}
+
 #endif //HL2MP_GAMERULES_H

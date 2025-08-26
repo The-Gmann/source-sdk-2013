@@ -35,6 +35,7 @@ using namespace vgui;
 // Forward declaration of our custom color functions
 extern Color GetCustomSchemeColor( const char *colorName );
 extern Color GetDangerColor();
+extern Color GetTransitionedColor( Color normalColor, Color dangerColor, float transitionProgress );
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -73,10 +74,18 @@ private:
 	
 	// Low health warning flash
 	float	m_flLowHealthWarningTime;
+	
+	// Color transition system
+	bool	m_bHealthInDangerState;
+	float	m_flHealthColorTransitionTime;
+	static const float HEALTH_COLOR_TRANSITION_DURATION; // 0.5 seconds
 };	
 
 DECLARE_HUDELEMENT( CHudHealth );
 DECLARE_HUD_MESSAGE( CHudHealth, Damage );
+
+// Health color transition duration constant
+const float CHudHealth::HEALTH_COLOR_TRANSITION_DURATION = 0.5f;
 
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
@@ -87,6 +96,10 @@ CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName )
 	
 	// Initialize low health warning flash
 	m_flLowHealthWarningTime = 0.0f;
+	
+	// Initialize color transition system
+	m_bHealthInDangerState = false;
+	m_flHealthColorTransitionTime = 0.0f;
 	
 	// Enable PostChildPaint for flash overlay
 	SetPostChildPaintEnabled( true );
@@ -111,6 +124,10 @@ void CHudHealth::Reset()
 	
 	// Reset low health warning flash timer
 	m_flLowHealthWarningTime = 0.0f;
+	
+	// Reset color transition system
+	m_bHealthInDangerState = false;
+	m_flHealthColorTransitionTime = 0.0f;
 
 	wchar_t *tempString = g_pVGuiLocalize->Find("#Valve_Hud_HEALTH");
 
@@ -161,8 +178,41 @@ void CHudHealth::OnThink()
 		newHealth = MAX( local->GetHealth(), 0 );
 	}
 
-	// Always ensure proper color is set, even if health hasn't changed
-	Color healthColor = GetHealthDisplayColor( newHealth );
+	// Check if we should be in danger state (low health or dead)
+	bool shouldShowDanger = (newHealth <= 0) || IsHealthLow( newHealth );
+	
+	// Handle color transition for health
+	if ( shouldShowDanger != m_bHealthInDangerState )
+	{
+		// State changed, start transition
+		m_bHealthInDangerState = shouldShowDanger;
+		m_flHealthColorTransitionTime = gpGlobals->curtime + HEALTH_COLOR_TRANSITION_DURATION;
+	}
+	
+	// Calculate transition progress
+	float transitionProgress = 0.0f;
+	if ( m_flHealthColorTransitionTime > gpGlobals->curtime )
+	{
+		// Transition in progress
+		float timeRemaining = m_flHealthColorTransitionTime - gpGlobals->curtime;
+		transitionProgress = 1.0f - (timeRemaining / HEALTH_COLOR_TRANSITION_DURATION);
+		
+		if ( !m_bHealthInDangerState )
+		{
+			// Transitioning back to normal, reverse the progress
+			transitionProgress = 1.0f - transitionProgress;
+		}
+	}
+	else
+	{
+		// Transition complete
+		transitionProgress = m_bHealthInDangerState ? 1.0f : 0.0f;
+	}
+	
+	// Get the appropriate color with smooth transition
+	Color normalColor = GetCustomSchemeColor( "FgColor" );
+	Color dangerColor = GetDangerColor();
+	Color healthColor = GetTransitionedColor( normalColor, dangerColor, transitionProgress );
 	SetFgColor( healthColor );
 
 	// Only update the fade if we've changed health

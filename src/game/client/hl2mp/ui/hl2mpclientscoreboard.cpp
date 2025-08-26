@@ -339,7 +339,9 @@ void CHL2MPClientScoreBoardDialog::InitScoreboardSections()
 	// fill out the structure of the scoreboard
 	AddHeader();
 
-	if ( HL2MPRules()->IsTeamplay() )
+	// Check if HL2MP rules are available before accessing them
+	CHL2MPRules *pRules = HL2MPRulesSafe();
+	if ( pRules && pRules->IsTeamplay() )
 	{
 		// add the team sections
 		AddSection( TYPE_TEAM, TEAM_COMBINE );
@@ -386,7 +388,8 @@ void CHL2MPClientScoreBoardDialog::UpdateTeamInfo()
 			wchar_t string1[1024];
 			wchar_t wNumPlayers[6];
 
-			if ( HL2MPRules()->IsTeamplay() == false )
+			CHL2MPRules *pRules = HL2MPRulesSafe();
+			if ( !pRules || pRules->IsTeamplay() == false )
 			{
 				_snwprintf( wNumPlayers, ARRAYSIZE(wNumPlayers), L"%i", iNumPlayersInGame );
 #ifdef WIN32
@@ -651,7 +654,8 @@ void CHL2MPClientScoreBoardDialog::UpdatePlayerInfo()
 			}
 
 			// set the row color based on the players team
-			if ( HL2MPRules()->IsTeamplay() )
+			CHL2MPRules *pRules = HL2MPRulesSafe();
+			if ( pRules && pRules->IsTeamplay() )
 			{
 				m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( g_PR->GetTeam( i ) ) );
 			}

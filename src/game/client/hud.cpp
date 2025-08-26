@@ -27,9 +27,12 @@
 #include <vgui/ISurface.h>
 #include "hud_lcd.h"
 #include <cstdio>
+#include "basecombatweapon_shared.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+#include "mathlib/mathlib.h"
 
 static 	CClassMemoryPool< CHudTexture >	 g_HudTextureMemoryPool( 128 );
 
@@ -176,6 +179,12 @@ ConVar hidehud( "hidehud", "0", FCVAR_CHEAT );
 static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOldValue );
 ConVar rb_hud_color( "rb_hud_color", "90 255 145", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Custom HUD color (R G B values)", RB_HudColor_Changed );
 
+// Forward declarations for color functions
+Color GetCustomSchemeColor( const char *colorName );
+Color GetDangerColor();
+Color GetTransitionedColor( Color normalColor, Color dangerColor, float transitionProgress );
+bool ShouldShowAmmoWarning( C_BaseCombatWeapon *pWeapon );
+
 // Note: We no longer use a cached color variable - all colors are read dynamically from rb_hud_color
 
 // Simple function to get custom HUD color for any color request
@@ -218,6 +227,56 @@ Color GetDangerColor()
 	{
 		return Color( 255, 0, 0, 230 ); // Red danger color
 	}
+}
+
+// Color transition helper function for smooth interpolation
+Color GetTransitionedColor( Color normalColor, Color dangerColor, float transitionProgress )
+{
+	// Clamp transition progress to [0, 1]
+	transitionProgress = clamp( transitionProgress, 0.0f, 1.0f );
+	
+	// Use smooth curve for better visual transition
+	float smoothedProgress = SimpleSpline( transitionProgress );
+	
+	// Interpolate between normal and danger colors
+	int r = (int)(normalColor.r() + (dangerColor.r() - normalColor.r()) * smoothedProgress);
+	int g = (int)(normalColor.g() + (dangerColor.g() - normalColor.g()) * smoothedProgress);
+	int b = (int)(normalColor.b() + (dangerColor.b() - normalColor.b()) * smoothedProgress);
+	int a = (int)(normalColor.a() + (dangerColor.a() - normalColor.a()) * smoothedProgress);
+	
+	return Color( r, g, b, a );
+}
+
+// Helper function to determine if ammo warning should be shown (matches CHUDQuickInfo logic)
+bool ShouldShowAmmoWarning( C_BaseCombatWeapon *pWeapon )
+{
+	if ( !pWeapon )
+		return false;
+	
+	// Check if this is the gravity gun - don't show ammo warnings for it
+	const char *weaponName = pWeapon->GetName();
+	if ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 )
+		return false;
+	
+	int ammo = pWeapon->Clip1();
+	
+	// Check for empty ammo first
+	if ( ammo == 0 && pWeapon->GetMaxClip1() > 0 )
+	{
+		return true;
+	}
+	
+	// Check if we're below 25% of our clip's size (matches CHUDQuickInfo logic)
+	if ( pWeapon->GetMaxClip1() > 1 )
+	{
+		float ammoPerc = (float)ammo / (float)pWeapon->GetMaxClip1();
+		if ( ammoPerc <= 0.25f )
+		{
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 // Simple ConVar callback for HUD color changes

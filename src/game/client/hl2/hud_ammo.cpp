@@ -25,6 +25,8 @@ using namespace vgui;
 // Forward declaration of our custom color functions
 extern Color GetCustomSchemeColor( const char *colorName );
 extern Color GetDangerColor();
+extern Color GetTransitionedColor( Color normalColor, Color dangerColor, float transitionProgress );
+extern bool ShouldShowAmmoWarning( C_BaseCombatWeapon *pWeapon );
 
 // Global helper functions for ammo color determination
 static bool IsAmmoLow( int ammo, int maxAmmo )
@@ -36,11 +38,12 @@ static bool IsAmmoLow( int ammo, int maxAmmo )
 	return ( ammo > 0 && ammo <= lowThreshold );
 }
 
-static Color GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty )
+static Color GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty, C_BaseCombatWeapon *pWeapon )
 {
-	if ( isEmpty )
+	// Use the same logic as CHUDQuickInfo for low ammo warning
+	if ( ShouldShowAmmoWarning( pWeapon ) )
 	{
-		// Only use danger color when completely empty
+		// Use danger color when LowAmmo sound condition is met
 		return GetDangerColor();
 	}
 	else
@@ -94,6 +97,13 @@ protected:
 	bool IsAmmoLow( int ammo, int maxAmmo );
 	bool IsAmmoEmpty( int ammo );
 	
+	// Color transition system
+	bool m_bAmmoInDangerState;
+	float m_flAmmoColorTransitionTime;
+	float m_flAmmo2ColorTransitionTime;
+	bool m_bAmmo2InDangerState;
+	static const float AMMO_COLOR_TRANSITION_DURATION; // 0.5 seconds
+	
 private:
 	CHandle< C_BaseCombatWeapon > m_hCurrentActiveWeapon;
 	CHandle< C_BaseEntity > m_hCurrentVehicle;
@@ -111,6 +121,9 @@ private:
 
 DECLARE_HUDELEMENT( CHudAmmo );
 
+// Color transition duration constant
+const float CHudAmmo::AMMO_COLOR_TRANSITION_DURATION = 0.5f;
+
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
@@ -127,6 +140,12 @@ CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo"), CHu
 	m_flWeaponChangeFlashTime = 0.0f;
 	m_flLowAmmoWarningTime = 0.0f;
 	m_flLowAmmo2WarningTime = 0.0f;
+	
+	// Initialize color transition system
+	m_bAmmoInDangerState = false;
+	m_flAmmoColorTransitionTime = 0.0f;
+	m_bAmmo2InDangerState = false;
+	m_flAmmo2ColorTransitionTime = 0.0f;
 	
 	// Enable PostChildPaint for flash overlay
 	SetPostChildPaintEnabled( true );
@@ -517,11 +536,41 @@ void CHudAmmo::Paint( void )
 	
 	if ( pWeapon )
 	{
-		int maxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
-		bool isEmpty = (m_iAmmo == 0);
+		// Check if we should show ammo warning (using the same logic as CHUDQuickInfo)
+		bool shouldShowWarning = ShouldShowAmmoWarning( pWeapon );
 		
-		// Get the appropriate color for current ammo state
-		textColor = GetAmmoDisplayColor( m_iAmmo, maxAmmo, isEmpty );
+		// Handle color transition for primary ammo
+		if ( shouldShowWarning != m_bAmmoInDangerState )
+		{
+			// State changed, start transition
+			m_bAmmoInDangerState = shouldShowWarning;
+			m_flAmmoColorTransitionTime = gpGlobals->curtime + AMMO_COLOR_TRANSITION_DURATION;
+		}
+		
+		// Calculate transition progress
+		float transitionProgress = 0.0f;
+		if ( m_flAmmoColorTransitionTime > gpGlobals->curtime )
+		{
+			// Transition in progress
+			float timeRemaining = m_flAmmoColorTransitionTime - gpGlobals->curtime;
+			transitionProgress = 1.0f - (timeRemaining / AMMO_COLOR_TRANSITION_DURATION);
+			
+			if ( !m_bAmmoInDangerState )
+			{
+				// Transitioning back to normal, reverse the progress
+				transitionProgress = 1.0f - transitionProgress;
+			}
+		}
+		else
+		{
+			// Transition complete
+			transitionProgress = m_bAmmoInDangerState ? 1.0f : 0.0f;
+		}
+		
+		// Get the appropriate color with smooth transition
+		Color normalColor = GetCustomSchemeColor( "FgColor" );
+		Color dangerColor = GetDangerColor();
+		textColor = GetTransitionedColor( normalColor, dangerColor, transitionProgress );
 	}
 	
 	// Render numbers with appropriate color
@@ -620,6 +669,10 @@ public:
 		m_iAmmo = -1;
 		m_flWeaponChangeFlashTime = 0.0f;
 		m_iconSecondaryAmmo = NULL;
+		
+		// Initialize color transition system
+		m_bAmmo2InDangerState = false;
+		m_flAmmo2ColorTransitionTime = 0.0f;
 
 		SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_WEAPONSELECTION | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
 		
@@ -693,6 +746,11 @@ public:
 		m_hCurrentActiveWeapon = NULL;
 		m_iconSecondaryAmmo = NULL;
 		m_flWeaponChangeFlashTime = 0.0f;
+		
+		// Reset color transition system
+		m_bAmmo2InDangerState = false;
+		m_flAmmo2ColorTransitionTime = 0.0f;
+		
 		SetAlpha( 0 );
 		UpdateAmmoState();
 	}
@@ -705,11 +763,40 @@ public:
 		
 		if ( wpn && wpn->UsesSecondaryAmmo() )
 		{
-			int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
 			bool isEmpty = (m_iAmmo == 0);
 			
-			// Get the appropriate color for current secondary ammo state
-			textColor = GetAmmo2DisplayColor( m_iAmmo, maxAmmo2, isEmpty );
+			// Handle color transition for secondary ammo (only for empty state)
+			if ( isEmpty != m_bAmmo2InDangerState )
+			{
+				// State changed, start transition
+				m_bAmmo2InDangerState = isEmpty;
+				m_flAmmo2ColorTransitionTime = gpGlobals->curtime + AMMO_COLOR_TRANSITION_DURATION;
+			}
+			
+			// Calculate transition progress
+			float transitionProgress = 0.0f;
+			if ( m_flAmmo2ColorTransitionTime > gpGlobals->curtime )
+			{
+				// Transition in progress
+				float timeRemaining = m_flAmmo2ColorTransitionTime - gpGlobals->curtime;
+				transitionProgress = 1.0f - (timeRemaining / AMMO_COLOR_TRANSITION_DURATION);
+				
+				if ( !m_bAmmo2InDangerState )
+				{
+					// Transitioning back to normal, reverse the progress
+					transitionProgress = 1.0f - transitionProgress;
+				}
+			}
+			else
+			{
+				// Transition complete
+				transitionProgress = m_bAmmo2InDangerState ? 1.0f : 0.0f;
+			}
+			
+			// Get the appropriate color with smooth transition
+			Color normalColor = GetCustomSchemeColor( "FgColor" );
+			Color dangerColor = GetDangerColor();
+			textColor = GetTransitionedColor( normalColor, dangerColor, transitionProgress );
 		}
 		
 		// Render numbers with appropriate color
@@ -867,7 +954,15 @@ private:
 	
 	// Weapon change flash animation
 	float	m_flWeaponChangeFlashTime;
+	
+	// Color transition system
+	bool	m_bAmmo2InDangerState;
+	float	m_flAmmo2ColorTransitionTime;
+	static const float AMMO_COLOR_TRANSITION_DURATION; // 0.5 seconds
 };
 
 DECLARE_HUDELEMENT( CHudSecondaryAmmo );
+
+// CHudSecondaryAmmo color transition duration constant
+const float CHudSecondaryAmmo::AMMO_COLOR_TRANSITION_DURATION = 0.5f;
 
