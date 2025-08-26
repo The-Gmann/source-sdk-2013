@@ -22,8 +22,47 @@
 
 using namespace vgui;
 
-// Forward declaration of our custom color function
+// Forward declaration of our custom color functions
 extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
+
+// Global helper functions for ammo color determination
+static bool IsAmmoLow( int ammo, int maxAmmo )
+{
+	if ( maxAmmo <= 0 ) return false;
+	
+	// Consider ammo low if less than 25% of max capacity
+	float lowThreshold = maxAmmo * 0.25f;
+	return ( ammo > 0 && ammo <= lowThreshold );
+}
+
+static Color GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty )
+{
+	if ( isEmpty )
+	{
+		// Only use danger color when completely empty
+		return GetDangerColor();
+	}
+	else
+	{
+		// Normal ammo - use custom HUD color
+		return GetCustomSchemeColor( "FgColor" );
+	}
+}
+
+static Color GetAmmo2DisplayColor( int ammo2, int maxAmmo2, bool isEmpty )
+{
+	if ( isEmpty )
+	{
+		// Only use danger color when completely empty
+		return GetDangerColor();
+	}
+	else
+	{
+		// Normal ammo - use custom HUD color
+		return GetCustomSchemeColor( "FgColor" );
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Purpose: Displays current ammunition level
@@ -54,8 +93,6 @@ protected:
 	// Low ammo and danger state detection
 	bool IsAmmoLow( int ammo, int maxAmmo );
 	bool IsAmmoEmpty( int ammo );
-	Color GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty );
-	Color GetAmmo2DisplayColor( int ammo2, int maxAmmo2, bool isEmpty );
 	
 private:
 	CHandle< C_BaseCombatWeapon > m_hCurrentActiveWeapon;
@@ -167,15 +204,18 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 	hudlcd->SetGlobalStat( "(weapon_print_name)", wpn ? wpn->GetPrintName() : " " );
 	hudlcd->SetGlobalStat( "(weapon_name)", wpn ? wpn->GetName() : " " );
 
-	// Check for weapon change first - trigger flash for ALL weapon changes
+	// Check for weapon change first - trigger flash only for weapons that display ammo
 	bool weaponChanged = (wpn != m_hCurrentActiveWeapon);
 	if ( weaponChanged )
 	{
 		m_hCurrentActiveWeapon = wpn;
 		
-		// Always trigger weapon change flash when changing weapons
-		m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
+		// Only trigger weapon change flash when switching TO a weapon that uses and displays ammo
+		if ( wpn && (wpn->UsesPrimaryAmmo() || wpn->UsesClipsForAmmo1()) )
+		{
+			m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
+		}
 	}
 
 	if ( !wpn || !player || !wpn->UsesPrimaryAmmo() )
@@ -357,76 +397,6 @@ bool CHudAmmo::IsAmmoEmpty( int ammo )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Get display color for primary ammo based on state
-//-----------------------------------------------------------------------------
-Color CHudAmmo::GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty )
-{
-	if ( isEmpty )
-	{
-		// Empty ammo - use danger color
-		return GetDangerColor();
-	}
-	else if ( IsAmmoLow( ammo, maxAmmo ) )
-	{
-		// Low ammo - interpolate between custom color and danger color
-		Color customColor = GetCustomSchemeColor( "FgColor" );
-		Color dangerColor = GetDangerColor();
-		
-		// Smooth transition based on how low the ammo is
-		float lowThreshold = maxAmmo * 0.25f;
-		float ratio = (float)ammo / lowThreshold; // 1.0 at threshold, 0.0 at empty
-		ratio = clamp( ratio, 0.0f, 1.0f );
-		
-		// Interpolate colors
-		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
-		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
-		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
-		
-		return Color( r, g, b, 255 );
-	}
-	else
-	{
-		// Normal ammo - use custom HUD color
-		return GetCustomSchemeColor( "FgColor" );
-	}
-}
-
-//-----------------------------------------------------------------------------
-// Purpose: Get display color for secondary ammo based on state
-//-----------------------------------------------------------------------------
-Color CHudAmmo::GetAmmo2DisplayColor( int ammo2, int maxAmmo2, bool isEmpty )
-{
-	if ( isEmpty )
-	{
-		// Empty ammo - use danger color
-		return GetDangerColor();
-	}
-	else if ( IsAmmoLow( ammo2, maxAmmo2 ) )
-	{
-		// Low ammo - interpolate between custom color and danger color
-		Color customColor = GetCustomSchemeColor( "FgColor" );
-		Color dangerColor = GetDangerColor();
-		
-		// Smooth transition based on how low the ammo is
-		float lowThreshold = maxAmmo2 * 0.25f;
-		float ratio = (float)ammo2 / lowThreshold; // 1.0 at threshold, 0.0 at empty
-		ratio = clamp( ratio, 0.0f, 1.0f );
-		
-		// Interpolate colors
-		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
-		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
-		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
-		
-		return Color( r, g, b, 255 );
-	}
-	else
-	{
-		// Normal ammo - use custom HUD color
-		return GetCustomSchemeColor( "FgColor" );
-	}
-}
-
-//-----------------------------------------------------------------------------
 // Purpose: Updates ammo display with enhanced danger state detection
 //-----------------------------------------------------------------------------
 void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
@@ -470,10 +440,7 @@ void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 			}
 		}
 		
-		// Update ammo color based on state
-		Color ammoColor = GetAmmoDisplayColor( ammo, maxAmmo, isEmpty );
-		SetFgColor( ammoColor );
-		
+		// Color updates are now handled consistently in Paint() method
 		m_iAmmo = ammo;
 	}
 	
@@ -538,8 +505,58 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 //-----------------------------------------------------------------------------
 void CHudAmmo::Paint( void )
 {
-	BaseClass::Paint();
+	// Custom paint implementation - don't call BaseClass::Paint() to avoid conflicts
+	C_BaseCombatWeapon *pWeapon = GetActiveWeapon();
+	Color textColor = GetCustomSchemeColor( "FgColor" ); // Default color
+	
+	if ( pWeapon )
+	{
+		int maxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
+		bool isEmpty = (m_iAmmo == 0);
+		
+		// Get the appropriate color for current ammo state
+		textColor = GetAmmoDisplayColor( m_iAmmo, maxAmmo, isEmpty );
+	}
+	
+	// Render numbers with appropriate color
+	if (ShouldDisplayValue())
+	{
+		// draw our numbers
+		surface()->DrawSetTextColor(textColor);
+		PaintNumbers(m_hNumberFont, digit_xpos, digit_ypos, m_iValue);
 
+		// draw the overbright blur
+		for (float fl = m_flBlur; fl > 0.0f; fl -= 1.0f)
+		{
+			if (fl >= 1.0f)
+			{
+				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+			}
+			else
+			{
+				// draw a percentage of the last one
+				Color col = textColor;
+				col[3] *= fl;
+				surface()->DrawSetTextColor(col);
+				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+			}
+		}
+	}
+
+	// total ammo (secondary value)
+	if (ShouldDisplaySecondaryValue())
+	{
+		surface()->DrawSetTextColor(textColor);
+		PaintNumbers(m_hSmallNumberFont, digit2_xpos, digit2_ypos, m_iSecondaryValue);
+	}
+
+	// Render label with appropriate color
+	surface()->DrawSetTextFont(m_hTextFont);
+	surface()->DrawSetTextColor(textColor);
+	surface()->DrawSetTextPos(text_xpos, text_ypos);
+	surface()->DrawUnicodeString( m_LabelText );
+
+	// Render ammo icon
 	if ( m_hCurrentVehicle == NULL && m_iconPrimaryAmmo )
 	{
 		int nLabelHeight;
@@ -550,18 +567,8 @@ void CHudAmmo::Paint( void )
 		int x = text_xpos + ( nLabelWidth - m_iconPrimaryAmmo->Width() ) / 2;
 		int y = text_ypos - ( nLabelHeight + ( m_iconPrimaryAmmo->Height() / 2 ) );
 		
-		// Get current weapon info for proper color determination
-		C_BaseCombatWeapon *pWeapon = GetActiveWeapon();
-		Color iconColor = GetCustomSchemeColor( "FgColor" ); // Default color
-		
-		if ( pWeapon )
-		{
-			int maxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
-			bool isEmpty = IsAmmoEmpty( m_iAmmo );
-			
-			// Use danger color for empty or low ammo, otherwise use normal color
-			iconColor = GetAmmoDisplayColor( m_iAmmo, maxAmmo, isEmpty );
-		}
+		// Use the same color for icon as text
+		Color iconColor = textColor;
 		
 		m_iconPrimaryAmmo->DrawSelf( x, y, iconColor );
 	}
@@ -666,27 +673,7 @@ public:
 				}
 			}
 			
-			// Update secondary ammo color based on state
-			if (wpn && wpn->UsesSecondaryAmmo())
-			{
-				int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
-				bool isEmpty = (ammo == 0);
-				Color ammo2Color;
-				
-				if (isEmpty || (maxAmmo2 > 0 && ammo <= maxAmmo2 * 0.25f))
-				{
-					// Empty or low ammo - use danger color
-					ammo2Color = GetDangerColor();
-				}
-				else
-				{
-					// Normal ammo - use custom HUD color
-					ammo2Color = GetCustomSchemeColor( "FgColor" );
-				}
-				
-				SetFgColor( ammo2Color );
-			}
-
+			// Color updates are now handled consistently in Paint() method
 			m_iAmmo = ammo;
 		}
 		SetDisplayValue( ammo );
@@ -706,8 +693,54 @@ public:
 
 	virtual void Paint( void )
 	{
-		BaseClass::Paint();
+		// Custom paint implementation - don't call BaseClass::Paint() to avoid conflicts
+		C_BaseCombatWeapon *wpn = GetActiveWeapon();
+		Color textColor = GetCustomSchemeColor( "FgColor" ); // Default color
+		
+		if ( wpn && wpn->UsesSecondaryAmmo() )
+		{
+			int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
+			bool isEmpty = (m_iAmmo == 0);
+			
+			// Get the appropriate color for current secondary ammo state
+			textColor = GetAmmo2DisplayColor( m_iAmmo, maxAmmo2, isEmpty );
+		}
+		
+		// Render numbers with appropriate color
+		if (ShouldDisplayValue())
+		{
+			// draw our numbers
+			surface()->DrawSetTextColor(textColor);
+			PaintNumbers(m_hNumberFont, digit_xpos, digit_ypos, m_iValue);
 
+			// draw the overbright blur
+			for (float fl = m_flBlur; fl > 0.0f; fl -= 1.0f)
+			{
+				if (fl >= 1.0f)
+				{
+					PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+				}
+				else
+				{
+					// draw a percentage of the last one
+					Color col = textColor;
+					col[3] *= fl;
+					surface()->DrawSetTextColor(col);
+					PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
+				}
+			}
+		}
+
+		// secondary ammo doesn't use secondary value display (that's for primary ammo's total)
+		// if (ShouldDisplaySecondaryValue()) - not applicable here
+
+		// Render label with appropriate color
+		surface()->DrawSetTextFont(m_hTextFont);
+		surface()->DrawSetTextColor(textColor);
+		surface()->DrawSetTextPos(text_xpos, text_ypos);
+		surface()->DrawUnicodeString( m_LabelText );
+
+		// Render secondary ammo icon
 		if ( m_iconSecondaryAmmo )
 		{
 			int nLabelHeight;
@@ -718,26 +751,8 @@ public:
 			int x = text_xpos + ( nLabelWidth - m_iconSecondaryAmmo->Width() ) / 2;
 			int y = text_ypos - ( nLabelHeight + ( m_iconSecondaryAmmo->Height() / 2 ) );
 			
-			// Get current weapon info for proper color determination
-			C_BaseCombatWeapon *wpn = GetActiveWeapon();
-			Color iconColor = GetCustomSchemeColor( "FgColor" ); // Default color
-			
-			if ( wpn && wpn->UsesSecondaryAmmo() )
-			{
-				int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
-				bool isEmpty = (m_iAmmo == 0);
-				
-				if (isEmpty || (maxAmmo2 > 0 && m_iAmmo <= maxAmmo2 * 0.25f))
-				{
-					// Empty or low ammo - use danger color
-					iconColor = GetDangerColor();
-				}
-				else
-				{
-					// Normal ammo - use custom HUD color
-					iconColor = GetCustomSchemeColor( "FgColor" );
-				}
-			}
+			// Use the same color for icon as text
+			Color iconColor = textColor;
 
 			m_iconSecondaryAmmo->DrawSelf( x, y, iconColor );
 		}

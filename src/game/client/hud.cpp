@@ -26,6 +26,7 @@
 #include <vgui_controls/AnimationController.h>
 #include <vgui/ISurface.h>
 #include "hud_lcd.h"
+#include <cstdio>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -175,8 +176,7 @@ ConVar hidehud( "hidehud", "0", FCVAR_CHEAT );
 static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOldValue );
 ConVar rb_hud_color( "rb_hud_color", "255 0 255", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Custom HUD color (R G B values)", RB_HudColor_Changed );
 
-// Simple global custom color - this is the only color variable we need
-static Color g_CustomHudColor( 90, 255, 145, 255 );
+// Note: We no longer use a cached color variable - all colors are read dynamically from rb_hud_color
 
 // Simple function to get custom HUD color for any color request
 Color GetCustomSchemeColor( const char *colorName )
@@ -192,15 +192,19 @@ Color GetCustomSchemeColor( const char *colorName )
 		return Color( dangerColor.r(), dangerColor.g(), dangerColor.b(), 255 );
 	}
 	
-	// For all other colors, return the custom HUD color
-	return g_CustomHudColor;
+	// For all other colors, read rb_hud_color dynamically
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	return Color(r, g, b, 255);
 }
 
 // Calculate danger color based on custom HUD color
 Color GetDangerColor()
 {
-	// Get current custom HUD color
-	Color customColor = g_CustomHudColor;
+	// Read rb_hud_color dynamically every time (like suit power does)
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color customColor(r, g, b, 255);
 	
 	// Calculate color distance from red (255, 0, 0)
 	float redDistance = sqrt( pow(customColor.r() - 255, 2) + pow(customColor.g() - 0, 2) + pow(customColor.b() - 0, 2) );
@@ -223,18 +227,11 @@ static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOl
 	const char *value = pConVar->GetString();
 	
 	int r, g, b;
-	if ( sscanf( value, "%d %d %d", &r, &g, &b ) == 3 )
-	{
-		r = clamp( r, 0, 255 );
-		g = clamp( g, 0, 255 );
-		b = clamp( b, 0, 255 );
-		
-		g_CustomHudColor = Color( r, g, b, 255 );
-	}
-	else
+	if ( sscanf( value, "%d %d %d", &r, &g, &b ) != 3 )
 	{
 		DevMsg( "Invalid rb_hud_color format. Use 'R G B' (e.g., '90 255 145')\n" );
 	}
+	// No need to cache the color - all functions read rb_hud_color dynamically
 }
 
 
@@ -546,17 +543,7 @@ void CHud::Init( void )
 //-----------------------------------------------------------------------------
 void CHud::InitColors( vgui::IScheme *scheme )
 {
-	// Initialize custom HUD colors with current ConVar value
-	const char *colorValue = rb_hud_color.GetString();
-	int r, g, b;
-	if ( sscanf( colorValue, "%d %d %d", &r, &g, &b ) == 3 )
-	{
-		r = clamp( r, 0, 255 );
-		g = clamp( g, 0, 255 );
-		b = clamp( b, 0, 255 );
-		
-		g_CustomHudColor = Color( r, g, b, 255 );
-	}
+	// Colors are now read dynamically from rb_hud_color ConVar, no caching needed
 	
 	// Update our member colors to use custom colors
 	m_clrNormal = GetCustomSchemeColor( "Normal" );

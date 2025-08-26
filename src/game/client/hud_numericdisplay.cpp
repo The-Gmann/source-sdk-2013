@@ -166,7 +166,7 @@ void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
 void CHudNumericDisplay::PaintLabel( void )
 {
 	surface()->DrawSetTextFont(m_hTextFont);
-	surface()->DrawSetTextColor(GetCustomSchemeColor( "FgColor" ));
+	surface()->DrawSetTextColor(GetFgColor()); // Use panel's FgColor (respects SetFgColor calls)
 	surface()->DrawSetTextPos(text_xpos, text_ypos);
 	surface()->DrawUnicodeString( m_LabelText );
 }
@@ -176,13 +176,13 @@ void CHudNumericDisplay::PaintLabel( void )
 //-----------------------------------------------------------------------------
 void CHudNumericDisplay::Paint()
 {
-	// Use custom HUD colors
-	Color customFgColor = GetCustomSchemeColor( "FgColor" );
+	// Use the panel's FgColor (respects SetFgColor calls from derived classes)
+	Color currentFgColor = GetFgColor();
 	
 	if (m_bDisplayValue)
 	{
 		// draw our numbers
-		surface()->DrawSetTextColor(customFgColor);
+		surface()->DrawSetTextColor(currentFgColor);
 		PaintNumbers(m_hNumberFont, digit_xpos, digit_ypos, m_iValue);
 
 		// draw the overbright blur
@@ -195,7 +195,7 @@ void CHudNumericDisplay::Paint()
 			else
 			{
 				// draw a percentage of the last one
-				Color col = customFgColor;
+				Color col = currentFgColor;
 				col[3] *= fl;
 				surface()->DrawSetTextColor(col);
 				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
@@ -206,7 +206,7 @@ void CHudNumericDisplay::Paint()
 	// total ammo
 	if (m_bDisplaySecondaryValue)
 	{
-		surface()->DrawSetTextColor(customFgColor);
+		surface()->DrawSetTextColor(currentFgColor);
 		PaintNumbers(m_hSmallNumberFont, digit2_xpos, digit2_ypos, m_iSecondaryValue);
 	}
 

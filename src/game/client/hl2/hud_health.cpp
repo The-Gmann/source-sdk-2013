@@ -23,6 +23,7 @@
 #include <vgui_controls/AnimationController.h>
 
 #include <vgui/ILocalize.h>
+#include <cstdio>
 
 using namespace vgui;
 
@@ -139,8 +140,8 @@ void CHudHealth::ApplySchemeSettings( vgui::IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
 	
-	// Override with custom HUD colors
-	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	// Don't cache rb_hud_color values here - we'll read them dynamically in GetHealthDisplayColor
+	// to ensure real-time color updates (following suit power pattern)
 }
 
 //-----------------------------------------------------------------------------
@@ -206,26 +207,16 @@ Color CHudHealth::GetHealthDisplayColor( int health )
 	}
 	else if ( IsHealthLow( health ) )
 	{
-		// Low health - smooth transition from custom color to danger color
-		// At 19 health = start transition, at 1 health = fully danger color
-		Color customColor = GetCustomSchemeColor( "FgColor" );
-		Color dangerColor = GetDangerColor();
-		
-		// Calculate transition ratio (1.0 at 19 health, 0.0 at 1 health)
-		float ratio = (float)(health - 1) / 18.0f; // 18 = 19 - 1
-		ratio = clamp( ratio, 0.0f, 1.0f );
-		
-		// Interpolate colors
-		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
-		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
-		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
-		
-		return Color( r, g, b, 255 );
+		// Low health - use danger color immediately (like aux power)
+		return GetDangerColor();
 	}
 	else
 	{
-		// Normal health - use custom HUD color
-		return GetCustomSchemeColor( "FgColor" );
+		// Normal health - read rb_hud_color dynamically (like suit power does)
+		extern ConVar rb_hud_color;
+		int r = 255, g = 255, b = 255;
+		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		return Color(r, g, b, 255);
 	}
 }
 
