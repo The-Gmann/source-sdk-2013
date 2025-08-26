@@ -4987,9 +4987,37 @@ bool CGameMovement::WallJump()
 
         TracePlayerBBox(start, end, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, pm);
 
-        // Ensure the player is not touching the ground
+        // Ensure the player is not touching the ground and check if we hit a valid wall
         if (pm.fraction < 1.0f && pm.plane.normal.z < 0.7 && player->GetGroundEntity() == NULL) // Hit a wall and not the ground
         {
+            // Check if we hit a valid entity for wall jumping
+            bool validWallJumpEntity = false;
+            
+            if (pm.m_pEnt)
+            {
+                // Do NOT allow wall jumping off other players
+                CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(pm.m_pEnt);
+                if (pHitPlayer)
+                {
+                    validWallJumpEntity = false; // Prevent wall jumping off players
+                }
+                // Do NOT allow wall jumping off physics objects (prop_physics, etc.)
+                else if (pm.m_pEnt->GetMoveType() == MOVETYPE_VPHYSICS && 
+                         pm.m_pEnt->VPhysicsGetObject() && 
+                         pm.m_pEnt->VPhysicsGetObject()->IsMoveable())
+                {
+                    validWallJumpEntity = false; // Prevent wall jumping off physics objects
+                }
+                // Only allow wall jumping off static world geometry (walls, brushes)
+                else if (pm.DidHitWorld())
+                {
+                    validWallJumpEntity = true; // Allow wall jumping off world geometry
+                }
+            }
+            
+            // Only proceed with wall jump if we hit a valid entity
+            if (!validWallJumpEntity)
+                return false;
             // ✅ Check if the player is touching a different wall
             if (pm.plane.normal != player->m_vecLastWallNormal)
             {
