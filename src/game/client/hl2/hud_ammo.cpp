@@ -40,6 +40,7 @@ public:
 	void SetAmmo(int ammo, bool playAnimation);
 	void SetAmmo2(int ammo2, bool playAnimation);
 	virtual void Paint( void );
+	virtual void PostChildPaint( void );
 	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 
 protected:
@@ -55,6 +56,9 @@ private:
 	int		m_iAmmo;
 	int		m_iAmmo2;
 	CHudTexture *m_iconPrimaryAmmo;
+	
+	// Weapon change flash animation
+	float	m_flWeaponChangeFlashTime;
 };
 
 DECLARE_HUDELEMENT( CHudAmmo );
@@ -70,6 +74,12 @@ CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo"), CHu
 	hudlcd->SetGlobalStat( "(ammo_secondary)", "0" );
 	hudlcd->SetGlobalStat( "(weapon_print_name)", "" );
 	hudlcd->SetGlobalStat( "(weapon_name)", "" );
+	
+	// Initialize weapon change flash
+	m_flWeaponChangeFlashTime = 0.0f;
+	
+	// Enable PostChildPaint for flash overlay
+	SetPostChildPaintEnabled( true );
 }
 
 //-----------------------------------------------------------------------------
@@ -122,6 +132,9 @@ void CHudAmmo::Reset()
 	m_hCurrentVehicle = NULL;
 	m_iAmmo = 0;
 	m_iAmmo2 = 0;
+	
+	// Reset weapon change flash
+	m_flWeaponChangeFlashTime = 0.0f;
 
 	UpdateAmmoDisplays();
 }
@@ -139,6 +152,13 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 	hudlcd->SetGlobalStat( "(weapon_print_name)", wpn ? wpn->GetPrintName() : " " );
 	hudlcd->SetGlobalStat( "(weapon_name)", wpn ? wpn->GetName() : " " );
 
+	// Check for weapon change first, but only trigger flash for weapons with ammo displays
+	bool weaponChanged = (wpn != m_hCurrentActiveWeapon);
+	if ( weaponChanged )
+	{
+		m_hCurrentActiveWeapon = wpn;
+	}
+
 	if ( !wpn || !player || !wpn->UsesPrimaryAmmo() )
 	{
 		hudlcd->SetGlobalStat( "(ammo_primary)", "n/a" );
@@ -147,6 +167,14 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 		SetPaintEnabled(false);
 		SetPaintBackgroundEnabled(false);
 		return;
+	}
+
+	// Only trigger flash when switching TO a weapon that has an ammo display
+	if ( weaponChanged )
+	{
+		// Trigger weapon change flash for weapons with ammo counters
+		m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
 	}
 
 	SetPaintEnabled(true);
@@ -173,7 +201,7 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 	hudlcd->SetGlobalStat( "(ammo_primary)", VarArgs( "%d", ammo1 ) );
 	hudlcd->SetGlobalStat( "(ammo_secondary)", VarArgs( "%d", ammo2 ) );
 
-	if (wpn == m_hCurrentActiveWeapon)
+	if (!weaponChanged)
 	{
 		// same weapon, just update counts
 		SetAmmo(ammo1, true);
@@ -181,7 +209,7 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 	}
 	else
 	{
-		// diferent weapon, change without triggering
+		// different weapon, change without triggering ammo animations
 		SetAmmo(ammo1, false);
 		SetAmmo2(ammo2, false);
 
@@ -197,8 +225,7 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 			SetShouldDisplaySecondaryValue(false);
 		}
 
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
-		m_hCurrentActiveWeapon = wpn;
+		// Flash and weapon change already handled above
 	}
 }
 
@@ -266,6 +293,18 @@ void CHudAmmo::UpdateVehicleAmmo( C_BasePlayer *player, IClientVehicle *pVehicle
 //-----------------------------------------------------------------------------
 void CHudAmmo::OnThink()
 {
+	// Update weapon change flash effect
+	if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+	{
+		// Flash is active - calculation handled in Paint()
+	}
+	else if ( m_flWeaponChangeFlashTime > 0.0f )
+	{
+		// Flash finished, reset
+		m_flWeaponChangeFlashTime = 0.0f;
+		SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	}
+	
 	UpdateAmmoDisplays();
 }
 
@@ -294,17 +333,22 @@ void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 {
 	if (ammo != m_iAmmo)
 	{
-		if (ammo == 0)
+		if (playAnimation)
 		{
-			// Animation removed: bypass hudanimations.txt
-		}
-		else if (ammo < m_iAmmo)
-		{
-			// ammo has decreased - Animation removed: bypass hudanimations.txt
-		}
-		else
-		{
-			// ammunition has increased - Animation removed: bypass hudanimations.txt
+			if (ammo == 0)
+			{
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoEmpty");
+			}
+			else if (ammo < m_iAmmo)
+			{
+				// ammo has decreased
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoDecreased");
+			}
+			else
+			{
+				// ammunition has increased
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoIncreased");
+			}
 		}
 
 		m_iAmmo = ammo;
@@ -320,17 +364,22 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 {
 	if (ammo2 != m_iAmmo2)
 	{
-		if (ammo2 == 0)
+		if (playAnimation)
 		{
-			// Animation removed: bypass hudanimations.txt
-		}
-		else if (ammo2 < m_iAmmo2)
-		{
-			// ammo has decreased - Animation removed: bypass hudanimations.txt
-		}
-		else
-		{
-			// ammunition has increased - Animation removed: bypass hudanimations.txt
+			if (ammo2 == 0)
+			{
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Empty");
+			}
+			else if (ammo2 < m_iAmmo2)
+			{
+				// ammo has decreased
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Decreased");
+			}
+			else
+			{
+				// ammunition has increased
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Increased");
+			}
 		}
 
 		m_iAmmo2 = ammo2;
@@ -356,7 +405,35 @@ void CHudAmmo::Paint( void )
 		int x = text_xpos + ( nLabelWidth - m_iconPrimaryAmmo->Width() ) / 2;
 		int y = text_ypos - ( nLabelHeight + ( m_iconPrimaryAmmo->Height() / 2 ) );
 		
+		// Use normal custom HUD color for icon
 		m_iconPrimaryAmmo->DrawSelf( x, y, GetCustomSchemeColor( "FgColor" ) );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Draw flash overlay after all other painting is complete
+//-----------------------------------------------------------------------------
+void CHudAmmo::PostChildPaint( void )
+{
+	// Draw weapon change flash overlay after everything else
+	if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+	{
+		// Calculate flash intensity (1.0 at start, 0.0 at end)
+		float flFlashTime = 0.15f; // Total flash duration
+		float flElapsed = flFlashTime - (m_flWeaponChangeFlashTime - gpGlobals->curtime);
+		float flIntensity = 1.0f - (flElapsed / flFlashTime);
+		
+		// Create flash overlay color with max 50% opacity
+		Color customColor = GetCustomSchemeColor( "FgColor" );
+		int flashAlpha = (int)(127 * flIntensity); // 127 = 50% of 255
+		Color flashColor( customColor.r(), customColor.g(), customColor.b(), flashAlpha );
+		
+		// Draw rounded flash overlay that matches panel background
+		int panelWide, panelTall;
+		GetSize( panelWide, panelTall );
+		
+		// Use DrawBox to create rounded rectangle overlay
+		DrawBox( 0, 0, panelWide, panelTall, flashColor, 1.0f );
 	}
 }
 
@@ -371,8 +448,13 @@ public:
 	CHudSecondaryAmmo( const char *pElementName ) : BaseClass( NULL, "HudAmmoSecondary" ), CHudElement( pElementName )
 	{
 		m_iAmmo = -1;
+		m_flWeaponChangeFlashTime = 0.0f;
+		m_iconSecondaryAmmo = NULL;
 
 		SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_WEAPONSELECTION | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
+		
+		// Enable PostChildPaint for flash overlay
+		SetPostChildPaintEnabled( true );
 	}
 
 	void Init( void )
@@ -404,17 +486,27 @@ public:
 	{
 		if (ammo != m_iAmmo)
 		{
-			if (ammo == 0)
+			// Check if we should play animations (only if ammo value actually changed and we have a valid weapon)
+			C_BaseCombatWeapon *wpn = GetActiveWeapon();
+			C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
+			bool shouldAnimate = (player && wpn && wpn->UsesSecondaryAmmo());
+			
+			if (shouldAnimate)
 			{
-				// Animation removed: bypass hudanimations.txt
-			}
-			else if (ammo < m_iAmmo)
-			{
-				// ammo has decreased - Animation removed: bypass hudanimations.txt
-			}
-			else
-			{
-				// ammunition has increased - Animation removed: bypass hudanimations.txt
+				if (ammo == 0)
+				{
+					g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryEmpty");
+				}
+				else if (ammo < m_iAmmo)
+				{
+					// ammo has decreased
+					g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryDecreased");
+				}
+				else
+				{
+					// ammunition has increased
+					g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryIncreased");
+				}
 			}
 
 			m_iAmmo = ammo;
@@ -428,6 +520,8 @@ public:
 		BaseClass::Reset();
 		m_iAmmo = 0;
 		m_hCurrentActiveWeapon = NULL;
+		m_iconSecondaryAmmo = NULL;
+		m_flWeaponChangeFlashTime = 0.0f;
 		SetAlpha( 0 );
 		UpdateAmmoState();
 	}
@@ -450,10 +544,46 @@ public:
 		}
 	}
 
+	virtual void PostChildPaint( void )
+	{
+		// Draw weapon change flash overlay after everything else
+		if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+		{
+			// Calculate flash intensity (1.0 at start, 0.0 at end)
+			float flFlashTime = 0.15f; // Total flash duration
+			float flElapsed = flFlashTime - (m_flWeaponChangeFlashTime - gpGlobals->curtime);
+			float flIntensity = 1.0f - (flElapsed / flFlashTime);
+			
+			// Create flash overlay color with max 50% opacity
+			Color customColor = GetCustomSchemeColor( "FgColor" );
+			int flashAlpha = (int)(127 * flIntensity); // 127 = 50% of 255
+			Color flashColor( customColor.r(), customColor.g(), customColor.b(), flashAlpha );
+			
+			// Draw rounded flash overlay that matches panel background
+			int panelWide, panelTall;
+			GetSize( panelWide, panelTall );
+			
+			// Use DrawBox to create rounded rectangle overlay
+			DrawBox( 0, 0, panelWide, panelTall, flashColor, 1.0f );
+		}
+	}
+
 protected:
 
 	virtual void OnThink()
 	{
+		// Update weapon change flash effect
+		if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+		{
+			// Flash is active - calculation handled in Paint()
+		}
+		else if ( m_flWeaponChangeFlashTime > 0.0f )
+		{
+			// Flash finished, reset
+			m_flWeaponChangeFlashTime = 0.0f;
+			SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+		}
+		
 		// set whether or not the panel draws based on if we have a weapon that supports secondary ammo
 		C_BaseCombatWeapon *wpn = GetActiveWeapon();
 		C_BasePlayer *player = C_BasePlayer::GetLocalPlayer();
@@ -486,20 +616,27 @@ protected:
 
 		if ( m_hCurrentActiveWeapon != wpn )
 		{
-			if ( wpn->UsesSecondaryAmmo() )
+			m_hCurrentActiveWeapon = wpn;
+			
+			if ( wpn && wpn->UsesSecondaryAmmo() )
 			{
+				// Only trigger flash when switching TO a weapon that uses secondary ammo
+				m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
+				
 				// we've changed to a weapon that uses secondary ammo
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponUsesSecondaryAmmo");
+				
+				// Get the icon we should be displaying
+				m_iconSecondaryAmmo = gWR.GetAmmoIconFromWeapon( wpn->GetSecondaryAmmoType() );
 			}
 			else 
 			{
 				// we've changed away from a weapon that uses secondary ammo
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponDoesNotUseSecondaryAmmo");
+				
+				// Clear the icon since this weapon doesn't use secondary ammo
+				m_iconSecondaryAmmo = NULL;
 			}
-			m_hCurrentActiveWeapon = wpn;
-			
-			// Get the icon we should be displaying
-			m_iconSecondaryAmmo = gWR.GetAmmoIconFromWeapon( m_hCurrentActiveWeapon->GetSecondaryAmmoType() );
 		}
 	}
 	
@@ -507,6 +644,9 @@ private:
 	CHandle< C_BaseCombatWeapon > m_hCurrentActiveWeapon;
 	CHudTexture *m_iconSecondaryAmmo;
 	int		m_iAmmo;
+	
+	// Weapon change flash animation
+	float	m_flWeaponChangeFlashTime;
 };
 
 DECLARE_HUDELEMENT( CHudSecondaryAmmo );

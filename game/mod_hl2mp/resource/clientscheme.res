@@ -15,10 +15,10 @@ Scheme
 	// this is a list of all the colors used by the scheme
 	Colors
 	{
-		// base colors
-		"Orange"			"255 176 0 255"
-		"OrangeDim"			"255 176 0 120"
-		"LightOrange"		"188 112 0 128"
+		// base colors - Updated to use variations of rb_hud_color (90 255 145)
+		"Orange"			"90 255 145 255"		// Full brightness custom color
+		"OrangeDim"			"90 255 145 120"		// Same color, reduced alpha
+		"LightOrange"		"68 192 109 128"		// Darker variation with reduced alpha
 		
 		"Red"				"192 28 0 140"
 		"Black"				"0 0 0 196"
@@ -37,32 +37,32 @@ Scheme
 	// controls use these to determine their settings
 	BaseSettings
 	{
-		"FgColor"			"255 220 0 100"
-		"FgColor_vrmode"	"255 220 0 200"
+		"FgColor"			"90 255 145 100"		// Medium transparency custom color
+		"FgColor_vrmode"	"90 255 145 200"		// High transparency for VR
 		"BgColor"			"0 0 0 76"
 
-		"Panel.FgColor"			"255 220 0 100"
+		"Panel.FgColor"			"90 255 145 100"
 		"Panel.BgColor"			"0 0 0 76"
 		
-		"BrightFg"		"255 220 0 255"
+		"BrightFg"		"90 255 145 255"		// Full brightness custom color
 
 		"DamagedBg"			"180 0 0 200"
 		"DamagedFg"			"180 0 0 230"
 		"BrightDamagedFg"		"255 0 0 255"
 
 		// weapon selection colors
-		"SelectionNumberFg"		"255 220 0 255"
-		"SelectionTextFg"		"255 220 0 255"
+		"SelectionNumberFg"		"90 255 145 255"
+		"SelectionTextFg"		"90 255 145 255"
 		"SelectionEmptyBoxBg" 	"0 0 0 80"
 		"SelectionBoxBg" 		"0 0 0 80"
 		"SelectionSelectedBoxBg" "0 0 0 80"
 		
-		"ZoomReticleColor"	"255 220 0 255"
+		"ZoomReticleColor"	"90 255 145 255"
 
-		// HL1-style HUD colors
-		"Yellowish"			"255 160 0 255"
-		"Normal"			"255 208 64 255"
-		"Caution"			"255 48 0 255"
+		// HL1-style HUD colors - Custom variations based on 90 255 145
+		"Yellowish"			"68 192 109 255"		// Darker variation (was 255 160 0)
+		"Normal"			"81 230 131 255"		// Medium variation (was 255 208 64)
+		"Caution"			"54 153 82 255"		// Darkest variation (was 255 48 0)
 
 		// Top-left corner of the "Half-Life 2" on the main screen
 		"Main.Title1.X"		"76"
@@ -81,13 +81,12 @@ Scheme
 		// Blank space to leave beneath the menu on the main screen
 		"Main.BottomBorder"	"32"
 
-		// Deck colors
-		"SteamDeckLoadingBar"			"250 128 20 255"
-		"SteamDeckSpinner"				"201 100 0 255"
-		"SteamDeckLoadingText"			"181 179 175 255"
+		// Deck colors - Custom variations
+		"SteamDeckLoadingBar"			"90 255 145 255"		// Custom bright
+		"SteamDeckSpinner"				"68 192 109 255"		// Custom medium
+		"SteamDeckLoadingText"			"181 179 175 255"		// Keep neutral text
 
 
-///HERE
 				// vgui_controls color specifications
 		Border.Bright					"LightOrange"		// the lit side of a control
 		Border.Dark						"LightOrange"		// the dark/unlit side of a control

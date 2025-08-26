@@ -13,10 +13,16 @@
 #include "iclientvehicle.h"
 #include <vgui_controls/AnimationController.h>
 #include <vgui/ILocalize.h>
+#include <vgui/ISurface.h>
 #include "ihudlcd.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+using namespace vgui;
+
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
 
 //-----------------------------------------------------------------------------
 // Purpose: Displays current ammunition level
@@ -30,9 +36,11 @@ public:
 	void Init( void );
 	void VidInit( void );
 	void Reset();
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 
 	void SetAmmo(int ammo, bool playAnimation);
 	void SetAmmo2(int ammo2, bool playAnimation);
+	virtual void Paint( void );
 
 protected:
 	virtual void OnThink();
@@ -45,6 +53,9 @@ private:
 	CHandle< C_BaseEntity > m_hCurrentVehicle;
 	int		m_iAmmo;
 	int		m_iAmmo2;
+	
+	// Weapon change flash animation
+	float	m_flWeaponChangeFlashTime;
 };
 
 DECLARE_HUDELEMENT( CHudAmmo );
@@ -60,6 +71,9 @@ CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo"), CHu
 	hudlcd->SetGlobalStat( "(ammo_secondary)", "0" );
 	hudlcd->SetGlobalStat( "(weapon_print_name)", "" );
 	hudlcd->SetGlobalStat( "(weapon_name)", "" );
+	
+	// Initialize weapon change flash
+	m_flWeaponChangeFlashTime = 0.0f;
 }
 
 //-----------------------------------------------------------------------------
@@ -89,6 +103,17 @@ void CHudAmmo::VidInit( void )
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudAmmo::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Resets hud after save/restore
 //-----------------------------------------------------------------------------
 void CHudAmmo::Reset()
@@ -99,6 +124,9 @@ void CHudAmmo::Reset()
 	m_hCurrentVehicle = NULL;
 	m_iAmmo = 0;
 	m_iAmmo2 = 0;
+	
+	// Reset weapon change flash
+	m_flWeaponChangeFlashTime = 0.0f;
 
 	UpdateAmmoDisplays();
 }
@@ -171,6 +199,8 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 			SetShouldDisplaySecondaryValue(false);
 		}
 
+		// Trigger custom weapon change flash using custom HUD color
+		m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f; // Flash for 150ms
 		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
 		m_hCurrentActiveWeapon = wpn;
 	}
@@ -242,6 +272,18 @@ void CHudAmmo::UpdateVehicleAmmo( C_BasePlayer *player, IClientVehicle *pVehicle
 //-----------------------------------------------------------------------------
 void CHudAmmo::OnThink()
 {
+	// Update weapon change flash effect
+	if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+	{
+		// Flash is active - calculation handled in Paint()
+	}
+	else if ( m_flWeaponChangeFlashTime > 0.0f )
+	{
+		// Flash finished, reset
+		m_flWeaponChangeFlashTime = 0.0f;
+		SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	}
+	
 	UpdateAmmoDisplays();
 }
 
@@ -305,6 +347,34 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 	}
 
 	SetSecondaryValue(ammo2);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: draws the ammo display with weapon change flash overlay
+//-----------------------------------------------------------------------------
+void CHudAmmo::Paint( void )
+{
+	BaseClass::Paint();
+
+	// Draw weapon change flash overlay over entire panel
+	if ( m_flWeaponChangeFlashTime > 0.0f && gpGlobals->curtime <= m_flWeaponChangeFlashTime )
+	{
+		// Calculate flash intensity (1.0 at start, 0.0 at end)
+		float flFlashTime = 0.15f; // Total flash duration
+		float flElapsed = flFlashTime - (m_flWeaponChangeFlashTime - gpGlobals->curtime);
+		float flIntensity = 1.0f - (flElapsed / flFlashTime);
+		
+		// Create flash overlay color with max 50% opacity
+		Color customColor = GetCustomSchemeColor( "FgColor" );
+		int flashAlpha = (int)(127 * flIntensity); // 127 = 50% of 255
+		Color flashColor( customColor.r(), customColor.g(), customColor.b(), flashAlpha );
+		
+		// Draw flash overlay over entire panel area
+		int panelWide, panelTall;
+		GetSize( panelWide, panelTall );
+		surface()->DrawSetColor( flashColor );
+		surface()->DrawFilledRect( 0, 0, panelWide, panelTall );
+	}
 }
 
 //-----------------------------------------------------------------------------
