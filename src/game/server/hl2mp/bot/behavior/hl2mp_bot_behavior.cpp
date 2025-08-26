@@ -48,7 +48,7 @@ ConVar bot_physcannon_wait_fire_time( "bot_physcannon_wait_fire_time", "1", FCVA
 // New ConVars for enhanced weapon handling
 ConVar bot_pistol_fire_rate( "bot_pistol_fire_rate", "0.15", FCVAR_CHEAT, "Fire rate for pistol spam firing" );
 ConVar bot_gauss_charge_time( "bot_gauss_charge_time", "1.2", FCVAR_CHEAT, "Time to charge gauss gun secondary fire" );
-ConVar bot_egon_max_range( "bot_egon_max_range", "512", FCVAR_CHEAT, "Maximum effective range for egon gun" );
+ConVar bot_egon_max_range( "bot_egon_max_range", "1024", FCVAR_CHEAT, "Maximum effective range for egon gun" );
 ConVar bot_grenade_throw_chance( "bot_grenade_throw_chance", "30", FCVAR_CHEAT, "Chance to throw grenade when tactical" );
 ConVar bot_debug_superweapons( "bot_debug_superweapons", "0", FCVAR_CHEAT, "Debug superweapon behavior" );
 ConVar bot_weapon_collection_range( "bot_weapon_collection_range", "800", FCVAR_CHEAT, "Range to search for weapons" );

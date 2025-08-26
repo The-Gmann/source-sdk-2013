@@ -228,7 +228,14 @@ CBasePlayer *GetCommentaryPlayer( void )
 
 	if ( gpGlobals->maxClients <= 1 )
 	{
-		pPlayer = UTIL_GetLocalPlayer();
+		if ( AI_IsSinglePlayer() )
+		{
+			pPlayer = AI_GetSinglePlayer();
+		}
+		else
+		{
+			pPlayer = NULL;
+		}
 	}
 	else
 	{

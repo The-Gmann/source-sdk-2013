@@ -1520,7 +1520,7 @@ void CChangeLevel::InputChangeLevel( inputdata_t &inputdata )
 	// Ignore changelevel transitions if the player's dead or attempting a challenge
 	if ( gpGlobals->maxClients == 1 )
 	{
-		CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+		CBasePlayer *pPlayer = AI_IsSinglePlayer() ? AI_GetSinglePlayer() : NULL;
 		if ( pPlayer && ( !pPlayer->IsAlive() || pPlayer->GetBonusChallenge() > 0 ) )
 			return;
 	}
@@ -1621,7 +1621,7 @@ void CChangeLevel::ChangeLevelNow( CBaseEntity *pActivator )
 
 	m_bTouched = true;
 
-	CBaseEntity *pPlayer = (pActivator && pActivator->IsPlayer()) ? pActivator : UTIL_GetLocalPlayer();
+	CBaseEntity *pPlayer = (pActivator && pActivator->IsPlayer()) ? pActivator : ( AI_IsSinglePlayer() ? AI_GetSinglePlayer() : NULL );
 
 	int transitionState = InTransitionVolume(pPlayer, m_szLandmarkName);
 	if ( transitionState == TRANSITION_VOLUME_SCREENED_OUT )
@@ -3048,7 +3048,14 @@ void CTriggerCamera::Enable( void )
 
 	if ( !m_hPlayer || !m_hPlayer->IsPlayer() )
 	{
-		m_hPlayer = UTIL_GetLocalPlayer();
+		if ( AI_IsSinglePlayer() )
+		{
+			m_hPlayer = AI_GetSinglePlayer();
+		}
+		else
+		{
+			m_hPlayer = NULL;
+		}
 	}
 
 	if ( !m_hPlayer )

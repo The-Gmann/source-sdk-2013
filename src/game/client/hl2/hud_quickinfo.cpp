@@ -17,6 +17,7 @@
 #include "../hud_crosshair.h"
 #include "VGuiMatSurface/IMatSystemSurface.h"
 #include "basecombatweapon_shared.h"
+#include "ammodef.h"
 #include <cstdio>
 
 #ifdef SIXENSE
@@ -31,6 +32,9 @@ int ScreenTransform( const Vector& point, Vector& screen );
 // Forward declarations for danger color system
 extern Color GetCustomSchemeColor( const char *colorName );
 extern Color GetDangerColor();
+
+// Forward declaration for ammo definition access
+extern CAmmoDef *GetAmmoDef();
 
 #define	HEALTH_WARNING_THRESHOLD	25
 
@@ -297,17 +301,86 @@ void CHUDQuickInfo::Paint()
 
 	// Check our ammo for a warning
 	int	ammo = pWeapon->Clip1();
-	if ( ammo != m_lastAmmo )
+	float ammoPerc; // Declare variable for ammo percentage calculations
+	
+	// Special handling for specific weapons - treat total ammo as if it's all in the current clip
+	const char *weaponName = pWeapon->GetName();
+	bool isCrossbow = ( Q_stricmp( weaponName, "weapon_crossbow" ) == 0 );
+	bool isRPG = ( Q_stricmp( weaponName, "weapon_rpg" ) == 0 );
+	bool isGauss = ( Q_stricmp( weaponName, "weapon_gauss" ) == 0 );
+	bool isEgon = ( Q_stricmp( weaponName, "weapon_egon" ) == 0 );
+	bool isGrenade = ( Q_stricmp( weaponName, "weapon_frag" ) == 0 );
+	bool isSLAM = ( Q_stricmp( weaponName, "weapon_slam" ) == 0 );
+	
+	// Melee weapons and physcannon should always show full ammo
+	bool isCrowbar = ( Q_stricmp( weaponName, "weapon_crowbar" ) == 0 );
+	bool isStunstick = ( Q_stricmp( weaponName, "weapon_stunstick" ) == 0 );
+	bool isPhyscannon = ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 );
+	
+	int totalAmmo = ammo;
+	int maxClip = pWeapon->GetMaxClip1();
+	int maxPossibleAmmo = maxClip; // For regular weapons, this is just the clip size
+	
+	// Get the player first and ensure we have a valid player pointer
+	C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( !pPlayer )
+	{
+		// Fallback: if no player, treat as empty
+		totalAmmo = 0;
+		maxPossibleAmmo = 1;
+	}
+	else if ( isCrossbow || isRPG || isGauss || isEgon || isGrenade || isSLAM )
+	{
+		// For these weapons, calculate total ammo (clip + reserves) and maximum possible capacity
+		if ( isSLAM )
+		{
+			// SLAM uses secondary ammo type
+			totalAmmo = pPlayer->GetAmmoCount( pWeapon->GetSecondaryAmmoType() );
+			// Get maximum ammo capacity from ammo def
+			maxPossibleAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetSecondaryAmmoType() );
+		}
+		else if ( isRPG || isGrenade )
+		{
+			// RPG and grenades don't use clips (clip_size = -1), only reserve ammo
+			totalAmmo = pPlayer->GetAmmoCount( pWeapon->GetPrimaryAmmoType() );
+			maxPossibleAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
+			
+			// Ensure we have valid values to avoid display issues
+			if ( maxPossibleAmmo <= 0 )
+			{
+				maxPossibleAmmo = 1; // Fallback to prevent division by zero
+			}
+		}
+		else
+		{
+			// Other weapons (crossbow, gauss, egon) use clips + reserves
+			totalAmmo = ammo + pPlayer->GetAmmoCount( pWeapon->GetPrimaryAmmoType() );
+			// Maximum possible ammo = max clip + max reserve ammo
+			int maxReserveAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
+			maxPossibleAmmo = maxClip + maxReserveAmmo;
+		}
+	}
+	else if ( isCrowbar || isStunstick || isPhyscannon )
+	{
+		// Melee weapons and physcannon always show full ammo
+		totalAmmo = maxPossibleAmmo;
+		if ( maxPossibleAmmo <= 0 )
+		{
+			// If maxPossibleAmmo is 0 or negative, set it to 1 to show full bar
+			totalAmmo = 1;
+			maxPossibleAmmo = 1;
+		}
+	}
+	if ( totalAmmo != m_lastAmmo )
 	{
 		UpdateEventTime();
-		m_lastAmmo	= ammo;
+		m_lastAmmo	= totalAmmo;
 
-		// Check if this is the gravity gun - don't show ammo warnings for it
-		const char *weaponName = pWeapon->GetName();
-		if ( Q_stricmp( weaponName, "weapon_physcannon" ) != 0 )
+		// Check if this is a weapon that shouldn't show ammo warnings
+		if ( !isPhyscannon && !isCrowbar && !isStunstick )
 		{
 			// Check for empty ammo first
-			if ( ammo == 0 && pWeapon->GetMaxClip1() > 0 )
+			if ( totalAmmo == 0 && maxPossibleAmmo > 0 )
 			{
 				if ( m_warnAmmo == false )
 				{
@@ -320,11 +393,11 @@ void CHUDQuickInfo::Paint()
 			}
 			else
 			{
-				// Find how far through the current clip we are
-				float ammoPerc = (float) ammo / (float) pWeapon->GetMaxClip1();
+				// Find how far through the maximum capacity we are
+				ammoPerc = (float) totalAmmo / (float) maxPossibleAmmo;
 
-				// Warn if we're below 25% of our clip's size (improved threshold)
-				if (( pWeapon->GetMaxClip1() > 1 ) && ( ammoPerc <= 0.25f ))
+				// Warn if we're below 25% of our maximum capacity (improved threshold)
+				if (( maxPossibleAmmo > 1 ) && ( ammoPerc <= 0.25f ))
 				{
 					if ( m_warnAmmo == false )
 					{
@@ -343,7 +416,7 @@ void CHUDQuickInfo::Paint()
 		}
 		else
 		{
-			// For gravity gun, never show ammo warnings
+			// For melee weapons and physcannon, never show ammo warnings
 			m_warnAmmo = false;
 		}
 	}
@@ -400,29 +473,13 @@ void CHUDQuickInfo::Paint()
 	}
 	else
 	{
-		float ammoPerc;
+		// Calculate ammo percentage for display
+		ammoPerc = 1.0f - ( (float) totalAmmo / (float) maxPossibleAmmo );
+		ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
 
-		// Check if this weapon uses an ammo system
-		const char *weaponName = pWeapon->GetName();
-		bool isGravityGun = ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 );
-		bool isCrowbar = ( Q_stricmp( weaponName, "weapon_crowbar" ) == 0 );
-		bool isStunstick = ( Q_stricmp( weaponName, "weapon_stunstick" ) == 0 );
-
-		if ( pWeapon->GetMaxClip1() <= 0 || isGravityGun || isCrowbar || isStunstick )
-		{
-			// Weapons without ammo reserves should show as "full"
-			ammoPerc = 0.0f;
-		}
-		else
-		{
-			ammoPerc = 1.0f - ( (float) ammo / (float) pWeapon->GetMaxClip1() );
-			ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
-		}
-
-		// Use danger color for empty ammo or low ammo (25% or less), but exclude weapons without ammo
-		bool hasAmmoSystem = ( pWeapon->GetMaxClip1() > 0 && !isGravityGun && !isCrowbar && !isStunstick );
-		bool isLowAmmo = hasAmmoSystem && ( ammo <= ( pWeapon->GetMaxClip1() * 0.25f ) );
-		Color ammoColor = ( hasAmmoSystem && ( ammo == 0 || isLowAmmo ) ) ? dangerColor : hudColor;
+		// Use danger color for empty ammo or low ammo (25% or less)
+		bool isLowAmmo = ( totalAmmo <= ( maxPossibleAmmo * 0.25f ) );
+		Color ammoColor = ( totalAmmo == 0 || isLowAmmo ) ? dangerColor : hudColor;
 		
 		if ( m_warnAmmo )
 		{

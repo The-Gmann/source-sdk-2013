@@ -314,6 +314,33 @@ void CHudDamageIndicator::DrawFullscreenDamageIndicator()
 //-----------------------------------------------------------------------------
 void CHudDamageIndicator::Paint()
 {
+	// Get danger color dynamically for runtime updates
+	extern Color GetDangerColor();
+	Color dangerColor = GetDangerColor();
+	
+	// Replace any hardcoded red colors (255, 88, 0) with danger color in real-time
+	// This allows the danger color to update based on rb_hud_color changes
+	if (m_DmgColorLeft[0] == 255 && m_DmgColorLeft[1] == 88 && m_DmgColorLeft[2] == 0)
+	{
+		m_DmgColorLeft = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), m_DmgColorLeft[3]);
+	}
+	if (m_DmgColorRight[0] == 255 && m_DmgColorRight[1] == 88 && m_DmgColorRight[2] == 0)
+	{
+		m_DmgColorRight = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), m_DmgColorRight[3]);
+	}
+	if (m_DmgHighColorLeft[0] == 255 && m_DmgHighColorLeft[1] == 88 && m_DmgHighColorLeft[2] == 0)
+	{
+		m_DmgHighColorLeft = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), m_DmgHighColorLeft[3]);
+	}
+	if (m_DmgHighColorRight[0] == 255 && m_DmgHighColorRight[1] == 88 && m_DmgHighColorRight[2] == 0)
+	{
+		m_DmgHighColorRight = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), m_DmgHighColorRight[3]);
+	}
+	if (m_DmgFullscreenColor[0] == 255 && m_DmgFullscreenColor[1] == 88 && m_DmgFullscreenColor[2] == 0)
+	{
+		m_DmgFullscreenColor = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), m_DmgFullscreenColor[3]);
+	}
+
 	// draw fullscreen damage indicators
 	DrawFullscreenDamageIndicator();
 
@@ -443,6 +470,17 @@ void CHudDamageIndicator::ApplySchemeSettings(vgui::IScheme *pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
 	SetPaintBackgroundEnabled(false);
+
+	// Get danger color dynamically and set as default for damage indicator colors
+	extern Color GetDangerColor();
+	Color dangerColor = GetDangerColor();
+	
+	// Set default color values to use danger color instead of hardcoded red
+	m_DmgColorLeft = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), 0);
+	m_DmgColorRight = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), 0);
+	m_DmgHighColorLeft = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), 0);
+	m_DmgHighColorRight = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), 0);
+	m_DmgFullscreenColor = Color(dangerColor.r(), dangerColor.g(), dangerColor.b(), 0);
 
 	int vx, vy, vw, vh;
 	vgui::surface()->GetFullscreenViewport( vx, vy, vw, vh );

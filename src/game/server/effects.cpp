@@ -1130,7 +1130,7 @@ Vector CBlood::BloodPosition( CBaseEntity *pActivator )
 		}
 		else
 		{
-			player = UTIL_GetLocalPlayer();
+			player = AI_IsSinglePlayer() ? AI_GetSinglePlayer() : NULL;
 		}
 
 		if ( player )

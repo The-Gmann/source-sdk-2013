@@ -26,6 +26,9 @@
 
 
 
+// Forward declarations for custom color system
+extern Color GetCustomSchemeColor( const char *colorName );
+
 #define INIT_BAT	-1
 
 //-----------------------------------------------------------------------------
@@ -44,6 +47,7 @@ public:
 	void MsgFunc_Battery(bf_read &msg );
 	bool ShouldDraw();
 	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
+	virtual void Paint( void );
 	
 private:
 	int		m_iBat;	
@@ -94,10 +98,8 @@ void CHudBattery::VidInit( void )
 //-----------------------------------------------------------------------------
 void CHudBattery::ApplySchemeSettings( vgui::IScheme *scheme )
 {
+	// Call base class method which reads rb_hud_color dynamically via GetCustomSchemeColor
 	BaseClass::ApplySchemeSettings( scheme );
-	
-	// Override with custom HUD colors
-	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -151,6 +153,18 @@ void CHudBattery::OnThink( void )
 	m_iBat = m_iNewBat;
 
 	SetDisplayValue(m_iBat);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply dynamic HUD colors consistently without danger state
+//-----------------------------------------------------------------------------
+void CHudBattery::Paint( void )
+{
+	// Always use the current rb_hud_color value, never switch to danger color
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	
+	// Call base class paint to render with updated color
+	BaseClass::Paint();
 }
 
 //-----------------------------------------------------------------------------

@@ -105,7 +105,7 @@ void CMessage::InputShowMessage( inputdata_t &inputdata )
 		}
 		else
 		{
-			pPlayer = (gpGlobals->maxClients > 1) ? NULL : UTIL_GetLocalPlayer();
+			pPlayer = (gpGlobals->maxClients > 1) ? NULL : AI_GetSinglePlayer();
 		}
 
 		if ( pPlayer && pPlayer->IsPlayer() )
@@ -219,7 +219,9 @@ void CCredits::RollOutroCredits()
 {
 	sv_unlockedchapters.SetValue( "15" );
 	
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return;
 
 	CSingleUserRecipientFilter user( pPlayer );
 	user.MakeReliable();
@@ -241,7 +243,9 @@ void CCredits::InputRollOutroCredits( inputdata_t &inputdata )
 
 void CCredits::InputShowLogo( inputdata_t &inputdata )
 {
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return;
 
 	CSingleUserRecipientFilter user( pPlayer );
 	user.MakeReliable();
@@ -267,7 +271,9 @@ void CCredits::InputSetLogoLength( inputdata_t &inputdata )
 
 void CCredits::InputRollCredits( inputdata_t &inputdata )
 {
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return;
 
 	CSingleUserRecipientFilter user( pPlayer );
 	user.MakeReliable();

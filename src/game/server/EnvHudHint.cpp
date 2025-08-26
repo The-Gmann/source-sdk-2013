@@ -10,6 +10,7 @@
 #include "baseentity.h"
 #include "entityoutput.h"
 #include "recipientfilter.h"
+#include "ai_utils.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -89,7 +90,10 @@ void CEnvHudHint::InputShowHudHint( inputdata_t &inputdata )
 		}
 		else
 		{
-			pPlayer = UTIL_GetLocalPlayer();
+			if ( AI_IsSinglePlayer() )
+			{
+				pPlayer = AI_GetSinglePlayer();
+			}
 		}
 
 		if ( !pPlayer || !pPlayer->IsNetClient() )
@@ -126,7 +130,10 @@ void CEnvHudHint::InputHideHudHint( inputdata_t &inputdata )
 		}
 		else
 		{
-			pPlayer = UTIL_GetLocalPlayer();
+			if ( AI_IsSinglePlayer() )
+			{
+				pPlayer = AI_GetSinglePlayer();
+			}
 		}
 
 		if ( !pPlayer || !pPlayer->IsNetClient() )

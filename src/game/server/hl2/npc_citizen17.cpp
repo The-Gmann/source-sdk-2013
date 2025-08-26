@@ -896,8 +896,15 @@ void CNPC_Citizen::GatherConditions()
 
 	if( IsInPlayerSquad() && hl2_episodic.GetBool() )
 	{
-		// Leave the player squad if someone has made me neutral to player.
-		if( IRelationType(UTIL_GetLocalPlayer()) == D_NU )
+	if ( !AI_IsSinglePlayer() )
+		return;
+
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return;
+
+	// Leave the player squad if someone has made me neutral to player.
+	if( IRelationType(pPlayer) == D_NU )
 		{
 			RemoveFromPlayerSquad();
 		}
@@ -993,7 +1000,10 @@ void CNPC_Citizen::PredictPlayerPush()
 
 	BaseClass::PredictPlayerPush();
 
-	CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return;
+
 	if ( !bHadPlayerPush && HasCondition( COND_PLAYER_PUSHING ) && 
 		 pPlayer->FInViewCone( this ) && CanHeal() )
 	{
@@ -2334,7 +2344,14 @@ bool CNPC_Citizen::CanJoinPlayerSquad()
 	if ( !CanBeUsedAsAFriend() )
 		return false;
 
-	if ( IRelationType( UTIL_GetLocalPlayer() ) != D_LI )
+	if ( !AI_IsSinglePlayer() )
+		return false;
+
+	CBasePlayer *pPlayer = AI_GetSinglePlayer();
+	if ( !pPlayer )
+		return false;
+
+	if ( IRelationType( pPlayer ) != D_LI )
 		return false;
 
 	return true;
@@ -2559,7 +2576,14 @@ void CNPC_Citizen::MoveOrder( const Vector &vecDest, CAI_BaseNPC **Allies, int n
 		return;
 	}
 
-	CHL2_Player *pPlayer = (CHL2_Player *)UTIL_GetLocalPlayer();
+	CHL2_Player *pPlayer = NULL;
+	if ( AI_IsSinglePlayer() )
+	{
+		pPlayer = (CHL2_Player *)AI_GetSinglePlayer();
+	}
+
+	if ( !pPlayer )
+		return;
 
 	m_AutoSummonTimer.Set( player_squad_autosummon_time.GetFloat() );
 	m_vAutoSummonAnchor = pPlayer->GetAbsOrigin();
@@ -2649,7 +2673,8 @@ void CNPC_Citizen::CommanderUse( CBaseEntity *pActivator, CBaseEntity *pCaller, 
 		return;
 	}
 	
-	if ( pActivator == UTIL_GetLocalPlayer() )
+	CBasePlayer *pLocalPlayer = AI_GetSinglePlayer();
+	if ( pActivator == pLocalPlayer )
 	{
 		// Don't say hi after you've been addressed by the player
 		SetSpokeConcept( TLK_HELLO, NULL );	
@@ -3180,10 +3205,10 @@ void CNPC_Citizen::UpdateFollowCommandPoint()
 		{
 			if ( IsFollowingCommandPoint() )
 				ClearFollowTarget();
-			if ( m_FollowBehavior.GetFollowTarget() != UTIL_GetLocalPlayer() )
+			if ( m_FollowBehavior.GetFollowTarget() != AI_GetSinglePlayer() )
 			{
 				DevMsg( "Expected to be following player, but not\n" );
-				m_FollowBehavior.SetFollowTarget( UTIL_GetLocalPlayer() );
+				m_FollowBehavior.SetFollowTarget( AI_GetSinglePlayer() );
 				m_FollowBehavior.SetParameters( AIF_SIMPLE );
 			}
 		}
@@ -3242,7 +3267,7 @@ CAI_BaseNPC *CNPC_Citizen::GetSquadCommandRepresentative()
 			hCurrent = NULL;
 
 			CUtlVectorFixed<SquadMemberInfo_t, MAX_SQUAD_MEMBERS> candidates;
-			CBasePlayer *pPlayer = UTIL_GetLocalPlayer();
+			CBasePlayer *pPlayer = AI_GetSinglePlayer();
 
 			if ( pPlayer )
 			{

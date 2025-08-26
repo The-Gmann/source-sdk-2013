@@ -78,7 +78,7 @@ namespace EgonConstants
 //----------------------------------------
 // ConVars
 //----------------------------------------
-ConVar sk_plr_dmg_egon("sk_plr_dmg_egon", "15", FCVAR_REPLICATED, "Egon weapon damage");
+ConVar sk_plr_dmg_egon("sk_plr_dmg_egon", "10", FCVAR_REPLICATED, "Egon weapon damage");
 
 //----------------------------------------
 // Client Effect Registration
@@ -116,6 +116,7 @@ public:
     bool Holster(CBaseCombatWeapon *pSwitchingTo = nullptr) override;
     void WeaponIdle() override;
     void ItemPostFrame() override;
+    void WeaponSound( WeaponSound_t sound_type, float soundtime = 0.0f ) override;
 
 #ifdef CLIENT_DLL
     void ClientThink() override;
@@ -846,6 +847,37 @@ void CWeaponEgon::StopFiring()
     SetWeaponIdleTime(gpGlobals->curtime + EgonConstants::STARTUP_DELAY);
     
     m_vecBeamEndPos = vec3_origin;
+}
+
+//-----------------------------------------------------------------------------
+// Weapon sound override - fixes prediction assertion failure
+//-----------------------------------------------------------------------------
+void CWeaponEgon::WeaponSound( WeaponSound_t sound_type, float soundtime )
+{
+#ifdef CLIENT_DLL
+    // On client side, check if we can predict before creating recipient filter
+    if ( !te->CanPredict() )
+        return;
+        
+    // If we have some sounds from the weapon classname.txt file, play a random one of them
+    const char *shootsound = GetWpnData().aShootSounds[ sound_type ]; 
+    if ( !shootsound || !shootsound[0] )
+        return;
+
+    // Create broadcast filter and properly handle prediction
+    CBroadcastRecipientFilter filter;
+    
+    // Use prediction rules to prevent assertion
+    if ( prediction->InPrediction() )
+    {
+        filter.UsePredictionRules();
+    }
+                
+    CBaseEntity::EmitSound( filter, GetPlayerOwner()->entindex(), shootsound, &GetPlayerOwner()->GetAbsOrigin() ); 
+#else
+    // On server side, use base class implementation
+    BaseClass::WeaponSound( sound_type, soundtime );
+#endif
 }
 
 //-----------------------------------------------------------------------------
