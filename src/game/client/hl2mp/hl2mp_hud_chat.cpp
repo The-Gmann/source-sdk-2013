@@ -5,11 +5,13 @@
 //=============================================================================//
 
 #include "cbase.h"
+#include <cstdio>
 #include "hl2mp_hud_chat.h"
 #include "hud_macros.h"
 #include "text_message.h"
 #include "vguicenterprint.h"
 #include "vgui/ILocalize.h"
+#include <vgui_controls/TextEntry.h>
 #include "c_team.h"
 #include "c_playerresource.h"
 #include "c_hl2mp_player.h"
@@ -45,10 +47,26 @@ void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
 	
-	// Set text selection colors to use custom HUD color
-	Color customColor = GetCustomSchemeColor( "FgColor" );
-	m_pInput->SetSelectionBgColor( customColor );
-	m_pInput->SetSelectionTextColor( Color( 0, 0, 0, 255 ) ); // Black text on custom background
+	// Update colors dynamically when scheme is applied
+	UpdateChatColors();
+}
+
+void CHudChatInputLine::UpdateChatColors()
+{
+	// Read rb_hud_color dynamically for real-time updates
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color hudColor(r, g, b, 255);
+	
+	// Cast to TextEntry to access selection color methods
+	vgui::TextEntry *pTextEntry = dynamic_cast<vgui::TextEntry*>(m_pInput);
+	if (pTextEntry)
+	{
+		pTextEntry->SetFgColor( hudColor );
+		pTextEntry->SetSelectionBgColor( hudColor );
+		pTextEntry->SetSelectionTextColor( Color( 0, 0, 0, 255 ) );
+	}
 }
 
 //=====================
@@ -108,7 +126,14 @@ Color CHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		return GetCustomSchemeColor( "FgColor" );
+		extern ConVar rb_hud_color;
+		Color hudColor(255, 255, 255, 255);
+		int r, g, b;
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		{
+			hudColor = Color(r, g, b, 255);
+		}
+		return hudColor;
 	}
 	else if( g_PR )
 	{
@@ -116,9 +141,26 @@ Color CHudChat::GetClientColor( int clientIndex )
 		{
 		case TEAM_COMBINE	: return g_ColorBlue;
 		case TEAM_REBELS	: return g_ColorRed;
-		default	: return GetCustomSchemeColor( "FgColor" );
+		default	: 
+			{
+				extern ConVar rb_hud_color;
+				Color hudColor(255, 255, 255, 255);
+				int r, g, b;
+				if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+				{
+					hudColor = Color(r, g, b, 255);
+				}
+				return hudColor;
+			}
 		}
 	}
 
-	return GetCustomSchemeColor( "FgColor" );
+	extern ConVar rb_hud_color;
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	return hudColor;
 }

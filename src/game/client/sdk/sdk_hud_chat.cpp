@@ -133,8 +133,14 @@ void CHudChatLine::PerformFadeout( void )
 
 			wcsncpy( wText, wbuf + ( m_iNameLength ), wcslen( wbuf + m_iNameLength ) );
 			wText[ wcslen( wbuf + m_iNameLength ) ] = '\0';
-			Color customTextColor = GetCustomSchemeColor( "FgColor" );
-			InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), alpha ) );
+			extern ConVar rb_hud_color;
+			Color hudColor(255, 255, 255, 255);
+			int r, g, b;
+			if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+			{
+				hudColor = Color(r, g, b, 255);
+			}
+			InsertColorChange( Color( hudColor.r(), hudColor.g(), hudColor.b(), alpha ) );
 			InsertString( wText );
 			InvalidateLayout( true );
 		}
@@ -163,7 +169,14 @@ void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 	m_pPrompt->SetFont( hFont );
 	m_pInput->SetFont( hFont );
 
-	m_pInput->SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	extern ConVar rb_hud_color;
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	m_pInput->SetFgColor( hudColor );
 }
 
 
@@ -435,7 +448,16 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 		}
 	}
 	else
-		line->InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), 255 ) );
+	{
+		extern ConVar rb_hud_color;
+		Color hudColor(255, 255, 255, 255);
+		int r, g, b;
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		{
+			hudColor = Color(r, g, b, 255);
+		}
+		line->InsertColorChange( Color( hudColor.r(), hudColor.g(), hudColor.b(), 255 ) );
+	}
 
 	char *buf = static_cast<char *>( _alloca( strlen( pmsg ) + 1  ) );
 	wchar_t *wbuf = static_cast<wchar_t *>( _alloca( (strlen( pmsg ) + 1 ) * sizeof(wchar_t) ) );
@@ -452,8 +474,14 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 		line->InsertString( buf );
 		Q_strncpy( buf, pmsg + iNameLength, strlen( pmsg ));
 		buf[ strlen( pmsg + iNameLength ) ] = '\0';
-		Color customTextColor = GetCustomSchemeColor( "FgColor" );
-		line->InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), 255 ) );
+		extern ConVar rb_hud_color;
+		Color hudColor(255, 255, 255, 255);
+		int r, g, b;
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		{
+			hudColor = Color(r, g, b, 255);
+		}
+		line->InsertColorChange( Color( hudColor.r(), hudColor.g(), hudColor.b(), 255 ) );
 		g_pVGuiLocalize->ConvertANSIToUnicode( buf, wbuf, strlen(pmsg)*sizeof(wchar_t));
 		line->InsertString( wbuf );
 		line->SetVisible( true );

@@ -50,7 +50,11 @@ CHudCrosshair::CHudCrosshair( const char *pElementName ) :
 
 	m_pCrosshair = 0;
 
-	m_clrCrosshair = Color( 0, 0, 0, 0 );
+	// Initialize with rb_hud_color
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	m_clrCrosshair = Color( r, g, b, 255 );
 
 	m_vecCrossHairOffsetAngle.Init();
 
@@ -67,6 +71,12 @@ void CHudCrosshair::ApplySchemeSettings( IScheme *scheme )
 
 	m_pDefaultCrosshair = gHUD.GetIcon("crosshair_default");
 	SetPaintBackgroundEnabled( false );
+
+	// Update crosshair color to use rb_hud_color
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	m_clrCrosshair = Color( r, g, b, 255 );
 
     SetSize( ScreenWidth(), ScreenHeight() );
 
@@ -263,7 +273,11 @@ void CHudCrosshair::Paint( void )
 	Color clr( cl_crosshair_red.GetInt(), cl_crosshair_green.GetInt(), cl_crosshair_blue.GetInt(), 255 );
 	flPlayerScale = cl_crosshair_scale.GetFloat() / 32.0f;  // the player can change the scale in the options/multiplayer tab
 #else
-	Color clr = m_clrCrosshair;
+	// Read rb_hud_color dynamically every frame
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color clr(r, g, b, 255);
 #endif
 	float flWidth = flWeaponScale * flPlayerScale * (float)iTextureW;
 	float flHeight = flWeaponScale * flPlayerScale * (float)iTextureH;
@@ -302,5 +316,12 @@ void CHudCrosshair::SetCrosshair( CHudTexture *texture, const Color& clr )
 //-----------------------------------------------------------------------------
 void CHudCrosshair::ResetCrosshair()
 {
-	SetCrosshair( m_pDefaultCrosshair, Color(255, 255, 255, 255) );
+	extern ConVar rb_hud_color;
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	SetCrosshair( m_pDefaultCrosshair, hudColor );
 }

@@ -10,6 +10,7 @@
 #include "history_resource.h"
 #include "input.h"
 #include "../hud_crosshair.h"
+#include <cstdio>
 
 #include "VGuiMatSurface/IMatSystemSurface.h"
 #include <KeyValues.h>
@@ -752,9 +753,15 @@ void CHudWeaponSelection::Paint()
 //-----------------------------------------------------------------------------
 // Purpose: draws a single weapon selection box
 //-----------------------------------------------------------------------------
-void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int xpos, int ypos, int boxWide, int boxTall, Color selectedColor, float alpha, int number )
+	void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int xpos, int ypos, int boxWide, int boxTall, Color selectedColor, float alpha, int number )
 {
-	Color col = bSelected ? m_SelectedFgColor : GetCustomSchemeColor( "FgColor" );
+	// Read rb_hud_color dynamically every frame
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color hudColor(r, g, b, 255);
+	
+	Color col = bSelected ? hudColor : hudColor;
 	
 	switch ( hud_fastswitch.GetInt() )
 	{
@@ -787,7 +794,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				if (!pWeapon->CanBeSelected())
 				{
 					// unselectable weapon, display as such
-					col = Color(255, 0, 0, col[3]);
+					col = Color(hudColor[0], hudColor[1], hudColor[2], col[3]);
 				}
 				else if (bSelected)
 				{
@@ -812,7 +819,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				// draw red box for an empty bubble
 				if( bSelected )
 				{
-					selectedColor.SetColor( 255, 0, 0, 40 );
+					selectedColor.SetColor( hudColor[0], hudColor[1], hudColor[2], 40 );
 				}
 
 				DrawBox( xpos, ypos, boxWide, boxTall, selectedColor, alpha, number );
@@ -851,7 +858,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 				if ( !pWeapon->CanBeSelected() )
 				{
 					// unselectable weapon, display as such
-					col = Color(255, 0, 0, col[3]);
+					col = Color(hudColor[0], hudColor[1], hudColor[2], col[3]);
 				}
 
 				// draw the inactive version
@@ -907,7 +914,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 	}
 
 	// draw text
-	col = GetCustomSchemeColor( "FgColor" );
+	col = hudColor;
 	const FileWeaponInfo_t &weaponInfo = pWeapon->GetWpnData();
 
 	if ( bSelected )
@@ -1010,8 +1017,11 @@ void CHudWeaponSelection::DrawBox(int x, int y, int wide, int tall, Color color,
 	// draw the number
 	if (number >= 0)
 	{
-		Color numberColor = m_NumberColor;
-		numberColor[3] *= normalizedAlpha / 255.0f;
+		// Read rb_hud_color dynamically for bucket numbers
+		extern ConVar rb_hud_color;
+		int r = 255, g = 255, b = 255;
+		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		Color numberColor(r, g, b, normalizedAlpha);
 		surface()->DrawSetTextColor(numberColor);
 		surface()->DrawSetTextFont(m_hNumberFont);
 		wchar_t wch = '0' + number;
@@ -1028,10 +1038,9 @@ void CHudWeaponSelection::ApplySchemeSettings(vgui::IScheme *pScheme)
 	BaseClass::ApplySchemeSettings(pScheme);
 	SetPaintBackgroundEnabled(false);
 	
-	// Override with custom HUD colors for weapon selection
-	m_TextColor = GetCustomSchemeColor( "FgColor" );
-	m_NumberColor = GetCustomSchemeColor( "FgColor" );
-	m_SelectedFgColor = GetCustomSchemeColor( "FgColor" );
+	// Don't override scheme colors with static rb_hud_color values here
+	// Instead, we'll read rb_hud_color dynamically in Paint/DrawLargeWeaponBox methods
+	// Keep original scheme colors for backgrounds to maintain dark appearance
 
 	// set our size
 	int screenWide, screenTall;

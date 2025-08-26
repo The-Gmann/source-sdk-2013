@@ -14,6 +14,7 @@
 #include <vgui_controls/AnimationController.h>
 #include <vgui/ISurface.h>
 #include <vgui/ILocalize.h>
+#include <cstdio>
 
 using namespace vgui;
 
@@ -63,8 +64,8 @@ void CHudSuitPower::ApplySchemeSettings( vgui::IScheme *scheme )
 {
 	BaseClass::ApplySchemeSettings( scheme );
 	
-	// Override with custom HUD color for aux power
-	m_AuxPowerColor = GetCustomSchemeColor( "FgColor" );
+	// Don't cache rb_hud_color values here - we'll read them dynamically in Paint method
+	// to ensure real-time color updates
 }
 
 //-----------------------------------------------------------------------------
@@ -166,12 +167,18 @@ void CHudSuitPower::Paint()
 	if ( !pPlayer )
 		return;
 
+	// Read rb_hud_color dynamically every frame
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color auxPowerColor(r, g, b, 255);
+
 	// get bar chunks
 	int chunkCount = m_flBarWidth / (m_flBarChunkWidth + m_flBarChunkGap);
 	int enabledChunks = (int)((float)chunkCount * (m_flSuitPower * 1.0f/100.0f) + 0.5f );
 
 	// draw the suit power bar
-	surface()->DrawSetColor( m_AuxPowerColor );
+	surface()->DrawSetColor( auxPowerColor );
 	int xpos = m_flBarInsetX, ypos = m_flBarInsetY;
 	for (int i = 0; i < enabledChunks; i++)
 	{
@@ -179,7 +186,7 @@ void CHudSuitPower::Paint()
 		xpos += (m_flBarChunkWidth + m_flBarChunkGap);
 	}
 	// draw the exhausted portion of the bar.
-	surface()->DrawSetColor( Color( m_AuxPowerColor[0], m_AuxPowerColor[1], m_AuxPowerColor[2], m_iAuxPowerDisabledAlpha ) );
+	surface()->DrawSetColor( Color( auxPowerColor[0], auxPowerColor[1], auxPowerColor[2], m_iAuxPowerDisabledAlpha ) );
 	for (int i = enabledChunks; i < chunkCount; i++)
 	{
 		surface()->DrawFilledRect( xpos, ypos, xpos + m_flBarChunkWidth, ypos + m_flBarHeight );
@@ -188,7 +195,7 @@ void CHudSuitPower::Paint()
 
 	// draw our name
 	surface()->DrawSetTextFont(m_hTextFont);
-	surface()->DrawSetTextColor(m_AuxPowerColor);
+	surface()->DrawSetTextColor(auxPowerColor);
 	surface()->DrawSetTextPos(text_xpos, text_ypos);
 
 	wchar_t *tempString = g_pVGuiLocalize->Find("#Valve_Hud_AUX_POWER");

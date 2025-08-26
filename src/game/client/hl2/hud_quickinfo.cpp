@@ -16,6 +16,7 @@
 #include "vgui/ISurface.h"
 #include "../hud_crosshair.h"
 #include "VGuiMatSurface/IMatSystemSurface.h"
+#include <cstdio>
 
 #ifdef SIXENSE
 #include "sixense/in_sixense.h"
@@ -163,7 +164,11 @@ void CHUDQuickInfo::DrawWarning( int x, int y, CHudTexture *icon, float &time )
 	
 	// Update our time
 	time -= (gpGlobals->frametime * 200.0f);
-	Color caution = gHUD.m_clrCaution;
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b);
+	Color hudColor(r, g, b, 255);
+	Color caution = hudColor;
 	caution[3] = scale * 255;
 
 	icon->DrawSelf( x, y, caution );
@@ -314,7 +319,12 @@ void CHUDQuickInfo::Paint()
 		}
 	}
 
-	Color clrNormal = gHUD.m_clrNormal;
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b);
+	Color hudColor(r, g, b, 255);
+
+	Color clrNormal = hudColor;
 	clrNormal[3] = 255 * scalar;
 	m_icon_c->DrawSelf( xCenter, yCenter, clrNormal );
 
@@ -340,7 +350,7 @@ void CHUDQuickInfo::Paint()
 		float healthPerc = (float) health / 100.0f;
 		healthPerc = clamp( healthPerc, 0.0f, 1.0f );
 
-		Color healthColor = m_warnHealth ? gHUD.m_clrCaution : gHUD.m_clrNormal;
+		Color healthColor = m_warnHealth ? hudColor : hudColor;
 		
 		if ( m_warnHealth )
 		{
@@ -373,7 +383,7 @@ void CHUDQuickInfo::Paint()
 			ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
 		}
 
-		Color ammoColor = m_warnAmmo ? gHUD.m_clrCaution : gHUD.m_clrNormal;
+		Color ammoColor = m_warnAmmo ? hudColor : hudColor;
 		
 		if ( m_warnAmmo )
 		{

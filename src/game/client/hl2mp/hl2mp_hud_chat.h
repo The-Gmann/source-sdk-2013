@@ -41,6 +41,7 @@ public:
 	CHudChatInputLine( CBaseHudChat *parent, char const *panelName ) : CBaseHudChatInputLine( parent, panelName ) {}
 
 	virtual void	ApplySchemeSettings(vgui::IScheme *pScheme);
+	void			UpdateChatColors();
 };
 
 class CHudChat : public CBaseHudChat

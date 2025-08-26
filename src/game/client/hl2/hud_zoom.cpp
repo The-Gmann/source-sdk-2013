@@ -16,6 +16,7 @@
 #include "materialsystem/imesh.h"
 #include "materialsystem/imaterialvar.h"
 #include "../hud_crosshair.h"
+#include <cstdio>
 
 #include <vgui/IScheme.h>
 #include <vgui/ISurface.h>
@@ -99,7 +100,9 @@ void CHudZoom::ApplySchemeSettings( vgui::IScheme *scheme )
 
 	SetPaintBackgroundEnabled(false);
 	SetPaintBorderEnabled(false);
-	SetFgColor(scheme->GetColor("ZoomReticleColor", GetFgColor()));
+	
+	// We'll read rb_hud_color dynamically in Paint method instead of caching it here
+	SetFgColor(Color(255, 255, 255, 255));
 
 	SetForceStereoRenderToFrameBuffer( true );
 	int x, y;
@@ -178,8 +181,11 @@ void CHudZoom::Paint( void )
 		scale = 1.0f - ( scale * 0.5f );
 	}
 
-	Color col = GetFgColor();
-	col[3] = alpha * 64;
+	// Read rb_hud_color dynamically every frame
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color col(r, g, b, alpha * 64);
 
 	surface()->DrawSetColor( col );
 	

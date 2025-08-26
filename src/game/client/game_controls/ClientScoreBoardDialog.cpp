@@ -7,6 +7,7 @@
 
 #include "cbase.h"
 #include <stdio.h>
+#include <cstdio>
 
 #include <cdll_client_int.h>
 #include <cdll_util.h>
@@ -171,12 +172,15 @@ void CClientScoreBoardDialog::ApplySchemeSettings( IScheme *pScheme )
 
 	m_mapAvatarsToImageList.RemoveAll();
 
-	// Set server name label to use custom HUD color
+	// Set server name label to use rb_hud_color
 	Panel *pServerName = FindChildByName( "ServerName" );
 	if ( pServerName )
 	{
-		extern Color GetCustomSchemeColor( const char *colorName );
-		pServerName->SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+		extern ConVar rb_hud_color;
+		int r = 255, g = 255, b = 255;
+		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		Color hudColor(r, g, b, 255);
+		pServerName->SetFgColor( hudColor );
 	}
 
 	PostApplySchemeSettings( pScheme );
@@ -280,6 +284,17 @@ void CClientScoreBoardDialog::Update( void )
 	// Reset();
 	m_pPlayerList->DeleteAllItems();
 	
+	// Update server name color to use current rb_hud_color value
+	Panel *pServerName = FindChildByName( "ServerName" );
+	if ( pServerName )
+	{
+		extern ConVar rb_hud_color;
+		int r = 255, g = 255, b = 255;
+		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		Color hudColor(r, g, b, 255);
+		pServerName->SetFgColor( hudColor );
+	}
+
 	FillScoreBoard();
 
 	// grow the scoreboard to fit all the players

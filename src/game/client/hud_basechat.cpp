@@ -7,9 +7,11 @@
 
 #include "cbase.h"
 #include "hud_basechat.h"
+#include <cstdio>
 
 #include <vgui/IScheme.h>
 #include <vgui/IVGui.h>
+#include <vgui_controls/TextEntry.h>
 #include "iclientmode.h"
 #include "hud_macros.h"
 #include "engine/IEngineSound.h"
@@ -407,13 +409,8 @@ void CBaseHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 	m_pPrompt->SetFont( hFont );
 	m_pInput->SetFont( hFont );
 
-	m_pInput->SetFgColor( pScheme->GetColor( "Chat.TypingText", pScheme->GetColor( "Panel.FgColor", Color( 255, 255, 255, 255 ) ) ) );
-
-	// Set text selection colors to use custom HUD color
-	extern Color GetCustomSchemeColor( const char *colorName );
-	Color customColor = GetCustomSchemeColor( "FgColor" );
-	m_pInput->SetSelectionBgColor( customColor );
-	m_pInput->SetSelectionTextColor( Color( 0, 0, 0, 255 ) ); // Black text on custom background
+	// Don't cache rb_hud_color values here - they need to be read dynamically
+	// We'll update colors when the input panel is painted or gets focus
 
 	SetPaintBackgroundEnabled( true );
 	m_pPrompt->SetPaintBackgroundEnabled( true );
@@ -1228,6 +1225,22 @@ void CBaseHudChat::StartMessageMode( int iMessageModeType )
 	SetKeyBoardInputEnabled( true );
 	SetMouseInputEnabled( true );
 	m_pChatInput->SetVisible( true );
+	
+	// Update chat input colors dynamically when it becomes visible
+	extern ConVar rb_hud_color;
+	int r = 255, g = 255, b = 255;
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	Color hudColor(r, g, b, 255);
+	
+	// Cast to TextEntry to access selection color methods
+	vgui::TextEntry *pTextEntry = dynamic_cast<vgui::TextEntry*>(m_pChatInput->GetInputPanel());
+	if (pTextEntry)
+	{
+		pTextEntry->SetFgColor( hudColor );
+		pTextEntry->SetSelectionBgColor( hudColor );
+		pTextEntry->SetSelectionTextColor( Color( 0, 0, 0, 255 ) );
+	}
+	
 	vgui::surface()->CalculateMouseVisible();
 	m_pChatInput->RequestFocus();
 	m_pChatInput->SetPaintBorderEnabled( true );
@@ -1388,7 +1401,14 @@ void CBaseHudChat::SetCustomColor( const char *pszColorName )
 //-----------------------------------------------------------------------------
 Color CBaseHudChat::GetDefaultTextColor( void )
 {
-	return GetCustomSchemeColor( "FgColor" );
+	extern ConVar rb_hud_color;
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	return hudColor;
 }
 
 //-----------------------------------------------------------------------------
@@ -1396,14 +1416,28 @@ Color CBaseHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		return GetCustomSchemeColor( "FgColor" );
+		extern ConVar rb_hud_color;
+		Color hudColor(255, 255, 255, 255);
+		int r, g, b;
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		{
+			hudColor = Color(r, g, b, 255);
+		}
+		return hudColor;
 	}
 	else if( g_PR )
 	{
 		return g_ColorGrey;
 	}
 
-	return GetCustomSchemeColor( "FgColor" );
+	extern ConVar rb_hud_color;
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	return hudColor;
 }
 
 //-----------------------------------------------------------------------------
