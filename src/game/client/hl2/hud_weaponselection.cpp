@@ -186,8 +186,9 @@ DECLARE_HUDELEMENT( CHudWeaponSelection );
 
 using namespace vgui;
 
-// Forward declaration of our custom color function
+// Forward declaration of our custom color functions
 extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
 
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
@@ -755,13 +756,30 @@ void CHudWeaponSelection::Paint()
 //-----------------------------------------------------------------------------
 	void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int xpos, int ypos, int boxWide, int boxTall, Color selectedColor, float alpha, int number )
 {
-	// Read rb_hud_color dynamically every frame
-	extern ConVar rb_hud_color;
-	int r = 255, g = 255, b = 255;
-	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
-	Color hudColor(r, g, b, 255);
+	// Get colors from unified HUD system
+	Color hudColor = GetCustomSchemeColor( "FgColor" );
+	Color dangerColor = GetDangerColor();
 	
-	Color col = bSelected ? hudColor : hudColor;
+	// Check if weapon has no ammo (empty clip and no reserve ammo) or cannot be selected
+	bool hasNoAmmo = false;
+	bool cannotBeSelected = false;
+	if ( pWeapon )
+	{
+		cannotBeSelected = !pWeapon->CanBeSelected();
+		
+		C_BasePlayer *pPlayer = C_BasePlayer::GetLocalPlayer();
+		if ( pPlayer && pWeapon->UsesPrimaryAmmo() )
+		{
+			int clipAmmo = pWeapon->Clip1();
+			int reserveAmmo = pPlayer->GetAmmoCount( pWeapon->GetPrimaryAmmoType() );
+			
+			// Weapon has no ammo if both clip and reserve are empty
+			hasNoAmmo = ( clipAmmo <= 0 && reserveAmmo <= 0 );
+		}
+	}
+	
+	// Use danger color for weapons with no ammo or that cannot be selected, otherwise use normal color
+	Color col = (hasNoAmmo || cannotBeSelected) ? dangerColor : ( bSelected ? hudColor : hudColor );
 	
 	switch ( hud_fastswitch.GetInt() )
 	{
@@ -793,8 +811,8 @@ void CHudWeaponSelection::Paint()
 
 				if (!pWeapon->CanBeSelected())
 				{
-					// unselectable weapon, display as such
-					col = Color(hudColor[0], hudColor[1], hudColor[2], col[3]);
+					// unselectable weapon, use danger color
+					col = Color(dangerColor[0], dangerColor[1], dangerColor[2], col[3]);
 				}
 				else if (bSelected)
 				{
@@ -857,8 +875,8 @@ void CHudWeaponSelection::Paint()
 
 				if ( !pWeapon->CanBeSelected() )
 				{
-					// unselectable weapon, display as such
-					col = Color(hudColor[0], hudColor[1], hudColor[2], col[3]);
+					// unselectable weapon, use danger color
+					col = Color(dangerColor[0], dangerColor[1], dangerColor[2], col[3]);
 				}
 
 				// draw the inactive version
@@ -1017,11 +1035,9 @@ void CHudWeaponSelection::DrawBox(int x, int y, int wide, int tall, Color color,
 	// draw the number
 	if (number >= 0)
 	{
-		// Read rb_hud_color dynamically for bucket numbers
-		extern ConVar rb_hud_color;
-		int r = 255, g = 255, b = 255;
-		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
-		Color numberColor(r, g, b, normalizedAlpha);
+		// Use unified HUD color system for bucket numbers
+		Color numberColor = GetCustomSchemeColor( "FgColor" );
+		numberColor[3] = normalizedAlpha;
 		surface()->DrawSetTextColor(numberColor);
 		surface()->DrawSetTextFont(m_hNumberFont);
 		wchar_t wch = '0' + number;

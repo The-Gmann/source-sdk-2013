@@ -16,6 +16,7 @@
 #include "vgui/ISurface.h"
 #include "../hud_crosshair.h"
 #include "VGuiMatSurface/IMatSystemSurface.h"
+#include "basecombatweapon_shared.h"
 #include <cstdio>
 
 #ifdef SIXENSE
@@ -26,6 +27,10 @@ int ScreenTransform( const Vector& point, Vector& screen );
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+// Forward declarations for danger color system
+extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
 
 #define	HEALTH_WARNING_THRESHOLD	25
 
@@ -164,14 +169,12 @@ void CHUDQuickInfo::DrawWarning( int x, int y, CHudTexture *icon, float &time )
 	
 	// Update our time
 	time -= (gpGlobals->frametime * 200.0f);
-	extern ConVar rb_hud_color;
-	int r = 255, g = 255, b = 255;
-	sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b);
-	Color hudColor(r, g, b, 255);
-	Color caution = hudColor;
-	caution[3] = scale * 255;
+	
+	// Use danger color for full red flash warnings
+	Color dangerColor = GetDangerColor();
+	dangerColor[3] = scale * 255;
 
-	icon->DrawSelf( x, y, caution );
+	icon->DrawSelf( x, y, dangerColor );
 }
 
 //-----------------------------------------------------------------------------
@@ -274,7 +277,8 @@ void CHUDQuickInfo::Paint()
 		UpdateEventTime();
 		m_lastHealth = health;
 
-		if ( health <= HEALTH_WARNING_THRESHOLD )
+		// Use 19 health threshold for low health warnings (matches main health HUD)
+		if ( health <= 19 && health > 0 )
 		{
 			if ( m_warnHealth == false )
 			{
@@ -298,11 +302,8 @@ void CHUDQuickInfo::Paint()
 		UpdateEventTime();
 		m_lastAmmo	= ammo;
 
-		// Find how far through the current clip we are
-		float ammoPerc = (float) ammo / (float) pWeapon->GetMaxClip1();
-
-		// Warn if we're below a certain percentage of our clip's size
-		if (( pWeapon->GetMaxClip1() > 1 ) && ( ammoPerc <= ( 1.0f - CLIP_PERC_THRESHOLD )))
+		// Check for empty ammo first
+		if ( ammo == 0 && pWeapon->GetMaxClip1() > 0 )
 		{
 			if ( m_warnAmmo == false )
 			{
@@ -315,14 +316,31 @@ void CHUDQuickInfo::Paint()
 		}
 		else
 		{
-			m_warnAmmo = false;
+			// Find how far through the current clip we are
+			float ammoPerc = (float) ammo / (float) pWeapon->GetMaxClip1();
+
+			// Warn if we're below 25% of our clip's size (improved threshold)
+			if (( pWeapon->GetMaxClip1() > 1 ) && ( ammoPerc <= 0.25f ))
+			{
+				if ( m_warnAmmo == false )
+				{
+					m_ammoFade = 255;
+					m_warnAmmo = true;
+
+					CLocalPlayerFilter filter;
+					C_BaseEntity::EmitSound( filter, SOUND_FROM_LOCAL_PLAYER, "HUDQuickInfo.LowAmmo" );
+				}
+			}
+			else
+			{
+				m_warnAmmo = false;
+			}
 		}
 	}
 
-	extern ConVar rb_hud_color;
-	int r = 255, g = 255, b = 255;
-	sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b);
-	Color hudColor(r, g, b, 255);
+	// Get colors from the unified HUD color system
+	Color hudColor = GetCustomSchemeColor( "FgColor" );
+	Color dangerColor = GetDangerColor();
 
 	Color clrNormal = hudColor;
 	clrNormal[3] = 255 * scalar;
@@ -350,7 +368,8 @@ void CHUDQuickInfo::Paint()
 		float healthPerc = (float) health / 100.0f;
 		healthPerc = clamp( healthPerc, 0.0f, 1.0f );
 
-		Color healthColor = m_warnHealth ? hudColor : hudColor;
+		// Use danger color for low health (19 health or less), otherwise normal HUD color
+		Color healthColor = ( health <= 19 && health > 0 ) ? dangerColor : hudColor;
 		
 		if ( m_warnHealth )
 		{
@@ -383,7 +402,9 @@ void CHUDQuickInfo::Paint()
 			ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
 		}
 
-		Color ammoColor = m_warnAmmo ? hudColor : hudColor;
+		// Use danger color for empty ammo or low ammo (25% or less), otherwise normal HUD color
+		bool isLowAmmo = ( pWeapon->GetMaxClip1() > 0 ) && ( ammo <= ( pWeapon->GetMaxClip1() * 0.25f ) );
+		Color ammoColor = ( ammo == 0 || isLowAmmo ) ? dangerColor : hudColor;
 		
 		if ( m_warnAmmo )
 		{

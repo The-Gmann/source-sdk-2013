@@ -15,6 +15,7 @@
 #include <vgui/ILocalize.h>
 #include <vgui/ISurface.h>
 #include "ihudlcd.h"
+#include "ammodef.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -50,6 +51,12 @@ protected:
 	void UpdatePlayerAmmo( C_BasePlayer *player );
 	void UpdateVehicleAmmo( C_BasePlayer *player, IClientVehicle *pVehicle );
 	
+	// Low ammo and danger state detection
+	bool IsAmmoLow( int ammo, int maxAmmo );
+	bool IsAmmoEmpty( int ammo );
+	Color GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty );
+	Color GetAmmo2DisplayColor( int ammo2, int maxAmmo2, bool isEmpty );
+	
 private:
 	CHandle< C_BaseCombatWeapon > m_hCurrentActiveWeapon;
 	CHandle< C_BaseEntity > m_hCurrentVehicle;
@@ -59,6 +66,10 @@ private:
 	
 	// Weapon change flash animation
 	float	m_flWeaponChangeFlashTime;
+	
+	// Low ammo warning flash
+	float	m_flLowAmmoWarningTime;
+	float	m_flLowAmmo2WarningTime;
 };
 
 DECLARE_HUDELEMENT( CHudAmmo );
@@ -75,8 +86,10 @@ CHudAmmo::CHudAmmo( const char *pElementName ) : BaseClass(NULL, "HudAmmo"), CHu
 	hudlcd->SetGlobalStat( "(weapon_print_name)", "" );
 	hudlcd->SetGlobalStat( "(weapon_name)", "" );
 	
-	// Initialize weapon change flash
+	// Initialize weapon change flash and low ammo warnings
 	m_flWeaponChangeFlashTime = 0.0f;
+	m_flLowAmmoWarningTime = 0.0f;
+	m_flLowAmmo2WarningTime = 0.0f;
 	
 	// Enable PostChildPaint for flash overlay
 	SetPostChildPaintEnabled( true );
@@ -133,8 +146,10 @@ void CHudAmmo::Reset()
 	m_iAmmo = 0;
 	m_iAmmo2 = 0;
 	
-	// Reset weapon change flash
+	// Reset weapon change flash and warning timers
 	m_flWeaponChangeFlashTime = 0.0f;
+	m_flLowAmmoWarningTime = 0.0f;
+	m_flLowAmmo2WarningTime = 0.0f;
 
 	UpdateAmmoDisplays();
 }
@@ -152,11 +167,15 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 	hudlcd->SetGlobalStat( "(weapon_print_name)", wpn ? wpn->GetPrintName() : " " );
 	hudlcd->SetGlobalStat( "(weapon_name)", wpn ? wpn->GetName() : " " );
 
-	// Check for weapon change first, but only trigger flash for weapons with ammo displays
+	// Check for weapon change first - trigger flash for ALL weapon changes
 	bool weaponChanged = (wpn != m_hCurrentActiveWeapon);
 	if ( weaponChanged )
 	{
 		m_hCurrentActiveWeapon = wpn;
+		
+		// Always trigger weapon change flash when changing weapons
+		m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
+		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
 	}
 
 	if ( !wpn || !player || !wpn->UsesPrimaryAmmo() )
@@ -167,14 +186,6 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 		SetPaintEnabled(false);
 		SetPaintBackgroundEnabled(false);
 		return;
-	}
-
-	// Only trigger flash when switching TO a weapon that has an ammo display
-	if ( weaponChanged )
-	{
-		// Trigger weapon change flash for weapons with ammo counters
-		m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
 	}
 
 	SetPaintEnabled(true);
@@ -198,10 +209,7 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 		ammo2 = player->GetAmmoCount(wpn->GetPrimaryAmmoType());
 	}
 
-	hudlcd->SetGlobalStat( "(ammo_primary)", VarArgs( "%d", ammo1 ) );
-	hudlcd->SetGlobalStat( "(ammo_secondary)", VarArgs( "%d", ammo2 ) );
-
-	if (!weaponChanged)
+	if (wpn == m_hCurrentActiveWeapon && !weaponChanged)
 	{
 		// same weapon, just update counts
 		SetAmmo(ammo1, true);
@@ -214,7 +222,7 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 		SetAmmo2(ammo2, false);
 
 		// update whether or not we show the total ammo display
-		if (wpn->UsesClipsForAmmo1())
+		if (wpn->UsesPrimaryAmmo() && wpn->UsesClipsForAmmo1())
 		{
 			SetShouldDisplaySecondaryValue(true);
 			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponUsesClips");
@@ -224,9 +232,11 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponDoesNotUseClips");
 			SetShouldDisplaySecondaryValue(false);
 		}
-
-		// Flash and weapon change already handled above
 	}
+
+	hudlcd->SetGlobalStat( "(ammo_primary)", VarArgs( "%d", ammo1 ) );
+	hudlcd->SetGlobalStat( "(ammo_secondary)", VarArgs( "%d", ammo2 ) );
+
 }
 
 void CHudAmmo::UpdateVehicleAmmo( C_BasePlayer *player, IClientVehicle *pVehicle )
@@ -327,14 +337,116 @@ void CHudAmmo::UpdateAmmoDisplays()
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Updates ammo display
+// Purpose: Determine if ammo is considered low
+//-----------------------------------------------------------------------------
+bool CHudAmmo::IsAmmoLow( int ammo, int maxAmmo )
+{
+	if ( maxAmmo <= 0 ) return false;
+	
+	// Consider ammo low if less than 25% of max capacity
+	float lowThreshold = maxAmmo * 0.25f;
+	return ( ammo > 0 && ammo <= lowThreshold );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Determine if ammo is empty
+//-----------------------------------------------------------------------------
+bool CHudAmmo::IsAmmoEmpty( int ammo )
+{
+	return ( ammo <= 0 );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Get display color for primary ammo based on state
+//-----------------------------------------------------------------------------
+Color CHudAmmo::GetAmmoDisplayColor( int ammo, int maxAmmo, bool isEmpty )
+{
+	if ( isEmpty )
+	{
+		// Empty ammo - use danger color
+		return GetDangerColor();
+	}
+	else if ( IsAmmoLow( ammo, maxAmmo ) )
+	{
+		// Low ammo - interpolate between custom color and danger color
+		Color customColor = GetCustomSchemeColor( "FgColor" );
+		Color dangerColor = GetDangerColor();
+		
+		// Smooth transition based on how low the ammo is
+		float lowThreshold = maxAmmo * 0.25f;
+		float ratio = (float)ammo / lowThreshold; // 1.0 at threshold, 0.0 at empty
+		ratio = clamp( ratio, 0.0f, 1.0f );
+		
+		// Interpolate colors
+		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
+		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
+		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
+		
+		return Color( r, g, b, 255 );
+	}
+	else
+	{
+		// Normal ammo - use custom HUD color
+		return GetCustomSchemeColor( "FgColor" );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Get display color for secondary ammo based on state
+//-----------------------------------------------------------------------------
+Color CHudAmmo::GetAmmo2DisplayColor( int ammo2, int maxAmmo2, bool isEmpty )
+{
+	if ( isEmpty )
+	{
+		// Empty ammo - use danger color
+		return GetDangerColor();
+	}
+	else if ( IsAmmoLow( ammo2, maxAmmo2 ) )
+	{
+		// Low ammo - interpolate between custom color and danger color
+		Color customColor = GetCustomSchemeColor( "FgColor" );
+		Color dangerColor = GetDangerColor();
+		
+		// Smooth transition based on how low the ammo is
+		float lowThreshold = maxAmmo2 * 0.25f;
+		float ratio = (float)ammo2 / lowThreshold; // 1.0 at threshold, 0.0 at empty
+		ratio = clamp( ratio, 0.0f, 1.0f );
+		
+		// Interpolate colors
+		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
+		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
+		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
+		
+		return Color( r, g, b, 255 );
+	}
+	else
+	{
+		// Normal ammo - use custom HUD color
+		return GetCustomSchemeColor( "FgColor" );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Updates ammo display with enhanced danger state detection
 //-----------------------------------------------------------------------------
 void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 {
+	C_BaseCombatWeapon *pWeapon = GetActiveWeapon();
+	int maxAmmo = 0;
+	if ( pWeapon )
+	{
+		maxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
+	}
+	
+	bool isEmpty = (ammo == 0);
+	bool wasLow = IsAmmoLow( m_iAmmo, maxAmmo );
+	bool isLow = IsAmmoLow( ammo, maxAmmo );
+	
 	if (ammo != m_iAmmo)
 	{
 		if (playAnimation)
 		{
+			// Trigger appropriate ammo animations
 			if (ammo == 0)
 			{
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoEmpty");
@@ -349,19 +461,41 @@ void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 				// ammunition has increased
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoIncreased");
 			}
+			
+			// Check for low ammo warning flash
+			if ( !wasLow && isLow && !isEmpty )
+			{
+				// Just became low ammo - trigger warning flash
+				m_flLowAmmoWarningTime = gpGlobals->curtime + 0.25f;
+			}
 		}
-
+		
+		// Update ammo color based on state
+		Color ammoColor = GetAmmoDisplayColor( ammo, maxAmmo, isEmpty );
+		SetFgColor( ammoColor );
+		
 		m_iAmmo = ammo;
 	}
-
+	
 	SetDisplayValue(ammo);
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Updates 2nd ammo display
+// Purpose: Updates 2nd ammo display with enhanced danger state detection
 //-----------------------------------------------------------------------------
 void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 {
+	C_BaseCombatWeapon *pWeapon = GetActiveWeapon();
+	int maxAmmo2 = 0;
+	if ( pWeapon )
+	{
+		maxAmmo2 = GetAmmoDef()->MaxCarry( pWeapon->GetSecondaryAmmoType() );
+	}
+	
+	bool isEmpty = (ammo2 == 0);
+	bool wasLow = IsAmmoLow( m_iAmmo2, maxAmmo2 );
+	bool isLow = IsAmmoLow( ammo2, maxAmmo2 );
+	
 	if (ammo2 != m_iAmmo2)
 	{
 		if (playAnimation)
@@ -380,11 +514,22 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 				// ammunition has increased
 				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Increased");
 			}
+			
+			// Check for low ammo warning flash
+			if ( !wasLow && isLow && !isEmpty )
+			{
+				// Just became low ammo - trigger warning flash
+				m_flLowAmmo2WarningTime = gpGlobals->curtime + 0.25f;
+			}
 		}
-
+		
+		// Update ammo color based on state - apply to secondary value display
+		Color ammo2Color = GetAmmo2DisplayColor( ammo2, maxAmmo2, isEmpty );
+		// Note: SetSecondaryValue doesn't have color parameter, so we'll handle this in Paint
+		
 		m_iAmmo2 = ammo2;
 	}
-
+	
 	SetSecondaryValue(ammo2);
 }
 
@@ -405,8 +550,20 @@ void CHudAmmo::Paint( void )
 		int x = text_xpos + ( nLabelWidth - m_iconPrimaryAmmo->Width() ) / 2;
 		int y = text_ypos - ( nLabelHeight + ( m_iconPrimaryAmmo->Height() / 2 ) );
 		
-		// Use normal custom HUD color for icon
-		m_iconPrimaryAmmo->DrawSelf( x, y, GetCustomSchemeColor( "FgColor" ) );
+		// Get current weapon info for proper color determination
+		C_BaseCombatWeapon *pWeapon = GetActiveWeapon();
+		Color iconColor = GetCustomSchemeColor( "FgColor" ); // Default color
+		
+		if ( pWeapon )
+		{
+			int maxAmmo = GetAmmoDef()->MaxCarry( pWeapon->GetPrimaryAmmoType() );
+			bool isEmpty = IsAmmoEmpty( m_iAmmo );
+			
+			// Use danger color for empty or low ammo, otherwise use normal color
+			iconColor = GetAmmoDisplayColor( m_iAmmo, maxAmmo, isEmpty );
+		}
+		
+		m_iconPrimaryAmmo->DrawSelf( x, y, iconColor );
 	}
 }
 
@@ -508,6 +665,27 @@ public:
 					g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryIncreased");
 				}
 			}
+			
+			// Update secondary ammo color based on state
+			if (wpn && wpn->UsesSecondaryAmmo())
+			{
+				int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
+				bool isEmpty = (ammo == 0);
+				Color ammo2Color;
+				
+				if (isEmpty || (maxAmmo2 > 0 && ammo <= maxAmmo2 * 0.25f))
+				{
+					// Empty or low ammo - use danger color
+					ammo2Color = GetDangerColor();
+				}
+				else
+				{
+					// Normal ammo - use custom HUD color
+					ammo2Color = GetCustomSchemeColor( "FgColor" );
+				}
+				
+				SetFgColor( ammo2Color );
+			}
 
 			m_iAmmo = ammo;
 		}
@@ -539,8 +717,29 @@ public:
 			// Figure out where we're going to put this
 			int x = text_xpos + ( nLabelWidth - m_iconSecondaryAmmo->Width() ) / 2;
 			int y = text_ypos - ( nLabelHeight + ( m_iconSecondaryAmmo->Height() / 2 ) );
+			
+			// Get current weapon info for proper color determination
+			C_BaseCombatWeapon *wpn = GetActiveWeapon();
+			Color iconColor = GetCustomSchemeColor( "FgColor" ); // Default color
+			
+			if ( wpn && wpn->UsesSecondaryAmmo() )
+			{
+				int maxAmmo2 = GetAmmoDef()->MaxCarry( wpn->GetSecondaryAmmoType() );
+				bool isEmpty = (m_iAmmo == 0);
+				
+				if (isEmpty || (maxAmmo2 > 0 && m_iAmmo <= maxAmmo2 * 0.25f))
+				{
+					// Empty or low ammo - use danger color
+					iconColor = GetDangerColor();
+				}
+				else
+				{
+					// Normal ammo - use custom HUD color
+					iconColor = GetCustomSchemeColor( "FgColor" );
+				}
+			}
 
-			m_iconSecondaryAmmo->DrawSelf( x, y, GetCustomSchemeColor( "FgColor" ) );
+			m_iconSecondaryAmmo->DrawSelf( x, y, iconColor );
 		}
 	}
 

@@ -181,18 +181,39 @@ static Color g_CustomHudColor( 90, 255, 145, 255 );
 // Simple function to get custom HUD color for any color request
 Color GetCustomSchemeColor( const char *colorName )
 {
-	// For damage-related colors, use red instead of custom color
-	if ( !Q_stricmp( colorName, "DamagedFg" ) )
+	// For damage-related colors, use dynamic danger color calculation
+	if ( !Q_stricmp( colorName, "DamagedFg" ) || !Q_stricmp( colorName, "DangerColor" ) )
 	{
-		return Color( 255, 0, 0, 230 );
+		return GetDangerColor();
 	}
-	else if ( !Q_stricmp( colorName, "BrightDamagedFg" ) )
+	else if ( !Q_stricmp( colorName, "BrightDamagedFg" ) || !Q_stricmp( colorName, "BrightDangerColor" ) )
 	{
-		return Color( 255, 0, 0, 255 );
+		Color dangerColor = GetDangerColor();
+		return Color( dangerColor.r(), dangerColor.g(), dangerColor.b(), 255 );
 	}
 	
 	// For all other colors, return the custom HUD color
 	return g_CustomHudColor;
+}
+
+// Calculate danger color based on custom HUD color
+Color GetDangerColor()
+{
+	// Get current custom HUD color
+	Color customColor = g_CustomHudColor;
+	
+	// Calculate color distance from red (255, 0, 0)
+	float redDistance = sqrt( pow(customColor.r() - 255, 2) + pow(customColor.g() - 0, 2) + pow(customColor.b() - 0, 2) );
+	
+	// If custom color is too close to red (distance < 100), use yellow instead
+	if ( redDistance < 100.0f )
+	{
+		return Color( 255, 255, 0, 230 ); // Yellow danger color
+	}
+	else
+	{
+		return Color( 255, 0, 0, 230 ); // Red danger color
+	}
 }
 
 // Simple ConVar callback for HUD color changes

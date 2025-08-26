@@ -16,6 +16,7 @@
 #include <vgui/VGUI.h>
 #include <Color.h>
 #include <bitbuf.h>
+#include <cmath>
 
 namespace vgui
 {
@@ -211,5 +212,9 @@ extern vgui::HFont g_hFontTrebuchet24;
 void LoadHudTextures( CUtlDict< CHudTexture *, int >& list, const char *szFilenameWithoutExtension, const unsigned char *pICEKey );
 
 void GetHudSize( int& w, int &h );
+
+// Custom HUD color functions
+Color GetCustomSchemeColor( const char *colorName );
+Color GetDangerColor();
 
 #endif // HUD_H

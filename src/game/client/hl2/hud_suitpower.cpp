@@ -171,7 +171,21 @@ void CHudSuitPower::Paint()
 	extern ConVar rb_hud_color;
 	int r = 255, g = 255, b = 255;
 	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
-	Color auxPowerColor(r, g, b, 255);
+	
+	// Check if suit power is at 10% or below for danger color
+	bool isLowPower = (m_flSuitPower <= 10.0f);
+	Color auxPowerColor;
+	if (isLowPower)
+	{
+		// Use danger color (full red) when suit power is 10% or below
+		extern Color GetDangerColor();
+		auxPowerColor = GetDangerColor();
+	}
+	else
+	{
+		// Use normal HUD color for suit power above 10%
+		auxPowerColor = Color(r, g, b, 255);
+	}
 
 	// get bar chunks
 	int chunkCount = m_flBarWidth / (m_flBarChunkWidth + m_flBarChunkGap);

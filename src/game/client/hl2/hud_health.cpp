@@ -31,8 +31,9 @@ using namespace vgui;
 
 #include "convar.h"
 
-// Forward declaration of our custom color function
+// Forward declaration of our custom color functions
 extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -53,13 +54,24 @@ public:
 	virtual void Reset( void );
 	virtual void OnThink();
 	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
+	virtual void PostChildPaint( void );
 			void MsgFunc_Damage( bf_read &msg );
+
+protected:
+	// Health danger state detection
+	bool IsHealthLow( int health );
+	bool IsHealthCritical( int health );
+	Color GetHealthDisplayColor( int health );
+	void SetHealth( int health, bool playAnimation );
 
 private:
 	// old variables
 	int		m_iHealth;
 	
 	int		m_bitsDamage;
+	
+	// Low health warning flash
+	float	m_flLowHealthWarningTime;
 };	
 
 DECLARE_HUDELEMENT( CHudHealth );
@@ -71,6 +83,12 @@ DECLARE_HUD_MESSAGE( CHudHealth, Damage );
 CHudHealth::CHudHealth( const char *pElementName ) : CHudElement( pElementName ), CHudNumericDisplay(NULL, "HudHealth")
 {
 	SetHiddenBits( HIDEHUD_HEALTH | HIDEHUD_PLAYERDEAD | HIDEHUD_NEEDSUIT );
+	
+	// Initialize low health warning flash
+	m_flLowHealthWarningTime = 0.0f;
+	
+	// Enable PostChildPaint for flash overlay
+	SetPostChildPaintEnabled( true );
 }
 
 //-----------------------------------------------------------------------------
@@ -89,6 +107,9 @@ void CHudHealth::Reset()
 {
 	m_iHealth		= INIT_HEALTH;
 	m_bitsDamage	= 0;
+	
+	// Reset low health warning flash timer
+	m_flLowHealthWarningTime = 0.0f;
 
 	wchar_t *tempString = g_pVGuiLocalize->Find("#Valve_Hud_HEALTH");
 
@@ -138,22 +159,142 @@ void CHudHealth::OnThink()
 	// Only update the fade if we've changed health
 	if ( newHealth == m_iHealth )
 	{
+		// Update low health warning flash effect
+		if ( m_flLowHealthWarningTime > 0.0f && gpGlobals->curtime <= m_flLowHealthWarningTime )
+		{
+			// Flash is active - calculation handled in PostChildPaint()
+		}
+		else if ( m_flLowHealthWarningTime > 0.0f )
+		{
+			// Flash finished, reset
+			m_flLowHealthWarningTime = 0.0f;
+			SetFgColor( GetHealthDisplayColor( m_iHealth ) );
+		}
 		return;
 	}
 
-	m_iHealth = newHealth;
+	SetHealth( newHealth, true );
+}
 
-	if ( m_iHealth >= 20 )
-	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20");
-	}
-	else if ( m_iHealth > 0 )
-	{
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20");
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthLow");
-	}
+//-----------------------------------------------------------------------------
+// Purpose: Determine if health is considered low (starts transition at 19 health)
+//-----------------------------------------------------------------------------
+bool CHudHealth::IsHealthLow( int health )
+{
+	// Low health threshold is 19 health - starts becoming fully red
+	return ( health > 0 && health <= 19 );
+}
 
-	SetDisplayValue(m_iHealth);
+//-----------------------------------------------------------------------------
+// Purpose: Determine if health is critical (very low)
+//-----------------------------------------------------------------------------
+bool CHudHealth::IsHealthCritical( int health )
+{
+	// Critical health is 5 health or less
+	return ( health > 0 && health <= 5 );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Get display color for health based on current health value
+//-----------------------------------------------------------------------------
+Color CHudHealth::GetHealthDisplayColor( int health )
+{
+	if ( health <= 0 )
+	{
+		// Dead - use danger color
+		return GetDangerColor();
+	}
+	else if ( IsHealthLow( health ) )
+	{
+		// Low health - smooth transition from custom color to danger color
+		// At 19 health = start transition, at 1 health = fully danger color
+		Color customColor = GetCustomSchemeColor( "FgColor" );
+		Color dangerColor = GetDangerColor();
+		
+		// Calculate transition ratio (1.0 at 19 health, 0.0 at 1 health)
+		float ratio = (float)(health - 1) / 18.0f; // 18 = 19 - 1
+		ratio = clamp( ratio, 0.0f, 1.0f );
+		
+		// Interpolate colors
+		int r = (int)(customColor.r() * ratio + dangerColor.r() * (1.0f - ratio));
+		int g = (int)(customColor.g() * ratio + dangerColor.g() * (1.0f - ratio));
+		int b = (int)(customColor.b() * ratio + dangerColor.b() * (1.0f - ratio));
+		
+		return Color( r, g, b, 255 );
+	}
+	else
+	{
+		// Normal health - use custom HUD color
+		return GetCustomSchemeColor( "FgColor" );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Updates health display with enhanced danger state detection
+//-----------------------------------------------------------------------------
+void CHudHealth::SetHealth( int health, bool playAnimation )
+{
+	bool wasLow = IsHealthLow( m_iHealth );
+	bool isLow = IsHealthLow( health );
+	
+	if ( health != m_iHealth )
+	{
+		if ( playAnimation )
+		{
+			// Trigger appropriate health animations
+			if ( health >= 20 )
+			{
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20");
+			}
+			else if ( health > 0 )
+			{
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20");
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthLow");
+			}
+			
+			// Check for low health warning flash
+			if ( !wasLow && isLow && health > 0 )
+			{
+				// Just became low health - trigger warning flash
+				m_flLowHealthWarningTime = gpGlobals->curtime + 0.25f;
+			}
+		}
+		
+		// Update health color based on state
+		Color healthColor = GetHealthDisplayColor( health );
+		SetFgColor( healthColor );
+		
+		m_iHealth = health;
+	}
+	
+	SetDisplayValue( health );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Draw flash overlay after all other painting is complete
+//-----------------------------------------------------------------------------
+void CHudHealth::PostChildPaint( void )
+{
+	// Draw low health warning flash overlay after everything else
+	if ( m_flLowHealthWarningTime > 0.0f && gpGlobals->curtime <= m_flLowHealthWarningTime )
+	{
+		// Calculate flash intensity (1.0 at start, 0.0 at end)
+		float flFlashTime = 0.25f; // Total flash duration
+		float flElapsed = flFlashTime - (m_flLowHealthWarningTime - gpGlobals->curtime);
+		float flIntensity = 1.0f - (flElapsed / flFlashTime);
+		
+		// Create flash overlay color with max 60% opacity
+		Color dangerColor = GetDangerColor();
+		int flashAlpha = (int)(153 * flIntensity); // 153 = 60% of 255
+		Color flashColor( dangerColor.r(), dangerColor.g(), dangerColor.b(), flashAlpha );
+		
+		// Draw rounded flash overlay that matches panel background
+		int panelWide, panelTall;
+		GetSize( panelWide, panelTall );
+		
+		// Use DrawBox to create rounded rectangle overlay
+		DrawBox( 0, 0, panelWide, panelTall, flashColor, 1.0f );
+	}
 }
 
 //-----------------------------------------------------------------------------

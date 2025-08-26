@@ -14,6 +14,10 @@
 #include "vgui_controls/AnimationController.h"
 #include <cstdio>
 
+// Forward declarations for danger color system
+extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -322,10 +326,10 @@ void CHudHistoryResource::Paint( void )
 
 			float elapsed = m_PickupHistory[i].DisplayTime - gpGlobals->curtime;
 			float scale = elapsed * 80;
-			extern ConVar rb_hud_color;
-			int r = 255, g = 255, b = 255;
-			sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b);
-			Color hudColor(r, g, b, 255);
+			
+			// Get colors from unified HUD system
+			Color hudColor = GetCustomSchemeColor( "FgColor" );
+			Color dangerColor = GetDangerColor();
 			Color clr = hudColor;
 			clr[3] = MIN( scale, 255 );
 
@@ -375,8 +379,8 @@ void CHudHistoryResource::Paint( void )
 					itemIcon = gWR.GetAmmoIconFromWeapon( m_PickupHistory[i].iId );
 					iAmount = 0;
 					bUseAmmoFullMsg = true;
-					// display as red - use the same color as normal for consistency
-					clr = hudColor;	
+					// Use danger color for full ammo messages (ammo denied)
+					clr = dangerColor;	
 					clr[3] = MIN( scale, 255 );
 				}
 				break;
@@ -389,8 +393,8 @@ void CHudHistoryResource::Paint( void )
 
 					if ( !pWeapon->HasAmmo() )
 					{
-						// if the weapon doesn't have ammo, display it as red - use the same color for consistency
-						clr = hudColor;	
+						// Use danger color for empty weapons (no ammo)
+						clr = dangerColor;	
 						clr[3] = MIN( scale, 255 );
 					}
 
