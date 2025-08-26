@@ -962,6 +962,17 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
     radiusDmgInfo.SetDamagePosition(tr.endpos);
     Vector radiusForce = direction * radiusDamage * 300.0f; // Slightly less force for radius
     radiusDmgInfo.SetDamageForce(radiusForce);
+    
+    // Fix c_recipientfilter assertion by ensuring proper inflictor and attacker
+    if (!radiusDmgInfo.GetInflictor())
+    {
+        radiusDmgInfo.SetInflictor(this);
+    }
+    if (!radiusDmgInfo.GetAttacker())
+    {
+        radiusDmgInfo.SetAttacker(pOwner);
+    }
+    
     RadiusDamage(radiusDmgInfo, tr.endpos, EgonConstants::DMG_RADIUS, CLASS_NONE, nullptr);
 #endif
 }

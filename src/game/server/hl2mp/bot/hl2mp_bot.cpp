@@ -355,9 +355,8 @@ CON_COMMAND_F( bot_kick, "Remove a bot by name, or all bots (\"all\").", FCVAR_G
 	TheHL2MPBots().OnForceKickedBots( iNumKicked );
 }
 
-
 //-----------------------------------------------------------------------------------------------------
-CON_COMMAND_F( hl2mp_bot_kill, "Kill a HL2MPBot by name, or all bots (\"all\").", FCVAR_GAMEDLL )
+CON_COMMAND_F( bot_kill, "Kill a HL2MPBot by name, or all bots (\"all\").", FCVAR_GAMEDLL )
 {
 	// Listenserver host or rcon access only!
 	if ( !UTIL_IsCommandIssuedByServerAdmin() )
@@ -437,7 +436,7 @@ void CMD_BotWarpTeamToMe( void )
 		myTeam->GetPlayer(i)->SetAbsOrigin( player->GetAbsOrigin() );
 	}
 }
-static ConCommand hl2mp_bot_warp_team_to_me( "hl2mp_bot_warp_team_to_me", CMD_BotWarpTeamToMe, "", FCVAR_GAMEDLL | FCVAR_CHEAT );
+static ConCommand bot_warp_team_to_me( "bot_warp_team_to_me", CMD_BotWarpTeamToMe, "", FCVAR_GAMEDLL | FCVAR_CHEAT );
 
 
 //-----------------------------------------------------------------------------------------------------
