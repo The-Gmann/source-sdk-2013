@@ -1699,7 +1699,30 @@ bool CWeaponRPG::CanHolster(void) const
 bool CWeaponRPG::Holster(CBaseCombatWeapon* pSwitchingTo)
 {
     m_bRememberGuidingState = m_bGuiding; // Store the current guidance state
-    StopGuiding();
+    
+    // Force cleanup of laser effects regardless of toggleable laser setting
+    // This prevents laser effects from sticking around on other weapons
+    m_bGuiding = false;
+
+#ifndef CLIENT_DLL
+    // Clean up server-side laser dot
+    if (m_hLaserDot != NULL)
+    {
+        m_hLaserDot->TurnOff();
+        UTIL_Remove(m_hLaserDot);
+        m_hLaserDot = NULL;
+    }
+#else
+    // Clean up client-side beam effect
+    if (m_pBeam)
+    {
+        //Tell it to die right away and let the beam code free it.
+        m_pBeam->brightness = 0.0f;
+        m_pBeam->flags &= ~FBEAM_FOREVER;
+        m_pBeam->die = gpGlobals->curtime - 0.1;
+        m_pBeam = NULL;
+    }
+#endif
 
     return BaseClass::Holster(pSwitchingTo);
 }
