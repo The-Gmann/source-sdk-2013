@@ -116,6 +116,9 @@ public:
 	bool IsReady();
 	void SetReady( bool bReady );
 
+	// Headshot tracking
+	bool WasKilledByHeadshot() const { return m_bKilledByHeadshot; }
+
 	void CheckChatText( char *p, int bufsize );
 
 	void State_Transition( HL2MPPlayerState newState );
@@ -166,6 +169,9 @@ private:
 
 	// This lets us rate limit the commands the players can execute so they don't overflow things like reliable buffers.
 	CUtlDict<float,int>	m_RateLimitLastCommandTimes;
+
+	// Headshot tracking
+	bool m_bKilledByHeadshot;
 
     bool m_bEnterObserver;
 	bool m_bReady;

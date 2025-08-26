@@ -158,6 +158,7 @@ CHL2MP_Player::CHL2MP_Player() : m_PlayerAnimState( this )
     m_bEnterObserver = false;
 	m_bReady = false;
 	m_fLongJump = false; // Initialize longjump capability
+	m_bKilledByHeadshot = false; // Initialize headshot tracking
 
 	BaseClass::ChangeTeam( 0 );
 
@@ -1698,6 +1699,37 @@ int CHL2MP_Player::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 	m_vecTotalBulletForce += inputInfo.GetDamageForce();
 	
 	gamestats->Event_PlayerDamage( this, inputInfo );
+
+	// Check if this damage will kill the player and if it's a headshot
+	if ( GetHealth() - inputInfo.GetDamage() <= 0 )
+	{
+		// This damage will kill the player, check if it's a bullet to the head
+		if ( (inputInfo.GetDamageType() & DMG_BULLET) && inputInfo.GetDamage() > 0 )
+		{
+			// We need to call the base class first to set the hit group info
+			int result = BaseClass::OnTakeDamage( inputInfo );
+			
+			// Now check if the last hit was to the head
+			if ( LastHitGroup() == HITGROUP_HEAD )
+			{
+				m_bKilledByHeadshot = true;
+			}
+			else
+			{
+				m_bKilledByHeadshot = false;
+			}
+			
+			return result;
+		}
+		else
+		{
+			m_bKilledByHeadshot = false;
+		}
+	}
+	else
+	{
+		m_bKilledByHeadshot = false;
+	}
 
 	return BaseClass::OnTakeDamage( inputInfo );
 }

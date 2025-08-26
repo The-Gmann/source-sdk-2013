@@ -122,14 +122,6 @@
 				"width"		"32"
 				"height"	"16"
 		}
-		"d_skull"
-		{
-				"file"		"sprites/640hud1"
-				"x"			"192"
-				"y"			"224"
-				"width"		"32"
-				"height"	"16"
-		}
 		"d_tracktrain"
 		{
 				"file"		"sprites/640hud1"
@@ -214,6 +206,16 @@
 				"character"	"6"
 		}
 		"death_egon"
+		{
+				"font"		"HL2MPTypeDeath"
+				"character"	"6"
+		}
+		"d_headshot"
+		{
+				"font"		"HL2MPTypeDeath"
+				"character"	"H"
+		}
+		"d_skull"
 		{
 				"font"		"HL2MPTypeDeath"
 				"character"	"6"

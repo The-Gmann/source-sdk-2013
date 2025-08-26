@@ -746,6 +746,16 @@ void CHL2MPRules::DeathNotice( CBasePlayer *pVictim, const CTakeDamageInfo &info
 		event->SetInt("userid", pVictim->GetUserID() );
 		event->SetInt("attacker", killer_ID );
 		event->SetString("weapon", killer_weapon_name );
+		
+		// Check if the victim was killed by a headshot
+		bool bHeadshot = false;
+		CHL2MP_Player *pHL2MPVictim = ToHL2MPPlayer( pVictim );
+		if ( pHL2MPVictim )
+		{
+			bHeadshot = pHL2MPVictim->WasKilledByHeadshot();
+		}
+		event->SetBool("headshot", bHeadshot );
+		
 		event->SetInt( "priority", 7 );
 		gameeventmanager->FireEvent( event );
 	}

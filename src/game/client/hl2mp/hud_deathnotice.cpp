@@ -128,6 +128,11 @@ void CHudDeathNotice::Init( void )
 void CHudDeathNotice::VidInit( void )
 {
 	m_iconD_skull = gHUD.GetIcon( "d_skull" );
+	m_iconD_headshot = gHUD.GetIcon( "d_headshot" );
+	
+	// Debug output to verify icon loading
+	Msg( "DEBUG: VidInit - m_iconD_skull=%p, m_iconD_headshot=%p\n", m_iconD_skull, m_iconD_headshot );
+	
 	m_DeathNotices.Purge();
 }
 
@@ -221,7 +226,22 @@ void CHudDeathNotice::Paint()
 		int x;
 		if ( m_bRightJustify )
 		{
-			x =	GetWide() - len - iconWide - nPadding;
+			// Calculate additional width for headshot icon if needed
+			int headshotWide = 0;
+			if ( m_DeathNotices[i].bHeadshot && m_iconD_headshot )
+			{
+				if( m_iconD_headshot->bRenderUsingFont )
+				{
+					headshotWide = surface()->GetCharacterWidth( m_iconD_headshot->hFont, m_iconD_headshot->cCharacterInFont );
+				}
+				else
+				{
+					float scale = ( (float)ScreenHeight() / 480.0f );
+					headshotWide = (int)( scale * (float)m_iconD_headshot->Width() );
+				}
+			}
+			
+			x =	GetWide() - len - iconWide - headshotWide - nPadding;
 		}
 		else
 		{
@@ -250,7 +270,28 @@ void CHudDeathNotice::Paint()
 		// Draw death weapon
 		//If we're using a font char, this will ignore iconTall and iconWide
 		icon->DrawSelf( x, y, iconWide, iconTall, iconColor );
-		x += iconWide;		
+		x += iconWide;
+
+		// Draw headshot icon if this was a headshot kill
+		if ( m_DeathNotices[i].bHeadshot && m_iconD_headshot )
+		{
+			int headshotWide, headshotTall;
+			
+			if( m_iconD_headshot->bRenderUsingFont )
+			{
+				headshotWide = surface()->GetCharacterWidth( m_iconD_headshot->hFont, m_iconD_headshot->cCharacterInFont );
+				headshotTall = surface()->GetFontTall( m_iconD_headshot->hFont );
+			}
+			else
+			{
+				float scale = ( (float)ScreenHeight() / 480.0f );
+				headshotWide = (int)( scale * (float)m_iconD_headshot->Width() );
+				headshotTall = (int)( scale * (float)m_iconD_headshot->Height() );
+			}
+			
+			m_iconD_headshot->DrawSelf( x, y, headshotWide, headshotTall, iconColor );
+			x += headshotWide;
+		}		
 
 		SetColorForNoticePlayer( iVictimTeam );
 
@@ -295,6 +336,7 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	int killer = engine->GetPlayerForUserID( event->GetInt("attacker") );
 	int victim = engine->GetPlayerForUserID( event->GetInt("userid") );
 	const char *killedwith = event->GetString( "weapon" );
+	bool bHeadshot = event->GetBool( "headshot" );
 
 	char fullkilledwith[128];
 	if ( killedwith && *killedwith )
@@ -341,6 +383,7 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	Q_strncpy( deathMsg.Victim.szName, victim_name, MAX_PLAYER_NAME_LENGTH );
 	deathMsg.flDisplayTime = gpGlobals->curtime + hud_deathnotice_time.GetFloat();
 	deathMsg.iSuicide = ( !killer || killer == victim );
+	deathMsg.bHeadshot = bHeadshot && !deathMsg.iSuicide; // Only show headshot icon for non-suicide kills
 
 	// Try and find the death identifier in the icon list
 	deathMsg.iconDeath = gHUD.GetIcon( fullkilledwith );
@@ -370,11 +413,17 @@ void CHudDeathNotice::FireGameEvent( IGameEvent * event )
 	}
 	else
 	{
-		Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%s killed %s", deathMsg.Killer.szName, deathMsg.Victim.szName );
+		// Use "headshot" instead of "killed" for headshot kills
+		const char *killVerb = (deathMsg.bHeadshot) ? "headshot" : "killed";
+		Q_snprintf( sDeathMsg, sizeof( sDeathMsg ), "%s %s %s", deathMsg.Killer.szName, killVerb, deathMsg.Victim.szName );
 
 		if ( fullkilledwith && *fullkilledwith && (*fullkilledwith > 13 ) )
 		{
 			Q_strncat( sDeathMsg, VarArgs( " with %s.\n", fullkilledwith+6 ), sizeof( sDeathMsg ), COPY_ALL_CHARACTERS );
+		}
+		else
+		{
+			Q_strncat( sDeathMsg, ".\n", sizeof( sDeathMsg ), COPY_ALL_CHARACTERS );
 		}
 	}
 
