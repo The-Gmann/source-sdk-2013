@@ -251,7 +251,8 @@ void CBaseHudChatLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 
 	m_hFontMarlett = pScheme->GetFont( "Marlett" );
 
-	m_clrText = pScheme->GetColor( "FgColor", GetFgColor() );
+	// Don't cache m_clrText here - read rb_hud_color dynamically in PerformFadeout
+	// m_clrText = pScheme->GetColor( "FgColor", GetFgColor() );
 	SetFont( m_hFont );
 }
 
@@ -261,9 +262,18 @@ void CBaseHudChatLine::PerformFadeout( void )
 	// Flash + Extra bright when new
 	float curtime = gpGlobals->curtime;
 
-	int lr = m_clrText[0];
-	int lg = m_clrText[1];
-	int lb = m_clrText[2];
+	// Read rb_hud_color dynamically for real-time updates
+	extern ConVar rb_hud_color;
+	Color currentTextColor(255, 255, 255, 255);
+	int r = 255, g = 255, b = 255;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		currentTextColor = Color(r, g, b, 255);
+	}
+
+	int lr = currentTextColor[0];
+	int lg = currentTextColor[1];
+	int lb = currentTextColor[2];
 	
 	if ( curtime >= m_flStartTime && curtime < m_flStartTime + CHATLINE_FLASH_TIME )
 	{

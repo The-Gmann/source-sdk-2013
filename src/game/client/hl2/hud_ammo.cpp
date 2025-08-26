@@ -211,10 +211,16 @@ void CHudAmmo::UpdatePlayerAmmo( C_BasePlayer *player )
 		m_hCurrentActiveWeapon = wpn;
 		
 		// Only trigger weapon change flash when switching TO a weapon that uses and displays ammo
+		// Exclude gravity gun (physgun) since it doesn't show conventional ammo
 		if ( wpn && (wpn->UsesPrimaryAmmo() || wpn->UsesClipsForAmmo1()) )
 		{
-			m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
+			// Check if this is the gravity gun - don't flash for it
+			const char *weaponName = wpn->GetName();
+			if ( Q_stricmp( weaponName, "weapon_physcannon" ) != 0 )
+			{
+				m_flWeaponChangeFlashTime = gpGlobals->curtime + 0.15f;
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
+			}
 		}
 	}
 

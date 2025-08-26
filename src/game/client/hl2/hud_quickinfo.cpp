@@ -302,25 +302,12 @@ void CHUDQuickInfo::Paint()
 		UpdateEventTime();
 		m_lastAmmo	= ammo;
 
-		// Check for empty ammo first
-		if ( ammo == 0 && pWeapon->GetMaxClip1() > 0 )
+		// Check if this is the gravity gun - don't show ammo warnings for it
+		const char *weaponName = pWeapon->GetName();
+		if ( Q_stricmp( weaponName, "weapon_physcannon" ) != 0 )
 		{
-			if ( m_warnAmmo == false )
-			{
-				m_ammoFade = 255;
-				m_warnAmmo = true;
-
-				CLocalPlayerFilter filter;
-				C_BaseEntity::EmitSound( filter, SOUND_FROM_LOCAL_PLAYER, "HUDQuickInfo.LowAmmo" );
-			}
-		}
-		else
-		{
-			// Find how far through the current clip we are
-			float ammoPerc = (float) ammo / (float) pWeapon->GetMaxClip1();
-
-			// Warn if we're below 25% of our clip's size (improved threshold)
-			if (( pWeapon->GetMaxClip1() > 1 ) && ( ammoPerc <= 0.25f ))
+			// Check for empty ammo first
+			if ( ammo == 0 && pWeapon->GetMaxClip1() > 0 )
 			{
 				if ( m_warnAmmo == false )
 				{
@@ -333,8 +320,31 @@ void CHUDQuickInfo::Paint()
 			}
 			else
 			{
-				m_warnAmmo = false;
+				// Find how far through the current clip we are
+				float ammoPerc = (float) ammo / (float) pWeapon->GetMaxClip1();
+
+				// Warn if we're below 25% of our clip's size (improved threshold)
+				if (( pWeapon->GetMaxClip1() > 1 ) && ( ammoPerc <= 0.25f ))
+				{
+					if ( m_warnAmmo == false )
+					{
+						m_ammoFade = 255;
+						m_warnAmmo = true;
+
+						CLocalPlayerFilter filter;
+						C_BaseEntity::EmitSound( filter, SOUND_FROM_LOCAL_PLAYER, "HUDQuickInfo.LowAmmo" );
+					}
+				}
+				else
+				{
+					m_warnAmmo = false;
+				}
 			}
+		}
+		else
+		{
+			// For gravity gun, never show ammo warnings
+			m_warnAmmo = false;
 		}
 	}
 
@@ -402,9 +412,11 @@ void CHUDQuickInfo::Paint()
 			ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
 		}
 
-		// Use danger color for empty ammo or low ammo (25% or less), otherwise normal HUD color
+		// Use danger color for empty ammo or low ammo (25% or less), but exclude gravity gun
+		const char *weaponName = pWeapon->GetName();
+		bool isGravityGun = ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 );
 		bool isLowAmmo = ( pWeapon->GetMaxClip1() > 0 ) && ( ammo <= ( pWeapon->GetMaxClip1() * 0.25f ) );
-		Color ammoColor = ( ammo == 0 || isLowAmmo ) ? dangerColor : hudColor;
+		Color ammoColor = ( !isGravityGun && ( ammo == 0 || isLowAmmo ) ) ? dangerColor : hudColor;
 		
 		if ( m_warnAmmo )
 		{
