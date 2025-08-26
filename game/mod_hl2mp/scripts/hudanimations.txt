@@ -272,10 +272,34 @@ event HealthIncreasedAbove20
 	Animate	HudHealth		Blur		"0"			Deaccel	0.1		2.0
 }
 
+// Color-free version that only handles blur effects
+event HealthIncreasedAbove20_NoColor
+{
+	StopEvent	HealthLoop  0.0
+	StopEvent	HealthPulse 0.0
+	StopEvent	HealthLow   0.0
+
+	Animate	HudHealth	BgColor	"BgColor"	Linear	0.0	0.0
+	
+	// Colors are handled manually in code - only do blur effects
+	
+	Animate	HudHealth		Blur		"3"			Linear	0.0		0.1
+	Animate	HudHealth		Blur		"0"			Deaccel	0.1		2.0
+}
+
 event HealthIncreasedBelow20
 {
 	Animate HudHealth	FgColor		"BrightFg"	Linear	0.0		0.25
 	Animate HudHealth	FgColor		"FgColor"		Linear	0.3		0.75
+	
+	Animate HudHealth		Blur		"3"			Linear	0.0		0.1
+	Animate HudHealth		Blur		"0"			Deaccel	0.1		2.0
+}
+
+// Color-free version that only handles blur effects
+event HealthIncreasedBelow20_NoColor
+{
+	// Colors are handled manually in code - only do blur effects
 	
 	Animate HudHealth		Blur		"3"			Linear	0.0		0.1
 	Animate HudHealth		Blur		"0"			Deaccel	0.1		2.0
@@ -337,6 +361,15 @@ event HealthDamageTaken
 	
 	Animate HudHealth TextColor		"BrightFg"	Linear	0.0		0.1
 	Animate HudHealth	TextColor		"FgColor"		Deaccel	0.1		1.2
+}
+
+// Color-free version that only handles blur effects
+event HealthDamageTaken_NoColor
+{
+	// Colors are handled manually in code - only do blur effects
+	
+	Animate HudHealth		Blur		"3"			Linear	0.0		0.1
+	Animate HudHealth		Blur		"0"			Deaccel	0.1		2.0
 }
 
 event SuitDamageTaken

@@ -138,10 +138,14 @@ void CHudHealth::VidInit()
 //-----------------------------------------------------------------------------
 void CHudHealth::ApplySchemeSettings( vgui::IScheme *scheme )
 {
-	BaseClass::ApplySchemeSettings( scheme );
+	// Call the vgui Panel base class directly to skip CHudNumericDisplay's color setting
+	vgui::Panel::ApplySchemeSettings( scheme );
 	
-	// Don't cache rb_hud_color values here - we'll read them dynamically in GetHealthDisplayColor
-	// to ensure real-time color updates (following suit power pattern)
+	// Only set background color from scheme, foreground color is handled manually
+	SetBgColor( scheme->GetColor( "BgColor", GetBgColor() ) );
+	
+	// Don't set FgColor here - we handle it manually in OnThink/SetHealth
+	// to ensure real-time color updates and avoid animation conflicts
 }
 
 //-----------------------------------------------------------------------------
@@ -157,6 +161,10 @@ void CHudHealth::OnThink()
 		newHealth = MAX( local->GetHealth(), 0 );
 	}
 
+	// Always ensure proper color is set, even if health hasn't changed
+	Color healthColor = GetHealthDisplayColor( newHealth );
+	SetFgColor( healthColor );
+
 	// Only update the fade if we've changed health
 	if ( newHealth == m_iHealth )
 	{
@@ -167,9 +175,9 @@ void CHudHealth::OnThink()
 		}
 		else if ( m_flLowHealthWarningTime > 0.0f )
 		{
-			// Flash finished, reset
+			// Flash finished, reset to proper color
 			m_flLowHealthWarningTime = 0.0f;
-			SetFgColor( GetHealthDisplayColor( m_iHealth ) );
+			SetFgColor( healthColor ); // Ensure correct color after flash
 		}
 		return;
 	}
@@ -232,15 +240,17 @@ void CHudHealth::SetHealth( int health, bool playAnimation )
 	{
 		if ( playAnimation )
 		{
-			// Trigger appropriate health animations
+			// Only trigger blur and alpha animations, not color animations
 			if ( health >= 20 )
 			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20");
+				// Use a custom animation that only does blur, not color
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedAbove20_NoColor");
 			}
 			else if ( health > 0 )
 			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20");
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthLow");
+				// Use custom animations that only do blur, not color
+				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthIncreasedBelow20_NoColor");
+				// Don't call HealthLow as it sets colors - we'll handle that manually
 			}
 			
 			// Check for low health warning flash
@@ -251,7 +261,7 @@ void CHudHealth::SetHealth( int health, bool playAnimation )
 			}
 		}
 		
-		// Update health color based on state
+		// Update health color based on state - always set manually
 		Color healthColor = GetHealthDisplayColor( health );
 		SetFgColor( healthColor );
 		
@@ -310,8 +320,12 @@ void CHudHealth::MsgFunc_Damage( bf_read &msg )
 	{
 		if ( damageTaken > 0 )
 		{
-			// start the animation
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthDamageTaken");
+			// Start blur animation only, handle colors manually
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("HealthDamageTaken_NoColor");
+			
+			// Set color manually based on current health state
+			Color healthColor = GetHealthDisplayColor( m_iHealth );
+			SetFgColor( healthColor );
 		}
 	}
 }
