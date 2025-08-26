@@ -728,13 +728,6 @@ void CWeaponGauss::ChargedFire(void)
                 
                 // Apply damage immediately for direct hits to ensure it takes effect
                 ApplyMultiDamage();
-                
-                // If the victim is dead or at 0 health, don't apply additional damage
-                if (tr.m_pEnt->GetHealth() <= 0)
-                {
-                    // Don't apply radius damage or continue with reflections/penetration
-                    break;
-                }
             #endif
         }
 
@@ -746,23 +739,19 @@ void CWeaponGauss::ChargedFire(void)
 
         #ifndef CLIENT_DLL
             // Add radius damage for area effect - exclude owner if self damage disabled
-            // But only if we didn't already kill the direct hit target
-            if (!tr.m_pEnt || tr.m_pEnt->GetHealth() > 0)
+            // Determine damage type - add gibbing for well-charged shots (half charge or more)
+            int radiusDamageType = DMG_SHOCK | DMG_BULLET;
+            
+            // Check if this is a well-charged shot (half charge or more)
+            float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
+            if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
             {
-                // Determine damage type - add gibbing for well-charged shots (half charge or more)
-                int radiusDamageType = DMG_SHOCK | DMG_BULLET;
-                
-                // Check if this is a well-charged shot (half charge or more)
-                float chargeTime = gpGlobals->curtime - m_flChargeStartTime;
-                if (chargeTime >= (MAX_GAUSS_CHARGE_TIME * 0.5f))
-                {
-                    // Add gibbing for well-charged shots
-                    radiusDamageType |= DMG_ALWAYSGIB;
-                }
-                
-                RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, radiusDamageType), 
-                            tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
+                // Add gibbing for well-charged shots
+                radiusDamageType |= DMG_ALWAYSGIB;
             }
+            
+            RadiusDamage(CTakeDamageInfo(this, pOwner, flDamage * 0.5f, radiusDamageType), 
+                        tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
         #endif
 
         // Stop if we hit sky
@@ -820,13 +809,6 @@ void CWeaponGauss::ChargedFire(void)
                             
                             // Apply damage immediately for penetration hits
                             ApplyMultiDamage();
-                            
-                            // If the victim is dead or at 0 health, don't apply additional damage
-                            if (penetrationTrace.m_pEnt->GetHealth() <= 0)
-                            {
-                                // Don't apply blast damage
-                                continue;
-                            }
                         }
                         
                         // Penetration explosion - exclude owner if self damage disabled
@@ -859,7 +841,12 @@ void CWeaponGauss::ChargedFire(void)
                 
                 // Update for next trace with adjusted start position
                 Vector offsetPos = tr.endpos + (tr.plane.normal * 0.2f);  // Small offset from wall
-                startPos = offsetPos + (vReflection * 1.0f);  // Small offset in reflection direction
+                Vector reflectionStart = offsetPos + (vReflection * 1.0f);  // Small offset in reflection direction
+                
+                // Draw a connecting beam from wall hit to reflection start to ensure continuity
+                DrawBeam(tr.endpos, reflectionStart, beamWidth * 0.5f, false);
+                
+                startPos = reflectionStart;
                 endPos = startPos + (vReflection * MAX_TRACE_LENGTH);
                 aimDir = vReflection;
 
@@ -873,6 +860,8 @@ void CWeaponGauss::ChargedFire(void)
                                 tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                 #endif
 
+                // Update lastHitPos to be the reflection start point so the next beam connects properly
+                lastHitPos = reflectionStart;
                 firstBeam = false;
                 pentIgnore = NULL;
                 continue; // Continue with reflection
@@ -1143,15 +1132,52 @@ void CWeaponGauss::AddViewKick(void)
 //-----------------------------------------------------------------------------
 void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
 {
-    // Check if we hit a player - if so, don't create impact effects
+    // Check if we hit a moving entity - if so, don't create impact effects
     if (tr.m_pEnt)
     {
+        // Don't create impact effects when hitting players
         CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(tr.m_pEnt);
         if (pHitPlayer)
         {
-            // Don't create impact effects when hitting players
             BaseClass::DoImpactEffect(tr, nDamageType);
             return;
+        }
+        
+        // Don't create impact effects on moving physics entities (non-brush/displacement)
+        // Check if it's a physics entity with MOVETYPE_VPHYSICS (like prop_physics)
+        if (tr.m_pEnt->GetMoveType() == MOVETYPE_VPHYSICS && 
+            tr.m_pEnt->VPhysicsGetObject() && 
+            tr.m_pEnt->VPhysicsGetObject()->IsMoveable())
+        {
+            // This is a moveable physics object - don't create impact effects
+            BaseClass::DoImpactEffect(tr, nDamageType);
+            return;
+        }
+    }
+
+    // Only create GaussImpact effect on valid static surfaces
+    // Use the same validation logic as wall jumping
+    bool shouldCreateGaussImpact = false;
+    
+    if (tr.m_pEnt)
+    {
+        // Do NOT allow GaussImpact on players
+        CBasePlayer *pHitPlayer = dynamic_cast<CBasePlayer *>(tr.m_pEnt);
+        if (pHitPlayer)
+        {
+            shouldCreateGaussImpact = false; // Prevent GaussImpact on players
+        }
+        // Do NOT allow GaussImpact on physics objects (prop_physics, etc.)
+        else if (tr.m_pEnt->GetMoveType() == MOVETYPE_VPHYSICS && 
+                 tr.m_pEnt->VPhysicsGetObject() && 
+                 tr.m_pEnt->VPhysicsGetObject()->IsMoveable())
+        {
+            shouldCreateGaussImpact = false; // Prevent GaussImpact on physics objects
+        }
+        // Only allow GaussImpact on static world geometry (walls, brushes)
+        else if (tr.DidHitWorld())
+        {
+            shouldCreateGaussImpact = true; // Allow GaussImpact on world geometry
         }
     }
 
@@ -1159,7 +1185,7 @@ void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
     data.m_vOrigin = tr.endpos + (tr.plane.normal * 1.0f);
     data.m_vNormal = tr.plane.normal;
 
-    if (tr.fraction != 1.0 && !(tr.surface.flags & SURF_SKY))
+    if (shouldCreateGaussImpact && tr.fraction != 1.0 && !(tr.surface.flags & SURF_SKY))
     {
         DispatchEffect("GaussImpact", data);
     }

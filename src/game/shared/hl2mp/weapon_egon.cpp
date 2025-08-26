@@ -88,6 +88,7 @@ ConVar sk_plr_dmg_egon("sk_plr_dmg_egon", "15", FCVAR_REPLICATED, "Egon weapon d
         CLIENTEFFECT_MATERIAL("sprites/xbeam1")
         CLIENTEFFECT_MATERIAL("sprites/xbeam_nodepth")
         CLIENTEFFECT_MATERIAL("sprites/xspark1")
+        CLIENTEFFECT_MATERIAL("sprites/xspark_nodepth")
     CLIENTEFFECT_REGISTER_END()
 
     #define CWeaponEgon C_WeaponEgon
@@ -287,6 +288,7 @@ void CWeaponEgon::Precache()
     PrecacheModel(EgonConstants::BEAM_SPRITE);
     PrecacheModel(EgonConstants::BEAM_SPRITE_NODEPTH);
     PrecacheModel(EgonConstants::FLARE_SPRITE);
+    PrecacheModel(EgonConstants::FLARE_SPRITE_NODEPTH);
 
     // Precache sounds and get actual duration
     PrecacheScriptSound(EgonConstants::SOUND_START);
@@ -416,6 +418,12 @@ void CWeaponEgon::CreateClientBeams()
                               EgonConstants::FLARE_SPRITE;
     
     m_pClientSprite = CSprite::SpriteCreate(spriteSprite, spritePos, false);
+    if (!m_pClientSprite && ShouldDrawUsingViewModel())
+    {
+        // Fallback to regular sprite if nodepth version fails
+        m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, spritePos, false);
+    }
+    
     if (m_pClientSprite)
     {
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
@@ -431,6 +439,7 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientSprite->TurnOn();
         m_pClientSprite->AddEffects(EF_NODRAW);
         
+        // Validate client handle after creation
         if (m_pClientSprite->GetClientHandle() == INVALID_CLIENTENTITY_HANDLE)
         {
             m_pClientSprite->Remove();
