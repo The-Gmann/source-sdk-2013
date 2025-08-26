@@ -22,6 +22,13 @@
 	#include "hl_movedata.h"
 #endif
 
+// HL2MP player includes for suit power access
+#ifdef CLIENT_DLL
+	#include "hl2mp/c_hl2mp_player.h"
+#else
+	#include "hl2mp/hl2mp_player.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -71,6 +78,7 @@ ConVar debug_latch_reset_onduck("debug_latch_reset_onduck", "1", FCVAR_CHEAT);
 
 
 ConVar rb_longjump_sound("rb_longjump_sound", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable or disable longjump sound");
+ConVar rb_longjump_auxpower("rb_longjump_auxpower", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable aux power consumption for longjump (2 bars per jump)");
 
 // Jump buffering
 
@@ -2499,10 +2507,10 @@ bool CGameMovement::CheckJumpButton(void)
         flGroundFactor = player->m_pSurfaceData->game.jumpFactor;
     }
 
-    float flMul;
+    float flMul = sqrt(2 * GetCurrentGravity() * GAMEMOVEMENT_JUMP_HEIGHT);
     if (g_bMovementOptimizations)
     {
-        flMul = sqrt(2 * GetCurrentGravity() * GAMEMOVEMENT_JUMP_HEIGHT);
+        // Movement optimizations enabled - flMul already calculated above
     }
 
     // Accelerate upward
@@ -5070,17 +5078,18 @@ bool CGameMovement::WallJump()
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Long jumping (HL1-authentic implementation)
+// Purpose: Long jumping (HL1-authentic implementation with improvements)
 // Based on original HL1 source: halflife-master\pm_shared\pm_shared.c lines 2578-2591
-// HL1 conditions:
+// HL1 conditions (modified for better gameplay):
 //   - cansuperjump (longjump capability)
 //   - pmove->cmd.buttons & IN_DUCK (duck pressed)
 //   - pmove->flDuckTime > 0 (within 1 second of duck press)
-//   - Length(pmove->velocity) > 50 (moving)
-// HL1 physics:
+//   - Length(pmove->velocity) > 1 (player not completely still - simplified from HL1's >50)
+//   - Optional: 2 bars aux power (20 aux power) if rb_longjump_auxpower enabled
+// HL1 physics (with height adjustment):
 //   - punchangle[0] = -5 (viewpunch)
 //   - velocity[i] = forward[i] * 350 * 1.6 (horizontal: 560 units/sec)
-//   - velocity[2] = sqrt(2 * 800 * 56.0) (~334.66 units/sec vertical)
+//   - velocity[2] = 251 units/sec (75% of original HL1 for better balance)
 //-----------------------------------------------------------------------------
 bool CGameMovement::LongJump()
 {
@@ -5105,9 +5114,25 @@ bool CGameMovement::LongJump()
     if (player->m_Local.m_flDucktime <= 0)
         return false;
         
-    // HL1: "Length( pmove->velocity ) > 50" - reduced threshold to make easier to trigger
-    if (mv->m_vecVelocity.Length() <= 30.0f)
+    // HL1: "Length( pmove->velocity ) > 50" - simplified to just check player isn't completely still
+    if (mv->m_vecVelocity.Length() <= 1.0f)
         return false;
+        
+    // Check aux power requirement if enabled
+    if (rb_longjump_auxpower.GetBool())
+    {
+        // Each longjump costs 2 bars of aux power (2 * 10 = 20 aux power out of 100 total)
+        // Cast to HL2MP player to access suit power
+#ifdef CLIENT_DLL
+        C_HL2MP_Player *pHL2Player = dynamic_cast<C_HL2MP_Player*>(player);
+        if (pHL2Player && pHL2Player->SuitPower_GetCurrentPercentage() < 20.0f)
+            return false;
+#else
+        CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(player);
+        if (pHL2Player && pHL2Player->SuitPower_GetCurrentPercentage() < 20.0f)
+            return false;
+#endif
+    }
         
     // Apply HL1 longjump physics exactly
     // HL1: "pmove->punchangle[0] = -5;"
@@ -5130,6 +5155,21 @@ bool CGameMovement::LongJump()
     
     // HL1: "pmove->onground = -1;" - we are now in the air!
     SetGroundEntity( NULL );
+    
+    // Consume aux power if enabled (2 bars = 20 aux power out of 100 total)
+    if (rb_longjump_auxpower.GetBool())
+    {
+        // Use the appropriate player class method to drain suit power
+#ifdef CLIENT_DLL
+        C_HL2MP_Player *pHL2Player = dynamic_cast<C_HL2MP_Player*>(player);
+        if (pHL2Player)
+            pHL2Player->SuitPower_Drain(20.0f);
+#else
+        CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(player);
+        if (pHL2Player)
+            pHL2Player->SuitPower_Drain(20.0f);
+#endif
+    }
     
     // Play longjump sound only if ConVar is enabled
     if (rb_longjump_sound.GetBool())
