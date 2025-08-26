@@ -14,6 +14,10 @@
 #include "vgui/ILocalize.h"
 #include "hl2mp_gamerules.h"
 
+// Forward declarations for custom color system
+extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -98,7 +102,17 @@ void CTargetID::VidInit()
 
 Color CTargetID::GetColorForTargetTeam( int iTeamNumber )
 {
-	return GameResources()->GetTeamColor( iTeamNumber );
+	CHL2MPRules *pRules = HL2MPRulesSafe();
+	if ( pRules && pRules->IsTeamplay() )
+	{
+		// In teamplay mode, use team colors
+		return GameResources()->GetTeamColor( iTeamNumber );
+	}
+	else
+	{
+		// In non-teamplay mode, use rb_hud_color for all players
+		return GetCustomSchemeColor( "FgColor" );
+	}
 } 
 
 //-----------------------------------------------------------------------------

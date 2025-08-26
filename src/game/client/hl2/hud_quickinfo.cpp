@@ -402,8 +402,15 @@ void CHUDQuickInfo::Paint()
 	{
 		float ammoPerc;
 
-		if ( pWeapon->GetMaxClip1() <= 0 )
+		// Check if this weapon uses an ammo system
+		const char *weaponName = pWeapon->GetName();
+		bool isGravityGun = ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 );
+		bool isCrowbar = ( Q_stricmp( weaponName, "weapon_crowbar" ) == 0 );
+		bool isStunstick = ( Q_stricmp( weaponName, "weapon_stunstick" ) == 0 );
+
+		if ( pWeapon->GetMaxClip1() <= 0 || isGravityGun || isCrowbar || isStunstick )
 		{
+			// Weapons without ammo reserves should show as "full"
 			ammoPerc = 0.0f;
 		}
 		else
@@ -412,11 +419,10 @@ void CHUDQuickInfo::Paint()
 			ammoPerc = clamp( ammoPerc, 0.0f, 1.0f );
 		}
 
-		// Use danger color for empty ammo or low ammo (25% or less), but exclude gravity gun
-		const char *weaponName = pWeapon->GetName();
-		bool isGravityGun = ( Q_stricmp( weaponName, "weapon_physcannon" ) == 0 );
-		bool isLowAmmo = ( pWeapon->GetMaxClip1() > 0 ) && ( ammo <= ( pWeapon->GetMaxClip1() * 0.25f ) );
-		Color ammoColor = ( !isGravityGun && ( ammo == 0 || isLowAmmo ) ) ? dangerColor : hudColor;
+		// Use danger color for empty ammo or low ammo (25% or less), but exclude weapons without ammo
+		bool hasAmmoSystem = ( pWeapon->GetMaxClip1() > 0 && !isGravityGun && !isCrowbar && !isStunstick );
+		bool isLowAmmo = hasAmmoSystem && ( ammo <= ( pWeapon->GetMaxClip1() * 0.25f ) );
+		Color ammoColor = ( hasAmmoSystem && ( ammo == 0 || isLowAmmo ) ) ? dangerColor : hudColor;
 		
 		if ( m_warnAmmo )
 		{

@@ -942,12 +942,12 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
     // Direct damage to hit entity
     if (tr.m_pEnt && tr.m_pEnt->m_takedamage != DAMAGE_NO)
     {
-        DevMsg("Egon (Direct): Dealing %.1f damage to %s\n", baseDamage, tr.m_pEnt->GetClassname());
         
         ClearMultiDamage();
         CTakeDamageInfo directDmg(this, pOwner, baseDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB);
         Vector force = direction * baseDamage * 500.0f;
         directDmg.SetDamageForce(force);
+        directDmg.SetDamagePosition(tr.endpos); // Fix assertion: set damage position
         
         tr.m_pEnt->DispatchTraceAttack(directDmg, direction, const_cast<trace_t*>(&tr));
         ApplyMultiDamage();
@@ -956,9 +956,12 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
     
     // Radius damage (like HL1's wide mode)
     const float radiusDamage = baseDamage * EgonConstants::RADIUS_DAMAGE_MULTIPLIER;
-    DevMsg("Egon (Radius): Dealing %.1f radius damage\n", radiusDamage);
     CTakeDamageInfo radiusDmgInfo(this, pOwner, radiusDamage, 
                                  DMG_ENERGYBEAM | DMG_BLAST | DMG_ALWAYSGIB);
+    // Fix assertion: set damage position and force for radius damage
+    radiusDmgInfo.SetDamagePosition(tr.endpos);
+    Vector radiusForce = direction * radiusDamage * 300.0f; // Slightly less force for radius
+    radiusDmgInfo.SetDamageForce(radiusForce);
     RadiusDamage(radiusDmgInfo, tr.endpos, EgonConstants::DMG_RADIUS, CLASS_NONE, nullptr);
 #endif
 }

@@ -14,13 +14,6 @@ ConVar mp_noweapons(
 	FCVAR_GAMEDLL,
 	"If non-zero, game will not give player default weapons and ammo");
 
-// Enable suit notifications in multiplayer
-ConVar rb_suitvoice(
-	"rb_suitvoice",
-	"0",
-	FCVAR_GAMEDLL,
-	"If non-zero, game will enable suit notifications");
-
 // Ready restart
 ConVar mp_readyrestart(
 	"mp_readyrestart", 

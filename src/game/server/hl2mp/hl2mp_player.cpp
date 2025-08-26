@@ -1350,7 +1350,6 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		if (info.GetDamageType() & DMG_ALWAYSGIB)
 		{
 			bShouldGib = true;
-			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_ALWAYSGIB\n", info.GetDamage());
 		}
 		// Check for fall damage threshold
 		else if (info.GetDamageType() & DMG_FALL)

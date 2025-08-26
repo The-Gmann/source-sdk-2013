@@ -180,8 +180,8 @@ void CHudSuitPower::Paint()
 	if ( !pPlayer )
 		return;
 
-	// Check if suit power is at 10% or below for danger color
-	bool isLowPower = (m_flSuitPower <= 10.0f);
+	// Check if suit power is at 20% or below for danger color (2 bars out of 10)
+	bool isLowPower = (m_flSuitPower <= 20.0f);
 	
 	// Handle color transition for aux power
 	if ( isLowPower != m_bSuitPowerInDangerState )

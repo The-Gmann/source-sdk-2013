@@ -551,18 +551,12 @@ event WeaponChanged
 {
 	// Color animations removed - colors controlled by rb_hud_color system
 	
-	// Add number blur animation to all HUD numeric displays when weapon changes
+	// Add number blur animation to ammo displays only when weapon changes
 	Animate HudAmmo			Blur		"7"			Linear	0.0	0.0
 	Animate HudAmmo			Blur		"0"			Deaccel	0.1	1.5
 	
 	Animate HudAmmoSecondary	Blur		"7"			Linear	0.0	0.0
 	Animate HudAmmoSecondary	Blur		"0"			Deaccel	0.1	1.5
-	
-	Animate HudHealth			Blur		"7"			Linear	0.0	0.0
-	Animate HudHealth			Blur		"0"			Deaccel	0.1	1.5
-	
-	Animate HudSuit				Blur		"7"			Linear	0.0	0.0
-	Animate HudSuit				Blur		"0"			Deaccel	0.1	1.5
 }
 
 // ran if we just changed to a weapon that needs clip ammo

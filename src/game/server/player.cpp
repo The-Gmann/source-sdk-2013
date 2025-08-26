@@ -124,7 +124,6 @@ ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCV
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
 extern ConVar *sv_maxreplay;
-extern ConVar rb_suitvoice;
 extern ConVar rb_ear_ringing;
 
 extern CServerGameDLL g_ServerGameDLL;
@@ -4349,11 +4348,6 @@ void CBasePlayer::CheckSuitUpdate()
 	// if in range of radiation source, ping geiger counter
 	UpdateGeigerCounter();
 
-	if (!rb_suitvoice.GetBool())
-	{
-		return;
-	}
-
 	if ( gpGlobals->curtime >= m_flSuitUpdate && m_flSuitUpdate > 0)
 	{
 		// play a sentence off of the end of the queue
@@ -4406,11 +4400,6 @@ void CBasePlayer::SetSuitUpdate(const char *name, int fgroup, int iNoRepeatTime)
 	// Ignore suit updates if no suit
 	if ( !IsSuitEquipped() )
 		return;
-
-	if (!rb_suitvoice.GetBool())
-	{
-		return;
-	}
 
 	// if name == NULL, then clear out the queue
 

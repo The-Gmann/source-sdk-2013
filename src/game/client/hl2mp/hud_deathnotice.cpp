@@ -17,6 +17,10 @@
 #include "c_baseplayer.h"
 #include "c_team.h"
 
+// Forward declarations for custom color system
+extern Color GetCustomSchemeColor( const char *colorName );
+extern Color GetDangerColor();
+
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -141,7 +145,6 @@ bool CHudDeathNotice::ShouldDraw( void )
 void CHudDeathNotice::SetColorForNoticePlayer( int iTeamNumber )
 {
 	// Use custom HUD color for all player names instead of team colors
-	extern Color GetCustomSchemeColor( const char *colorName );
 	surface()->DrawSetTextColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
@@ -242,7 +245,7 @@ void CHudDeathNotice::Paint()
 			surface()->DrawGetTextPos( x, y );
 		}
 
-		Color iconColor( 255, 80, 0, 255 );
+		Color iconColor = GetCustomSchemeColor( "FgColor" );
 
 		// Draw death weapon
 		//If we're using a font char, this will ignore iconTall and iconWide

@@ -5023,14 +5023,11 @@ bool CGameMovement::WallJump()
             {
                 // Reset the cooldown when touching a different wall
                 player->m_flWallJumpCooldown = 0.0f;
-                DevMsg("Player %d touched a different wall. Cooldown reset.\n", player->entindex());
             }
 
             // ✅ Check if the cooldown is still active
             if (player->m_flWallJumpCooldown > gpGlobals->curtime)
             {
-                DevMsg("Player %d wall jump on cooldown. Time remaining: %f seconds\n", 
-                    player->entindex(), player->m_flWallJumpCooldown - gpGlobals->curtime);
                 return false;
             }
 
@@ -5043,7 +5040,7 @@ bool CGameMovement::WallJump()
                 float yDiff = fabs(currentPosition.y - player->m_vecLastWallJumpPosition.y);
                 float zDiff = currentPosition.z - player->m_vecLastWallJumpPosition.z;
 
-                if (xDiff < 10.0f && yDiff < 10.0f && zDiff > 0.0f)
+                if (xDiff < 5.0f && yDiff < 5.0f && zDiff > 0.0f) // Reduced from 10.0f to 5.0f - more strict
                 {
                     player->m_flWallJumpZIncrease += zDiff;
                 }
@@ -5052,7 +5049,7 @@ bool CGameMovement::WallJump()
                     player->m_flWallJumpZIncrease = 0.0f;
                 }
 
-                if (player->m_flWallJumpZIncrease > 100.0f) // Adjust the threshold as needed
+                if (player->m_flWallJumpZIncrease > 50.0f) // Reduced from 100.0f to 50.0f - more strict
                 {
                     player->m_flWallJumpCooldown = gpGlobals->curtime + 1.5f; // Force cooldown
                     DevMsg("Player %d wall jump abuse detected. Cooldown forced.\n", player->entindex());
@@ -5084,7 +5081,6 @@ bool CGameMovement::WallJump()
 
             // ✅ Set the cooldown
             player->m_flWallJumpCooldown = gpGlobals->curtime + 1.5f; // 1.5 second cooldown
-            DevMsg("Player %d wall jump performed. Cooldown set to 1.5 seconds.\n", player->entindex());
 
             // ✅ Store the last wall normal
             player->m_vecLastWallNormal = pm.plane.normal;
@@ -5219,9 +5215,6 @@ bool CGameMovement::LongJump()
             CBaseEntity::EmitSound( filter, player->entindex(), es );
         }
     }
-    
-    // Set animation to super jump (Source SDK equivalent)
-    MoveHelper()->PlayerSetAnimation(PLAYER_SUPERJUMP);
     
     // HL1: "pmove->oldbuttons |= IN_JUMP;" - prevent further jumping until button released
     mv->m_nOldButtons |= IN_JUMP;
