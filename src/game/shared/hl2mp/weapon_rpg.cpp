@@ -1351,10 +1351,21 @@ CWeaponRPG::CWeaponRPG()
 CWeaponRPG::~CWeaponRPG()
 {
 #ifndef CLIENT_DLL
+	// Clean up server-side laser dot
 	if (m_hLaserDot != NULL)
 	{
+		m_hLaserDot->TurnOff();
 		UTIL_Remove(m_hLaserDot);
 		m_hLaserDot = NULL;
+	}
+#else
+	// Clean up client-side beam effect
+	if (m_pBeam)
+	{
+		m_pBeam->brightness = 0.0f;
+		m_pBeam->flags &= ~FBEAM_FOREVER;
+		m_pBeam->die = gpGlobals->curtime - 0.1;
+		m_pBeam = NULL;
 	}
 #endif
 }
@@ -1619,13 +1630,13 @@ void CWeaponRPG::ItemPostFrame(void)
 Vector CWeaponRPG::GetLaserPosition(void)
 {
 #ifndef CLIENT_DLL
-	CreateLaserPointer();
-
+	// Don't create laser pointer here - this should only return existing position
+	// CreateLaserPointer() should only be called from StartGuiding()
 	if (m_hLaserDot != NULL)
 		return m_hLaserDot->GetAbsOrigin();
 
-	//FIXME: The laser dot sprite is not active, this code should not be allowed!
-	assert(0);
+	// Return zero vector if no laser dot exists
+	return vec3_origin;
 #endif
 	return vec3_origin;
 }
@@ -1671,7 +1682,7 @@ bool CWeaponRPG::Deploy(void)
 {
     m_bInitialStateUpdate = true;
 
-    // Restore the guidance state
+    // Restore the guidance state immediately so client-side effects sync properly
     if (m_bRememberGuidingState)
     {
         m_bGuiding = true;
@@ -1736,13 +1747,17 @@ void CWeaponRPG::StartGuiding(void)
 	if (m_bHideGuiding)
 		return;
 
+	// Set guiding state
 	m_bGuiding = true;
 
 #ifndef CLIENT_DLL
-	IPredictionSystem::SuppressHostEvents(NULL);
-	WeaponSound(SPECIAL1);
-
-	CreateLaserPointer();
+	// Only create laser pointer and play sound if it doesn't exist
+	if (m_hLaserDot == NULL)
+	{
+		IPredictionSystem::SuppressHostEvents(NULL);
+		WeaponSound(SPECIAL1);
+		CreateLaserPointer();
+	}
 #endif
 
 }
@@ -1761,7 +1776,6 @@ void CWeaponRPG::StopGuiding(void)
     m_bGuiding = false;
 
 #ifndef CLIENT_DLL
-
     IPredictionSystem::SuppressHostEvents(NULL);
 
     // Kill the dot completely
@@ -1879,8 +1893,13 @@ void CWeaponRPG::UpdateLaserPosition(Vector vecMuzzlePos, Vector vecEndPos)
 void CWeaponRPG::CreateLaserPointer(void)
 {
 #ifndef CLIENT_DLL
+	// Always clean up any existing laser dot first to prevent duplicates
 	if (m_hLaserDot != NULL)
-		return;
+	{
+		m_hLaserDot->TurnOff();
+		UTIL_Remove(m_hLaserDot);
+		m_hLaserDot = NULL;
+	}
 
 	CBaseCombatCharacter* pOwner = GetOwner();
 
@@ -1891,9 +1910,11 @@ void CWeaponRPG::CreateLaserPointer(void)
 		return;
 
 	m_hLaserDot = CLaserDot::Create(GetAbsOrigin(), GetOwner());
-	m_hLaserDot->TurnOff();
-
-	UpdateLaserPosition();
+	if (m_hLaserDot != NULL)
+	{
+		m_hLaserDot->TurnOff();
+		UpdateLaserPosition();
+	}
 #endif
 }
 
@@ -1989,8 +2010,14 @@ void CWeaponRPG::GetWeaponAttachment(int attachmentId, Vector& outVector, Vector
 //-----------------------------------------------------------------------------
 void CWeaponRPG::InitBeam(void)
 {
+	// Always clean up existing beam first to prevent duplicates
 	if (m_pBeam != NULL)
-		return;
+	{
+		m_pBeam->brightness = 0.0f;
+		m_pBeam->flags &= ~FBEAM_FOREVER;
+		m_pBeam->die = gpGlobals->curtime - 0.1;
+		m_pBeam = NULL;
+	}
 
 	CBaseCombatCharacter* pOwner = GetOwner();
 
