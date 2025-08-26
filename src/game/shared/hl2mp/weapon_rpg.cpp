@@ -1542,7 +1542,11 @@ void CWeaponRPG::SuppressGuiding(bool state)
 	}
 	else
 	{
-		m_hLaserDot->TurnOn();
+		// Only turn on if we're supposed to be guiding
+		if (m_bGuiding && !m_bInitialStateUpdate)
+		{
+			m_hLaserDot->TurnOn();
+		}
 	}
 #endif
 
@@ -1578,13 +1582,16 @@ void CWeaponRPG::ItemPostFrame(void)
     // If we're pulling the weapon out for the first time, wait to draw the laser
     if (m_bInitialStateUpdate && GetActivity() != ACT_VM_DRAW)
     {
+        // Set the guiding state based on remembered state
         if (m_bRememberGuidingState)
         {
-            StartGuiding();
+            m_bGuiding = true;  // Set state first
+            StartGuiding();     // Then start the actual laser
         }
         else
         {
-            StopGuiding();
+            m_bGuiding = false; // Set state first
+            StopGuiding();      // Then stop the laser
         }
         m_bInitialStateUpdate = false;
     }
@@ -1682,15 +1689,9 @@ bool CWeaponRPG::Deploy(void)
 {
     m_bInitialStateUpdate = true;
 
-    // Restore the guidance state immediately so client-side effects sync properly
-    if (m_bRememberGuidingState)
-    {
-        m_bGuiding = true;
-    }
-    else
-    {
-        m_bGuiding = false;
-    }
+    // Don't immediately set m_bGuiding here - wait for ItemPostFrame
+    // This prevents visual effects from starting before the weapon is ready
+    // m_bRememberGuidingState will be used in ItemPostFrame to set the actual state
 
     return BaseClass::Deploy();
 }
@@ -1757,6 +1758,12 @@ void CWeaponRPG::StartGuiding(void)
 		IPredictionSystem::SuppressHostEvents(NULL);
 		WeaponSound(SPECIAL1);
 		CreateLaserPointer();
+	}
+	
+	// Turn on the laser dot immediately when starting guidance
+	if (m_hLaserDot != NULL)
+	{
+		m_hLaserDot->TurnOn();
 	}
 #endif
 
@@ -1912,6 +1919,7 @@ void CWeaponRPG::CreateLaserPointer(void)
 	m_hLaserDot = CLaserDot::Create(GetAbsOrigin(), GetOwner());
 	if (m_hLaserDot != NULL)
 	{
+		// Start laser dot in off state - it will be turned on when guidance starts
 		m_hLaserDot->TurnOff();
 		UpdateLaserPosition();
 	}
@@ -2093,8 +2101,8 @@ void CWeaponRPG::InitBeam(void)
 //-----------------------------------------------------------------------------
 void CWeaponRPG::DrawEffects(void)
 {
-	// Must be guiding and not hidden
-	if (!m_bGuiding || m_bHideGuiding)
+	// Must be guiding, not hidden, and laser should be active (not in initial state)
+	if (!m_bGuiding || m_bHideGuiding || m_bInitialStateUpdate)
 	{
 		if (m_pBeam != NULL)
 		{
@@ -2315,8 +2323,10 @@ void CLaserDot::TurnOn(void)
 	m_bIsOn = true;
 	if (m_bVisibleLaserDot)
 	{
-		//BaseClass::TurnOn();
+		RemoveEffects(EF_NODRAW);
 	}
+	// Network the state change
+	NetworkStateChanged();
 }
 
 
@@ -2328,8 +2338,10 @@ void CLaserDot::TurnOff(void)
 	m_bIsOn = false;
 	if (m_bVisibleLaserDot)
 	{
-		//BaseClass::TurnOff();
+		AddEffects(EF_NODRAW);
 	}
+	// Network the state change
+	NetworkStateChanged();
 }
 
 
