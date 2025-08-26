@@ -569,6 +569,8 @@ private:
 
 	bool							m_bPlayerUnderwater;
 
+	bool							m_fLongJump;		//Player has longjump capability
+
 	friend class CPrediction;
 
 	// HACK FOR TF2 Prediction

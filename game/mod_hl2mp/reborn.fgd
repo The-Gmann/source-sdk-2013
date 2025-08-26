@@ -19,3 +19,7 @@
 @PointClass base(Item) studio("models/items/w_gaussammo.mdl") = item_ammo_gaussenergy : "Gauss Energy"
 [
 ]
+
+@PointClass base(Item) studio("models/w_longjump.mdl") = item_longjump : "Long Jump Module"
+[
+]

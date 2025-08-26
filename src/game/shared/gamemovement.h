@@ -95,6 +95,7 @@ protected:
 	void			WaterJump( void );
 
 	bool 			WallJump();
+	bool 			LongJump();
 	// Handles both ground friction and water friction
 	void			Friction( void );
 

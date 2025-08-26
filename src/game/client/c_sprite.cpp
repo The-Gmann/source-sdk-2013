@@ -409,7 +409,7 @@ int C_SpriteRenderer::DrawSprite(
 		float blend = render->GetBlend();
 
 		// kRenderGlow and kRenderWorldGlow have a special blending function
-		if (( rendermode == kRenderGlow ))
+		if (( rendermode == kRenderWorldGlow ))
 		{
 			blend *= GlowBlend( psprite, effect_origin, rendermode, renderfx, alpha, &scale );
 

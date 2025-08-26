@@ -413,7 +413,7 @@ void CWeaponEgon::CreateClientBeams()
     if (m_pClientSprite)
     {
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
-        m_pClientSprite->SetTransparency(kRenderWorldGlow, 255, 255, 255, 255, kRenderFxNone);
+        m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNone);
         m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         
         CBasePlayer *pOwner = ToBasePlayer(GetOwner());

@@ -70,6 +70,8 @@ ConVar debug_latch_reset_onduck("debug_latch_reset_onduck", "1", FCVAR_CHEAT);
 #endif
 
 
+ConVar rb_longjump_sound("rb_longjump_sound", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable or disable longjump sound");
+
 // Jump buffering
 
 #define JUMP_BUFFER_TIME 0.2f // 200ms jump buffer window
@@ -2095,7 +2097,7 @@ void CGameMovement::FullWalkMove( )
 		// Was jump button pressed?
 		if (mv->m_nButtons & IN_JUMP)
 		{
-		if ( !WallJump() )
+		if ( !WallJump() && !LongJump() )
 			CheckJumpButton();
 		}
 		else
@@ -2121,7 +2123,7 @@ void CGameMovement::FullWalkMove( )
 		// Was jump button pressed?
 		if (mv->m_nButtons & IN_JUMP)
 		{
-		if ( !WallJump() )
+		if ( !WallJump() && !LongJump() )
  			CheckJumpButton();
 		}
 		else
@@ -5065,6 +5067,98 @@ bool CGameMovement::WallJump()
         }
     }
     return false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Long jumping (HL1-authentic implementation)
+// Based on original HL1 source: halflife-master\pm_shared\pm_shared.c lines 2578-2591
+// HL1 conditions:
+//   - cansuperjump (longjump capability)
+//   - pmove->cmd.buttons & IN_DUCK (duck pressed)
+//   - pmove->flDuckTime > 0 (within 1 second of duck press)
+//   - Length(pmove->velocity) > 50 (moving)
+// HL1 physics:
+//   - punchangle[0] = -5 (viewpunch)
+//   - velocity[i] = forward[i] * 350 * 1.6 (horizontal: 560 units/sec)
+//   - velocity[2] = sqrt(2 * 800 * 56.0) (~334.66 units/sec vertical)
+//-----------------------------------------------------------------------------
+bool CGameMovement::LongJump()
+{
+    // HL1: "cansuperjump = atoi( pmove->PM_Info_ValueForKey( pmove->physinfo, "slj" ) ) == 1"
+    if (!player->m_fLongJump)
+        return false;
+        
+    // HL1: "if ( pmove->onground == -1 ) return;" - MUST be on ground to longjump!
+    if (player->GetGroundEntity() == NULL)
+        return false;
+        
+    // HL1: "if ( pmove->oldbuttons & IN_JUMP ) return;" - don't pogo stick
+    if (mv->m_nOldButtons & IN_JUMP)
+        return false;
+        
+    // HL1: "( pmove->cmd.buttons & IN_DUCK )"
+    if (!(mv->m_nButtons & IN_DUCK))
+        return false;
+        
+    // Must have duck time > 0 (within 1 second of pressing duck) - exactly like HL1: "( pmove->flDuckTime > 0 )"
+    // Source SDK uses the same system: m_flDucktime starts at 1000ms and decreases each frame
+    if (player->m_Local.m_flDucktime <= 0)
+        return false;
+        
+    // HL1: "Length( pmove->velocity ) > 50" - reduced threshold to make easier to trigger
+    if (mv->m_vecVelocity.Length() <= 30.0f)
+        return false;
+        
+    // Apply HL1 longjump physics exactly
+    // HL1: "pmove->punchangle[0] = -5;"
+    QAngle viewPunch(-5.0f, 0, 0);
+    player->ViewPunch(viewPunch);
+    
+    // HL1: "pmove->velocity[i] = pmove->forward[i] * PLAYER_LONGJUMP_SPEED * 1.6;"
+    // where PLAYER_LONGJUMP_SPEED = 350, so horizontal = 350 * 1.6 = 560 units/sec
+    Vector vecForward;
+    AngleVectors(mv->m_vecViewAngles, &vecForward, NULL, NULL);
+    
+    for (int i = 0; i < 2; i++)
+    {
+        mv->m_vecVelocity[i] = vecForward[i] * 350.0f * 1.6f;
+    }
+    
+    // HL1: "pmove->velocity[2] = sqrt(2 * 800 * 56.0);" = ~334.66 units/sec vertical
+    // Reduced by 0.75: 334.66 * 0.75 = 251 units/sec (neat number)
+    mv->m_vecVelocity[2] = 251.0f;
+    
+    // HL1: "pmove->onground = -1;" - we are now in the air!
+    SetGroundEntity( NULL );
+    
+    // Play longjump sound only if ConVar is enabled
+    if (rb_longjump_sound.GetBool())
+    {
+        // Play longjump sound on CHAN_ITEM to avoid interference with footstep sounds (CHAN_BODY)
+        // Use EmitSound instead of StartSound for better sound management
+        CSoundParameters params;
+        if ( CBaseEntity::GetParametersForSound( "Player.LongJump", params, NULL ) )
+        {
+            CPASAttenuationFilter filter( mv->GetAbsOrigin(), params.soundlevel );
+            EmitSound_t es;
+            es.m_nChannel = CHAN_ITEM; // Different channel from footsteps to prevent interference
+            es.m_pSoundName = params.soundname;
+            es.m_flVolume = params.volume;
+            es.m_SoundLevel = params.soundlevel;
+            es.m_nPitch = params.pitch;
+            es.m_pOrigin = &mv->GetAbsOrigin();
+            
+            CBaseEntity::EmitSound( filter, player->entindex(), es );
+        }
+    }
+    
+    // Set animation to super jump (Source SDK equivalent)
+    MoveHelper()->PlayerSetAnimation(PLAYER_SUPERJUMP);
+    
+    // HL1: "pmove->oldbuttons |= IN_JUMP;" - prevent further jumping until button released
+    mv->m_nOldButtons |= IN_JUMP;
+    
+    return true; // We handled the jump, don't do regular jump
 }
 
 //-----------------------------------------------------------------------------

@@ -449,6 +449,8 @@ C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOf
 	m_flLastWallJumpCheckTime = 0.0f;
 	m_flWallJumpZIncrease = 0.0f;
 	
+	m_fLongJump = false;
+	
 	ResetObserverMode();
 
 	m_vecPredictionError.Init();
@@ -457,7 +459,6 @@ C_BasePlayer::C_BasePlayer() : m_iv_vecViewOffset( "C_BasePlayer::m_iv_vecViewOf
 	m_surfaceProps = 0;
 	m_pSurfaceData = NULL;
 	m_surfaceFriction = 1.0f;
-	m_flWallJumpCooldown = 0.0f;
 	m_chTextureType = 0;
 
 	m_flNextAchievementAnnounceTime = 0;

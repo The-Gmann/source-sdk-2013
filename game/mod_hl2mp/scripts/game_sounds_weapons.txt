@@ -91,6 +91,38 @@
 }
 
 // *******
+// PLAYER
+
+"Player.BodySplat"
+{
+	"channel"		"CHAN_STATIC"
+	"volume"		"0.8"
+	"soundlevel"	"SNDLVL_75dB"
+	"pitch"			"95,105"
+
+	"wave"			"player/bodysplat.wav"
+}
+
+"Player.LongJump"
+{
+	"channel"		"CHAN_BODY"
+	"volume"		"0.9"
+	"soundlevel"	"SNDLVL_75dB"
+	"pitch"			"98,102"
+
+	"wave"			"player/longjump.wav"
+}
+
+"Player.LongJumpPickup"
+{
+	"channel"		"CHAN_VOICE"
+	"volume"		"0.8"
+	"soundlevel"	"SNDLVL_75dB"
+
+	"wave"			"player/longjump_pickup.wav"
+}
+
+// *******
 // WEAPONS
 
 // weapon_ar2.txt

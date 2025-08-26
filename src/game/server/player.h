@@ -898,6 +898,7 @@ public:
 	int						m_afButtonForced;	// These are forced onto the player's inputs
 
 	CNetworkVar( bool, m_fOnTarget );		//Is the crosshair on a target?
+	bool				m_fLongJump;			//Player has longjump capability
 
 	char					m_szAnimExtension[32];
 

@@ -157,6 +157,7 @@ CHL2MP_Player::CHL2MP_Player() : m_PlayerAnimState( this )
 
     m_bEnterObserver = false;
 	m_bReady = false;
+	m_fLongJump = false; // Initialize longjump capability
 
 	BaseClass::ChangeTeam( 0 );
 
@@ -218,8 +219,8 @@ void CHL2MP_Player::Precache( void )
 	PrecacheScriptSound( "NPC_MetroPolice.Die" );
 	PrecacheScriptSound( "NPC_CombineS.Die" );
 	PrecacheScriptSound( "NPC_Citizen.die" );
-    // Precache gib sound
-    PrecacheSound( "player/bodysplat.wav" );
+	// Precache gib sound script
+	PrecacheScriptSound( "Player.BodySplat" );
 }
 
 void CHL2MP_Player::GiveAllItems( void )
@@ -401,6 +402,7 @@ void CHL2MP_Player::Spawn(void)
 	SetPlayerUnderwater(false);
 
 	m_bReady = false;
+	m_fLongJump = false; // Reset longjump capability on spawn
 
 	m_hDeathCamGib = NULL;  // Add this line - clear death cam gib on respawn
 }
@@ -1396,7 +1398,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 			float flFadeTime = 50.0f; // Gibs fade after 50 seconds in multiplayer
 			
 			// Play gib sound effect
-			EmitSound( "player/bodysplat.wav" );
+			EmitSound( "Player.BodySplat" );
 			
 			// Blood spray effect
 			Vector vecDamageDir = info.GetDamageForce();

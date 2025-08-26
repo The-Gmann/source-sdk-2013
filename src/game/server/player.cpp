@@ -631,6 +631,7 @@ CBasePlayer::CBasePlayer( )
     m_vecLastWallJumpPosition.Init();
     m_flLastWallJumpCheckTime = 0.0f;
     m_flWallJumpZIncrease = 0.0f;
+    m_fLongJump = false; // Initialize longjump capability
 
 	ResetObserverMode();
 

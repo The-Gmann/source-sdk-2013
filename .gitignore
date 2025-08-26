@@ -504,3 +504,4 @@ FodyWeavers.xsd
 *.sln.iml
 /src/game/shared/tf
 /src/game/shared/tf
+/halflife-master
