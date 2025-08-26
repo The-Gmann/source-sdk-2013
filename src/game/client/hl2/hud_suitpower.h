@@ -26,6 +26,7 @@ public:
 	virtual void	Init( void );
 	virtual void	Reset( void );
 	virtual void	OnThink( void );
+	virtual void	ApplySchemeSettings( vgui::IScheme *scheme );
 	bool			ShouldDraw( void );
 
 protected:

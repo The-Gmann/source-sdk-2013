@@ -25,6 +25,9 @@
 
 using namespace vgui;
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 #define TEAM_MAXCOUNT			5
 
 // id's of sections used in the scoreboard
@@ -316,7 +319,7 @@ void CHL2MPClientScoreBoardDialog::ApplySchemeSettings( vgui::IScheme *pScheme )
 	BaseClass::ApplySchemeSettings( pScheme );
 
 	m_bgColor = GetSchemeColor("SectionedListPanel.BgColor", GetBgColor(), pScheme);
-	m_borderColor = pScheme->GetColor( "FgColor", Color( 0, 0, 0, 0 ) );
+	m_borderColor = GetCustomSchemeColor( "FgColor" );
 
 	SetBgColor( Color(0, 0, 0, 0) );
 	SetBorder( pScheme->GetBorder( "BaseBorder" ) );
@@ -458,6 +461,9 @@ void CHL2MPClientScoreBoardDialog::AddHeader()
 	m_pPlayerList->AddColumnToSection(0, "ping", "#PlayerPing", 0 | SectionedListPanel::COLUMN_RIGHT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_PING_WIDTH ) );
 //	m_pPlayerList->AddColumnToSection(0, "voice", "#PlayerVoice", SectionedListPanel::COLUMN_IMAGE | SectionedListPanel::HEADER_TEXT| SectionedListPanel::COLUMN_CENTER, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_VOICE_WIDTH ) );
 //	m_pPlayerList->AddColumnToSection(0, "tracker", "#PlayerTracker", SectionedListPanel::COLUMN_IMAGE | SectionedListPanel::HEADER_TEXT, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_FRIENDS_WIDTH ) );
+	
+	// Set header section color to use custom HUD color
+	m_pPlayerList->SetSectionFgColor(0, GetCustomSchemeColor( "FgColor" ));
 }
 
 //-----------------------------------------------------------------------------
@@ -487,6 +493,11 @@ void CHL2MPClientScoreBoardDialog::AddSection(int teamType, int teamNumber)
 			if ( GameResources() )
 				m_pPlayerList->SetSectionFgColor(sectionID,  GameResources()->GetTeamColor(teamNumber));
 		}
+		else
+		{
+			// Use custom color for non-team sections
+			m_pPlayerList->SetSectionFgColor(sectionID, GetCustomSchemeColor( "FgColor" ));
+		}
 
 		m_pPlayerList->SetSectionAlwaysVisible(sectionID);
 	}
@@ -498,6 +509,9 @@ void CHL2MPClientScoreBoardDialog::AddSection(int teamType, int teamNumber)
 			m_pPlayerList->AddColumnToSection( sectionID, "avatar", "", SectionedListPanel::COLUMN_IMAGE | SectionedListPanel::COLUMN_RIGHT, ( m_iAvatarWidth * 2 ) );
 		}
 		m_pPlayerList->AddColumnToSection(sectionID, "name", "#Spectators", 0, scheme()->GetProportionalScaledValueEx( GetScheme(), CSTRIKE_NAME_WIDTH ) - ( m_iAvatarWidth * 2 ) );
+		
+		// Set custom color for spectator section
+		m_pPlayerList->SetSectionFgColor(sectionID, GetCustomSchemeColor( "FgColor" ));
 	}
 }
 
@@ -637,7 +651,15 @@ void CHL2MPClientScoreBoardDialog::UpdatePlayerInfo()
 			}
 
 			// set the row color based on the players team
-			m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( g_PR->GetTeam( i ) ) );
+			if ( HL2MPRules()->IsTeamplay() )
+			{
+				m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( g_PR->GetTeam( i ) ) );
+			}
+			else
+			{
+				// Use custom HUD color for non-team games
+				m_pPlayerList->SetItemFgColor( itemID, GetCustomSchemeColor( "FgColor" ) );
+			}
 
 			playerData->deleteThis();
 		}

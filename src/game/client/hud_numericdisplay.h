@@ -35,6 +35,7 @@ public:
 	bool ShouldDisplaySecondaryValue( void ) { return m_bDisplaySecondaryValue; }
 
 	virtual void Reset();
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 
 protected:
 	// vgui overrides

@@ -140,7 +140,9 @@ bool CHudDeathNotice::ShouldDraw( void )
 //-----------------------------------------------------------------------------
 void CHudDeathNotice::SetColorForNoticePlayer( int iTeamNumber )
 {
-	surface()->DrawSetTextColor( GameResources()->GetTeamColor( iTeamNumber ) );
+	// Use custom HUD color for all player names instead of team colors
+	extern Color GetCustomSchemeColor( const char *colorName );
+	surface()->DrawSetTextColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------

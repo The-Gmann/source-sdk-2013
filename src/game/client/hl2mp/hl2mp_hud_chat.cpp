@@ -16,6 +16,9 @@
 #include "hl2mp_gamerules.h"
 #include "ihudlcd.h"
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 
 
 DECLARE_HUDELEMENT( CHudChat );
@@ -41,6 +44,11 @@ void CHudChatLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
+	
+	// Set text selection colors to use custom HUD color
+	Color customColor = GetCustomSchemeColor( "FgColor" );
+	m_pInput->SetSelectionBgColor( customColor );
+	m_pInput->SetSelectionTextColor( Color( 0, 0, 0, 255 ) ); // Black text on custom background
 }
 
 //=====================
@@ -100,7 +108,7 @@ Color CHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		return g_ColorYellow;
+		return GetCustomSchemeColor( "FgColor" );
 	}
 	else if( g_PR )
 	{
@@ -108,9 +116,9 @@ Color CHudChat::GetClientColor( int clientIndex )
 		{
 		case TEAM_COMBINE	: return g_ColorBlue;
 		case TEAM_REBELS	: return g_ColorRed;
-		default	: return g_ColorYellow;
+		default	: return GetCustomSchemeColor( "FgColor" );
 		}
 	}
 
-	return g_ColorYellow;
+	return GetCustomSchemeColor( "FgColor" );
 }

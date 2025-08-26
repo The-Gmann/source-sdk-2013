@@ -31,6 +31,9 @@ using namespace vgui;
 
 #include "convar.h"
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -49,6 +52,7 @@ public:
 	virtual void VidInit( void );
 	virtual void Reset( void );
 	virtual void OnThink();
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 			void MsgFunc_Damage( bf_read &msg );
 
 private:
@@ -105,6 +109,17 @@ void CHudHealth::Reset()
 void CHudHealth::VidInit()
 {
 	Reset();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudHealth::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------

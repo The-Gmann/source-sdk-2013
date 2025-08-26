@@ -23,6 +23,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 #define INIT_BAT	-1
 
 //-----------------------------------------------------------------------------
@@ -40,6 +43,7 @@ public:
 	void OnThink( void );
 	void MsgFunc_Battery(bf_read &msg );
 	bool ShouldDraw();
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 	
 private:
 	int		m_iBat;	
@@ -83,6 +87,17 @@ void CHudBattery::Reset( void )
 void CHudBattery::VidInit( void )
 {
 	Reset();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudBattery::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------

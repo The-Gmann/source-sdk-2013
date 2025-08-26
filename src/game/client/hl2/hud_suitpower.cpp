@@ -20,6 +20,9 @@ using namespace vgui;
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 DECLARE_HUDELEMENT( CHudSuitPower );
 
 #define SUITPOWER_INIT -1
@@ -54,20 +57,29 @@ void CHudSuitPower::Reset( void )
 }
 
 //-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudSuitPower::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override with custom HUD color for aux power
+	m_AuxPowerColor = GetCustomSchemeColor( "FgColor" );
+}
+
+//-----------------------------------------------------------------------------
 // Purpose: Save CPU cycles by letting the HUD system early cull
 // costly traversal.  Called per frame, return true if thinking and 
 // painting need to occur.
 //-----------------------------------------------------------------------------
 bool CHudSuitPower::ShouldDraw()
 {
-	bool bNeedsDraw = false;
-
 	C_BaseHLPlayer *pPlayer = (C_BaseHLPlayer *)C_BasePlayer::GetLocalPlayer();
 	if ( !pPlayer )
 		return false;
 
-	// needs draw if suit power changed or animation in progress
-	bNeedsDraw = ( ( pPlayer->m_HL2Local.m_flSuitPower != m_flSuitPower ) || ( m_AuxPowerColor[3] > 0 ) );
+	// Only draw if suit power is not at max or if any devices are active
+	bool bNeedsDraw = ( pPlayer->m_HL2Local.m_flSuitPower < 100.0f ) || ( m_iActiveSuitDevices > 0 );
 
 	return ( bNeedsDraw && CHudElement::ShouldDraw() );
 }
@@ -84,49 +96,65 @@ void CHudSuitPower::OnThink( void )
 
 	flCurrentPower = pPlayer->m_HL2Local.m_flSuitPower;
 
-	// Only update if we've changed suit power
-	if ( flCurrentPower == m_flSuitPower )
-		return;
-
-	if ( flCurrentPower >= 100.0f && m_flSuitPower < 100.0f )
+	// get the suit power and send it to the hud
+	if ( flCurrentPower != m_flSuitPower )
 	{
-		// we've reached max power
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerMax");
-	}
-	else if ( flCurrentPower < 100.0f && (m_flSuitPower >= 100.0f || m_flSuitPower == SUITPOWER_INIT) )
-	{
-		// we've lost power
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerNotMax");
-	}
-
-	bool flashlightActive = pPlayer->IsFlashlightActive();
-	bool sprintActive = pPlayer->IsSprinting();
-	bool breatherActive = pPlayer->IsBreatherActive();
-	int activeDevices = (int)flashlightActive + (int)sprintActive + (int)breatherActive;
-
-	if (activeDevices != m_iActiveSuitDevices)
-	{
-		m_iActiveSuitDevices = activeDevices;
-
-		switch ( m_iActiveSuitDevices )
+		if ( flCurrentPower >= 20.0f && m_nSuitPowerLow )
 		{
-		default:
-		case 3:
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerThreeItemsActive");
-			break;
-		case 2:
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerTwoItemsActive");
+			m_nSuitPowerLow = false;
+		}
+
+		m_flSuitPower = flCurrentPower;
+	}
+
+	int newSuitDevices = 0;
+
+	if ( pPlayer->IsFlashlightActive() )
+	{
+		newSuitDevices |= 0x00000001;
+	}
+
+	if ( pPlayer->IsSprinting() )
+	{
+		newSuitDevices |= 0x00000002;
+	}
+
+	if ( pPlayer->IsBreatherActive() )
+	{
+		newSuitDevices |= 0x00000004;
+	}
+
+	if ( newSuitDevices != m_iActiveSuitDevices )
+	{
+		m_iActiveSuitDevices = newSuitDevices;
+
+		// count the number of active devices
+		int numActiveDevices = 0;
+		for ( int i = 0; i < 3; i++ )
+		{
+			if ( m_iActiveSuitDevices & (1 << i) )
+			{
+				numActiveDevices++;
+			}
+		}
+
+		// animate the aux power panel to the right size/position
+		switch ( numActiveDevices )
+		{
+		case 0:
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerNoItemsActive");
 			break;
 		case 1:
 			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerOneItemActive");
 			break;
-		case 0:
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerNoItemsActive");
+		case 2:
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerTwoItemsActive");
+			break;
+		default:
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerThreeItemsActive");
 			break;
 		}
 	}
-
-	m_flSuitPower = flCurrentPower;
 }
 
 //-----------------------------------------------------------------------------
@@ -141,28 +169,6 @@ void CHudSuitPower::Paint()
 	// get bar chunks
 	int chunkCount = m_flBarWidth / (m_flBarChunkWidth + m_flBarChunkGap);
 	int enabledChunks = (int)((float)chunkCount * (m_flSuitPower * 1.0f/100.0f) + 0.5f );
-
-	// see if we've changed power state
-	int lowPower = 0;
-	if (enabledChunks <= (chunkCount / 4))
-	{
-		lowPower = 1;
-	}
-	if (m_nSuitPowerLow != lowPower)
-	{
-		if (m_iActiveSuitDevices || m_flSuitPower < 100.0f)
-		{
-			if (lowPower)
-			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerDecreasedBelow25");
-			}
-			else
-			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("SuitAuxPowerIncreasedAbove25");
-			}
-			m_nSuitPowerLow = lowPower;
-		}
-	}
 
 	// draw the suit power bar
 	surface()->DrawSetColor( m_AuxPowerColor );

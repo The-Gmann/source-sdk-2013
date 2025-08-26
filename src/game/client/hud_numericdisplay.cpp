@@ -14,6 +14,9 @@
 #include <vgui/ISystem.h>
 #include <vgui/IVGui.h>
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -34,6 +37,18 @@ CHudNumericDisplay::CHudNumericDisplay(vgui::Panel *parent, const char *name) : 
 	m_bDisplaySecondaryValue = false;
 	m_bIndent = false;
 	m_bIsTime = false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudNumericDisplay::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override colors with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	SetBgColor( scheme->GetColor( "BgColor", GetBgColor() ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -151,7 +166,7 @@ void CHudNumericDisplay::PaintNumbers(HFont font, int xpos, int ypos, int value)
 void CHudNumericDisplay::PaintLabel( void )
 {
 	surface()->DrawSetTextFont(m_hTextFont);
-	surface()->DrawSetTextColor(GetFgColor());
+	surface()->DrawSetTextColor(GetCustomSchemeColor( "FgColor" ));
 	surface()->DrawSetTextPos(text_xpos, text_ypos);
 	surface()->DrawUnicodeString( m_LabelText );
 }
@@ -161,10 +176,13 @@ void CHudNumericDisplay::PaintLabel( void )
 //-----------------------------------------------------------------------------
 void CHudNumericDisplay::Paint()
 {
+	// Use custom HUD colors
+	Color customFgColor = GetCustomSchemeColor( "FgColor" );
+	
 	if (m_bDisplayValue)
 	{
 		// draw our numbers
-		surface()->DrawSetTextColor(GetFgColor());
+		surface()->DrawSetTextColor(customFgColor);
 		PaintNumbers(m_hNumberFont, digit_xpos, digit_ypos, m_iValue);
 
 		// draw the overbright blur
@@ -177,7 +195,7 @@ void CHudNumericDisplay::Paint()
 			else
 			{
 				// draw a percentage of the last one
-				Color col = GetFgColor();
+				Color col = customFgColor;
 				col[3] *= fl;
 				surface()->DrawSetTextColor(col);
 				PaintNumbers(m_hNumberGlowFont, digit_xpos, digit_ypos, m_iValue);
@@ -188,7 +206,7 @@ void CHudNumericDisplay::Paint()
 	// total ammo
 	if (m_bDisplaySecondaryValue)
 	{
-		surface()->DrawSetTextColor(GetFgColor());
+		surface()->DrawSetTextColor(customFgColor);
 		PaintNumbers(m_hSmallNumberFont, digit2_xpos, digit2_ypos, m_iSecondaryValue);
 	}
 

@@ -21,6 +21,9 @@
 
 using namespace vgui;
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 //-----------------------------------------------------------------------------
 // Purpose: Displays current ammunition level
 //-----------------------------------------------------------------------------
@@ -37,6 +40,7 @@ public:
 	void SetAmmo(int ammo, bool playAnimation);
 	void SetAmmo2(int ammo2, bool playAnimation);
 	virtual void Paint( void );
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme );
 
 protected:
 	virtual void OnThink();
@@ -94,6 +98,17 @@ void CHudAmmo::Init( void )
 //-----------------------------------------------------------------------------
 void CHudAmmo::VidInit( void )
 {
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Apply scheme settings and use custom HUD colors
+//-----------------------------------------------------------------------------
+void CHudAmmo::ApplySchemeSettings( vgui::IScheme *scheme )
+{
+	BaseClass::ApplySchemeSettings( scheme );
+	
+	// Override with custom HUD colors
+	SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 //-----------------------------------------------------------------------------
@@ -281,17 +296,15 @@ void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 	{
 		if (ammo == 0)
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoEmpty");
+			// Animation removed: bypass hudanimations.txt
 		}
 		else if (ammo < m_iAmmo)
 		{
-			// ammo has decreased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoDecreased");
+			// ammo has decreased - Animation removed: bypass hudanimations.txt
 		}
 		else
 		{
-			// ammunition has increased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoIncreased");
+			// ammunition has increased - Animation removed: bypass hudanimations.txt
 		}
 
 		m_iAmmo = ammo;
@@ -309,17 +322,15 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 	{
 		if (ammo2 == 0)
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Empty");
+			// Animation removed: bypass hudanimations.txt
 		}
 		else if (ammo2 < m_iAmmo2)
 		{
-			// ammo has decreased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Decreased");
+			// ammo has decreased - Animation removed: bypass hudanimations.txt
 		}
 		else
 		{
-			// ammunition has increased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Increased");
+			// ammunition has increased - Animation removed: bypass hudanimations.txt
 		}
 
 		m_iAmmo2 = ammo2;
@@ -345,7 +356,7 @@ void CHudAmmo::Paint( void )
 		int x = text_xpos + ( nLabelWidth - m_iconPrimaryAmmo->Width() ) / 2;
 		int y = text_ypos - ( nLabelHeight + ( m_iconPrimaryAmmo->Height() / 2 ) );
 		
-		m_iconPrimaryAmmo->DrawSelf( x, y, GetFgColor() );
+		m_iconPrimaryAmmo->DrawSelf( x, y, GetCustomSchemeColor( "FgColor" ) );
 	}
 }
 
@@ -381,23 +392,29 @@ public:
 	{
 	}
 
+	virtual void ApplySchemeSettings( vgui::IScheme *scheme )
+	{
+		BaseClass::ApplySchemeSettings( scheme );
+		
+		// Override with custom HUD colors
+		SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	}
+
 	void SetAmmo( int ammo )
 	{
 		if (ammo != m_iAmmo)
 		{
 			if (ammo == 0)
 			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryEmpty");
+				// Animation removed: bypass hudanimations.txt
 			}
 			else if (ammo < m_iAmmo)
 			{
-				// ammo has decreased
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryDecreased");
+				// ammo has decreased - Animation removed: bypass hudanimations.txt
 			}
 			else
 			{
-				// ammunition has increased
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryIncreased");
+				// ammunition has increased - Animation removed: bypass hudanimations.txt
 			}
 
 			m_iAmmo = ammo;
@@ -429,7 +446,7 @@ public:
 			int x = text_xpos + ( nLabelWidth - m_iconSecondaryAmmo->Width() ) / 2;
 			int y = text_ypos - ( nLabelHeight + ( m_iconSecondaryAmmo->Height() / 2 ) );
 
-			m_iconSecondaryAmmo->DrawSelf( x, y, GetFgColor() );
+			m_iconSecondaryAmmo->DrawSelf( x, y, GetCustomSchemeColor( "FgColor" ) );
 		}
 	}
 

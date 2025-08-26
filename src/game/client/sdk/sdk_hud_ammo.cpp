@@ -223,15 +223,15 @@ void CHudAmmo::UpdateVehicleAmmo( C_BasePlayer *player, IClientVehicle *pVehicle
 		if (pVehicle->PrimaryAmmoUsesClips())
 		{
 			SetShouldDisplaySecondaryValue(true);
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponUsesClips");
+			// Animation removed: bypass hudanimations.txt
 		}
 		else
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponDoesNotUseClips");
+			// Animation removed: bypass hudanimations.txt
 			SetShouldDisplaySecondaryValue(false);
 		}
 
-		g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("WeaponChanged");
+		// Animation removed: bypass hudanimations.txt
 		m_hCurrentVehicle = pVehicleEnt;
 	}
 }
@@ -264,17 +264,15 @@ void CHudAmmo::SetAmmo(int ammo, bool playAnimation)
 	{
 		if (ammo == 0)
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoEmpty");
+			// Animation removed: bypass hudanimations.txt
 		}
 		else if (ammo < m_iAmmo)
 		{
-			// ammo has decreased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoDecreased");
+			// ammo has decreased - Animation removed: bypass hudanimations.txt
 		}
 		else
 		{
-			// ammunition has increased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoIncreased");
+			// ammunition has increased - Animation removed: bypass hudanimations.txt
 		}
 
 		m_iAmmo = ammo;
@@ -292,17 +290,15 @@ void CHudAmmo::SetAmmo2(int ammo2, bool playAnimation)
 	{
 		if (ammo2 == 0)
 		{
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Empty");
+			// Animation removed: bypass hudanimations.txt
 		}
 		else if (ammo2 < m_iAmmo2)
 		{
-			// ammo has decreased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Decreased");
+			// ammo has decreased - Animation removed: bypass hudanimations.txt
 		}
 		else
 		{
-			// ammunition has increased
-			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("Ammo2Increased");
+			// ammunition has increased - Animation removed: bypass hudanimations.txt
 		}
 
 		m_iAmmo2 = ammo2;
@@ -340,17 +336,15 @@ public:
 		{
 			if (ammo == 0)
 			{
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryEmpty");
+				// Animation removed: bypass hudanimations.txt
 			}
 			else if (ammo < m_iAmmo)
 			{
-				// ammo has decreased
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryDecreased");
+				// ammo has decreased - Animation removed: bypass hudanimations.txt
 			}
 			else
 			{
-				// ammunition has increased
-				g_pClientMode->GetViewportAnimationController()->StartAnimationSequence("AmmoSecondaryIncreased");
+				// ammunition has increased - Animation removed: bypass hudanimations.txt
 			}
 
 			m_iAmmo = ammo;

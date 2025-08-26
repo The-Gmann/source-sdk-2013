@@ -171,6 +171,14 @@ void CClientScoreBoardDialog::ApplySchemeSettings( IScheme *pScheme )
 
 	m_mapAvatarsToImageList.RemoveAll();
 
+	// Set server name label to use custom HUD color
+	Panel *pServerName = FindChildByName( "ServerName" );
+	if ( pServerName )
+	{
+		extern Color GetCustomSchemeColor( const char *colorName );
+		pServerName->SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+	}
+
 	PostApplySchemeSettings( pScheme );
 }
 

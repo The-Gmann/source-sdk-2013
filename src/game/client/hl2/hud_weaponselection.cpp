@@ -185,6 +185,9 @@ DECLARE_HUDELEMENT( CHudWeaponSelection );
 
 using namespace vgui;
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 //-----------------------------------------------------------------------------
 // Purpose: Constructor
 //-----------------------------------------------------------------------------
@@ -751,7 +754,7 @@ void CHudWeaponSelection::Paint()
 //-----------------------------------------------------------------------------
 void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool bSelected, int xpos, int ypos, int boxWide, int boxTall, Color selectedColor, float alpha, int number )
 {
-	Color col = bSelected ? m_SelectedFgColor : GetFgColor();
+	Color col = bSelected ? m_SelectedFgColor : GetCustomSchemeColor( "FgColor" );
 	
 	switch ( hud_fastswitch.GetInt() )
 	{
@@ -904,7 +907,7 @@ void CHudWeaponSelection::DrawLargeWeaponBox( C_BaseCombatWeapon *pWeapon, bool 
 	}
 
 	// draw text
-	col = m_TextColor;
+	col = GetCustomSchemeColor( "FgColor" );
 	const FileWeaponInfo_t &weaponInfo = pWeapon->GetWpnData();
 
 	if ( bSelected )
@@ -1024,6 +1027,11 @@ void CHudWeaponSelection::ApplySchemeSettings(vgui::IScheme *pScheme)
 {
 	BaseClass::ApplySchemeSettings(pScheme);
 	SetPaintBackgroundEnabled(false);
+	
+	// Override with custom HUD colors for weapon selection
+	m_TextColor = GetCustomSchemeColor( "FgColor" );
+	m_NumberColor = GetCustomSchemeColor( "FgColor" );
+	m_SelectedFgColor = GetCustomSchemeColor( "FgColor" );
 
 	// set our size
 	int screenWide, screenTall;

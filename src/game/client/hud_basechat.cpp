@@ -31,6 +31,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 #define CHAT_WIDTH_PERCENTAGE 0.6f
 
 #ifndef _XBOX
@@ -405,6 +408,12 @@ void CBaseHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 	m_pInput->SetFont( hFont );
 
 	m_pInput->SetFgColor( pScheme->GetColor( "Chat.TypingText", pScheme->GetColor( "Panel.FgColor", Color( 255, 255, 255, 255 ) ) ) );
+
+	// Set text selection colors to use custom HUD color
+	extern Color GetCustomSchemeColor( const char *colorName );
+	Color customColor = GetCustomSchemeColor( "FgColor" );
+	m_pInput->SetSelectionBgColor( customColor );
+	m_pInput->SetSelectionTextColor( Color( 0, 0, 0, 255 ) ); // Black text on custom background
 
 	SetPaintBackgroundEnabled( true );
 	m_pPrompt->SetPaintBackgroundEnabled( true );
@@ -1379,7 +1388,7 @@ void CBaseHudChat::SetCustomColor( const char *pszColorName )
 //-----------------------------------------------------------------------------
 Color CBaseHudChat::GetDefaultTextColor( void )
 {
-	return g_ColorYellow;
+	return GetCustomSchemeColor( "FgColor" );
 }
 
 //-----------------------------------------------------------------------------
@@ -1387,14 +1396,14 @@ Color CBaseHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		return g_ColorGreen;
+		return GetCustomSchemeColor( "FgColor" );
 	}
 	else if( g_PR )
 	{
 		return g_ColorGrey;
 	}
 
-	return g_ColorYellow;
+	return GetCustomSchemeColor( "FgColor" );
 }
 
 //-----------------------------------------------------------------------------

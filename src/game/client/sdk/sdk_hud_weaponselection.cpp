@@ -424,6 +424,11 @@ void CHudWeaponSelection::ApplySchemeSettings(vgui::IScheme *pScheme)
 	BaseClass::ApplySchemeSettings(pScheme);
 	SetPaintBackgroundEnabled(false);
 
+	// Override with custom HUD colors for weapon selection
+	extern Color GetCustomSchemeColor( const char *colorName );
+	m_TextColor = GetCustomSchemeColor( "FgColor" );
+	m_NumberColor = GetCustomSchemeColor( "FgColor" );
+
 	// set our size
 	int screenWide, screenTall;
 	int x, y;

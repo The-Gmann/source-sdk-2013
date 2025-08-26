@@ -171,6 +171,51 @@ typedef struct hudelement_hidden_s
 
 ConVar hidehud( "hidehud", "0", FCVAR_CHEAT );
 
+// Simple HUD Color Customization System
+static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOldValue );
+ConVar rb_hud_color( "rb_hud_color", "90 255 145", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Custom HUD color (R G B values)", RB_HudColor_Changed );
+
+// Simple global custom color - this is the only color variable we need
+static Color g_CustomHudColor( 90, 255, 145, 255 );
+
+// Simple function to get custom HUD color for any color request
+Color GetCustomSchemeColor( const char *colorName )
+{
+	// For damage-related colors, use red instead of custom color
+	if ( !Q_stricmp( colorName, "DamagedFg" ) )
+	{
+		return Color( 255, 0, 0, 230 );
+	}
+	else if ( !Q_stricmp( colorName, "BrightDamagedFg" ) )
+	{
+		return Color( 255, 0, 0, 255 );
+	}
+	
+	// For all other colors, return the custom HUD color
+	return g_CustomHudColor;
+}
+
+// Simple ConVar callback for HUD color changes
+static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOldValue )
+{
+	ConVar *pConVar = (ConVar*)var;
+	const char *value = pConVar->GetString();
+	
+	int r, g, b;
+	if ( sscanf( value, "%d %d %d", &r, &g, &b ) == 3 )
+	{
+		r = clamp( r, 0, 255 );
+		g = clamp( g, 0, 255 );
+		b = clamp( b, 0, 255 );
+		
+		g_CustomHudColor = Color( r, g, b, 255 );
+	}
+	else
+	{
+		DevMsg( "Invalid rb_hud_color format. Use 'R G B' (e.g., '90 255 145')\n" );
+	}
+}
+
 
 
 CHudTexture::CHudTexture()
@@ -480,9 +525,22 @@ void CHud::Init( void )
 //-----------------------------------------------------------------------------
 void CHud::InitColors( vgui::IScheme *scheme )
 {
-	m_clrNormal = scheme->GetColor( "Normal", Color( 255, 208, 64 ,255 ) );
-	m_clrCaution = scheme->GetColor( "Caution", Color( 255, 48, 0, 255 ) );
-	m_clrYellowish = scheme->GetColor( "Yellowish", Color( 255, 160, 0, 255 ) );
+	// Initialize custom HUD colors with current ConVar value
+	const char *colorValue = rb_hud_color.GetString();
+	int r, g, b;
+	if ( sscanf( colorValue, "%d %d %d", &r, &g, &b ) == 3 )
+	{
+		r = clamp( r, 0, 255 );
+		g = clamp( g, 0, 255 );
+		b = clamp( b, 0, 255 );
+		
+		g_CustomHudColor = Color( r, g, b, 255 );
+	}
+	
+	// Update our member colors to use custom colors
+	m_clrNormal = GetCustomSchemeColor( "Normal" );
+	m_clrCaution = GetCustomSchemeColor( "Caution" );
+	m_clrYellowish = GetCustomSchemeColor( "Yellowish" );
 }
 
 //-----------------------------------------------------------------------------

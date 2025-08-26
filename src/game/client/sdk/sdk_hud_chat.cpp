@@ -16,6 +16,9 @@
 
 ConVar cl_showtextmsg( "cl_showtextmsg", "1", 0, "Enable/disable text messages printing on the screen." );
 
+// Forward declaration of our custom color function
+extern Color GetCustomSchemeColor( const char *colorName );
+
 float g_ColorGreen[3]	= { 153, 255, 153 };
 float g_ColorYellow[3]	= { 255, 178.5, 0.0 };
 
@@ -27,7 +30,7 @@ float *GetClientColor( int clientIndex )
 	}
 	else 
 	{
-		return g_ColorYellow;
+		return GetCustomSchemeColor( "FgColor" );
 	}	
 }
 
@@ -130,7 +133,8 @@ void CHudChatLine::PerformFadeout( void )
 
 			wcsncpy( wText, wbuf + ( m_iNameLength ), wcslen( wbuf + m_iNameLength ) );
 			wText[ wcslen( wbuf + m_iNameLength ) ] = '\0';
-			InsertColorChange( Color( g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2], alpha ) );
+			Color customTextColor = GetCustomSchemeColor( "FgColor" );
+			InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), alpha ) );
 			InsertString( wText );
 			InvalidateLayout( true );
 		}
@@ -159,7 +163,7 @@ void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 	m_pPrompt->SetFont( hFont );
 	m_pInput->SetFont( hFont );
 
-	m_pInput->SetFgColor( pScheme->GetColor( "Chat.TypingText", pScheme->GetColor( "Panel.FgColor", Color( 255, 255, 255, 255 ) ) ) );
+	m_pInput->SetFgColor( GetCustomSchemeColor( "FgColor" ) );
 }
 
 
@@ -431,7 +435,7 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 		}
 	}
 	else
-		line->InsertColorChange( Color( g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2], 255 ) );
+		line->InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), 255 ) );
 
 	char *buf = static_cast<char *>( _alloca( strlen( pmsg ) + 1  ) );
 	wchar_t *wbuf = static_cast<wchar_t *>( _alloca( (strlen( pmsg ) + 1 ) * sizeof(wchar_t) ) );
@@ -448,7 +452,8 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 		line->InsertString( buf );
 		Q_strncpy( buf, pmsg + iNameLength, strlen( pmsg ));
 		buf[ strlen( pmsg + iNameLength ) ] = '\0';
-		line->InsertColorChange( Color( g_ColorYellow[0], g_ColorYellow[1], g_ColorYellow[2], 255 ) );
+		Color customTextColor = GetCustomSchemeColor( "FgColor" );
+		line->InsertColorChange( Color( customTextColor.r(), customTextColor.g(), customTextColor.b(), 255 ) );
 		g_pVGuiLocalize->ConvertANSIToUnicode( buf, wbuf, strlen(pmsg)*sizeof(wchar_t));
 		line->InsertString( wbuf );
 		line->SetVisible( true );
