@@ -50,6 +50,7 @@ namespace EgonConstants
     static const char* BEAM_SPRITE = "sprites/xbeam1.vmt";
     static const char* BEAM_SPRITE_NODEPTH = "sprites/xbeam_nodepth.vmt";
     static const char* FLARE_SPRITE = "sprites/xspark1.vmt";
+    static const char* FLARE_SPRITE_NODEPTH = "sprites/xspark_nodepth.vmt";
     
     // Beam properties
     static constexpr float BEAM_LENGTH = 2048.0f;
@@ -409,11 +410,16 @@ void CWeaponEgon::CreateClientBeams()
     // Create flare sprite - position it at the hit point to prevent wall clipping
     Vector spritePos = endPos;
     
-    m_pClientSprite = CSprite::SpriteCreate(EgonConstants::FLARE_SPRITE, spritePos, false);
+    // Use nodepth version for first-person (owner), regular version for third-person (others)
+    const char* spriteSprite = ShouldDrawUsingViewModel() ? 
+                              EgonConstants::FLARE_SPRITE_NODEPTH : 
+                              EgonConstants::FLARE_SPRITE;
+    
+    m_pClientSprite = CSprite::SpriteCreate(spriteSprite, spritePos, false);
     if (m_pClientSprite)
     {
         m_pClientSprite->SetScale(EgonConstants::SPRITE_SCALE);
-        m_pClientSprite->SetTransparency(kRenderGlow, 255, 255, 255, 255, kRenderFxNone);
+        m_pClientSprite->SetTransparency(kRenderTransAdd, 255, 255, 255, 255, kRenderFxNone);
         m_pClientSprite->AddSpawnFlags(SF_SPRITE_TEMPORARY);
         
         CBasePlayer *pOwner = ToBasePlayer(GetOwner());
