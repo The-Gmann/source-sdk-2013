@@ -31,6 +31,7 @@
     #include "dlight.h"
     #include "iefx.h"
     #include "prediction.h"
+    extern ConVar rb_dlight_egon;
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
@@ -160,6 +161,7 @@ private:
     dlight_t *m_pBeamGlow;
     bool m_bClientThinking;
     int m_nBeamDelayFrames;
+    int m_nSpriteDelayFrames;
 #endif
 
     // State variables
@@ -267,6 +269,7 @@ CWeaponEgon::CWeaponEgon()
     m_pBeamGlow = nullptr;
     m_bClientThinking = false;
     m_nBeamDelayFrames = 0;
+    m_nSpriteDelayFrames = 0;
 #endif
 }
 
@@ -368,6 +371,7 @@ void CWeaponEgon::CreateClientBeams()
 
     // Wait for proper positioning data
     m_nBeamDelayFrames = 8;
+    m_nSpriteDelayFrames = 8; // Match beam delay timing
 
     // Choose beam sprite based on viewmodel usage
     // Use xbeam1 for third-person (others), xbeam_nodepth for first-person (owner)
@@ -412,10 +416,23 @@ void CWeaponEgon::CreateClientBeams()
     // Create flare sprite - position it at the hit point to prevent wall clipping
     Vector spritePos = endPos;
     
-    // Use nodepth version for first-person (owner), regular version for third-person (others)
-    const char* spriteSprite = ShouldDrawUsingViewModel() ? 
-                              EgonConstants::FLARE_SPRITE_NODEPTH : 
-                              EgonConstants::FLARE_SPRITE;
+    // Check if we're hitting sky and use nodepth version to prevent sky rendering
+    trace_t tr;
+    UTIL_TraceLine(startPos, endPos, MASK_SHOT, GetOwner(), COLLISION_GROUP_NONE, &tr);
+    
+    const char* spriteSprite;
+    if (tr.surface.flags & SURF_SKY)
+    {
+        // Use nodepth version for sky hits to prevent rendering on skybox
+        spriteSprite = EgonConstants::FLARE_SPRITE_NODEPTH;
+    }
+    else
+    {
+        // Use nodepth version for first-person (owner), regular version for third-person (others)
+        spriteSprite = ShouldDrawUsingViewModel() ? 
+                      EgonConstants::FLARE_SPRITE_NODEPTH : 
+                      EgonConstants::FLARE_SPRITE;
+    }
     
     m_pClientSprite = CSprite::SpriteCreate(spriteSprite, spritePos, false);
     if (!m_pClientSprite && ShouldDrawUsingViewModel())
@@ -507,16 +524,18 @@ void CWeaponEgon::UpdateClientBeams()
     }
 
     // Dynamic light position uses endPos (actual surface)
-    if (!m_pBeamGlow)
+    if (!m_pBeamGlow && rb_dlight_egon.GetBool())
     {
         m_pBeamGlow = effects->CL_AllocDlight(entindex());
         if (m_pBeamGlow)
         {
             m_pBeamGlow->origin = endPos;
-            m_pBeamGlow->radius = 128.0f;
+            m_pBeamGlow->radius = 55.0f;
             m_pBeamGlow->color.r = 50;
             m_pBeamGlow->color.g = 215;
             m_pBeamGlow->color.b = 255;
+            m_pBeamGlow->color.exponent = 3; // Better falloff
+            m_pBeamGlow->decay = 0; // No decay while active
             m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
         }
     }
@@ -550,7 +569,12 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientNoise->RemoveEffects(EF_NODRAW);
     }
     
-    if (m_pClientSprite && m_pClientSprite->IsEffectActive(EF_NODRAW))
+    // Handle sprite delay - show sprite only after delay period
+    if (m_nSpriteDelayFrames > 0)
+    {
+        m_nSpriteDelayFrames--;
+    }
+    else if (m_pClientSprite && m_pClientSprite->IsEffectActive(EF_NODRAW))
     {
         m_pClientSprite->RemoveEffects(EF_NODRAW);
     }
@@ -586,11 +610,11 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->m_flFrame = currentFrame;
     }
 
-    // Update dynamic light
-    if (m_pBeamGlow)
+    // Update dynamic light with proper SDK decay mechanism
+    if (m_pBeamGlow && rb_dlight_egon.GetBool())
     {
         m_pBeamGlow->origin = endPos;
-        m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+        m_pBeamGlow->die = gpGlobals->curtime + 0.1f; // Keep light alive
     }
 }
 
@@ -620,9 +644,17 @@ void CWeaponEgon::DestroyClientBeams()
         m_pClientSprite = nullptr;
     }
     
-    m_pBeamGlow = nullptr;
+    // Use proper SDK decay for smooth fadeout
+    if (m_pBeamGlow)
+    {
+        m_pBeamGlow->decay = m_pBeamGlow->radius / 0.3f; // Fade over 0.3 seconds
+        m_pBeamGlow->die = gpGlobals->curtime + 0.4f; // Die after fade complete
+        m_pBeamGlow = nullptr; // Don't reference it anymore
+    }
+    
     m_vecLastEndPos = vec3_origin;
     m_nBeamDelayFrames = 0;
+    m_nSpriteDelayFrames = 0;
 }
 
 //-----------------------------------------------------------------------------

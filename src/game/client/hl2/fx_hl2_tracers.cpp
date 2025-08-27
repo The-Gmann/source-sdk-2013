@@ -21,8 +21,6 @@
 extern Vector GetTracerOrigin( const CEffectData &data );
 extern void FX_TracerSound( const Vector &start, const Vector &end, int iTracerType );
 
-extern ConVar muzzleflash_light;
-
 
 CLIENTEFFECT_REGISTER_BEGIN( PrecacheTracers )
 CLIENTEFFECT_MATERIAL( "effects/gunshiptracer" )

@@ -97,15 +97,16 @@ void C_GrenadeFragLight::UpdateDLight()
 	// Calculate light intensity based on blink progress
 	float flIntensity = 1.0f - fabs(2.0f * flBlinkProgress - 1.0f);
 
-	// Base radius
-	float baseRadius = 40.0f;
+	// Base radius - increased by 2x
+	float baseRadius = 80.0f;
 	// Modulate radius by intensity with a factor of 0.5
 	float modulatedRadius = baseRadius * (1.0f + 0.5f * (flIntensity - 1.0f));
 
 	m_pDLight->origin = GetAbsOrigin();
 	m_pDLight->radius = modulatedRadius;
 	m_pDLight->die = gpGlobals->curtime + 0.2f;
-	m_pDLight->color.r = 180 * flIntensity;
+	// Brightness increased by 2x (but clamped to max 255)
+	m_pDLight->color.r = MIN( 255, 360 * flIntensity );
 	m_pDLight->color.g = 0 * flIntensity;
 	m_pDLight->color.b = 0 * flIntensity;
 	m_pDLight->color.exponent = 1;

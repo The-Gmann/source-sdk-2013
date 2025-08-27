@@ -51,14 +51,12 @@ CLIENTEFFECT_MATERIAL( "effects/combinemuzzle2_nocull" )
 CLIENTEFFECT_REGISTER_END()
 #endif
 
-//Whether or not we should emit a dynamic light
-ConVar muzzleflash_light( "muzzleflash_light", "1", FCVAR_ARCHIVE );
-
 // Dynamic lighting control cvars from legacy version
 ConVar rb_dlight_muzzleflash( "rb_dlight_muzzleflash", "1", FCVAR_ARCHIVE, "Enable dynamic light for muzzleflashes" );
 ConVar rb_dlight_stunstick( "rb_dlight_stunstick", "1", FCVAR_ARCHIVE, "Enable dynamic light for stunstick" );
 ConVar rb_dlight_explosion( "rb_dlight_explosion", "1", FCVAR_ARCHIVE, "Enable dynamic light for explosions" );
 ConVar rb_dlight_grenade( "rb_dlight_grenade", "1", FCVAR_ARCHIVE, "Enable dynamic light for frag grenades" );
+ConVar rb_dlight_egon( "rb_dlight_egon", "1", FCVAR_ARCHIVE, "Enable dynamic light for egon beam" );
 
 extern void FX_TracerSound( const Vector &start, const Vector &end, int iTracerType );
 

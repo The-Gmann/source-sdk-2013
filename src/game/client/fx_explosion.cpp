@@ -727,12 +727,16 @@ void C_BaseExplosionEffect::CreateDynamicLight( void )
 	
 	VectorCopy (m_vecOrigin, dl->origin);
 	
-	dl->decay	= 200;
-	dl->radius	= 255;
+	// Much bigger and brighter explosion light
+	dl->radius	= 750; // 1.25x bigger (600 * 1.25 = 750)
 	dl->color.r = 255;
-	dl->color.g = 220;
-	dl->color.b = 128;
-	dl->die		= gpGlobals->curtime + 0.1f;
+	dl->color.g = 200; // Slightly less green for more orange look
+	dl->color.b = 100; // More orange
+	dl->color.exponent = 4; // Better falloff
+	
+	// Use proper SDK decay for smooth fadeout - 1.25x faster
+	dl->decay	= dl->radius / 0.4f; // Fade over 0.4 seconds (0.5 / 1.25 = 0.4)
+	dl->die		= gpGlobals->curtime + 0.5f; // Die after fade complete
 }
 
 //-----------------------------------------------------------------------------
