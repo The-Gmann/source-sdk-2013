@@ -8,6 +8,9 @@
 
 #include "cbase.h"
 #include "beamdraw.h"
+#include "view.h"
+#include "view_shared.h"
+#include "iviewrender.h"
 #include "enginesprite.h"
 #include "iviewrender_beams.h"
 #include "view.h"
@@ -193,6 +196,66 @@ void DrawSprite( const Vector &vecOrigin, float flWidth, float flHeight, color32
 
 
 //-----------------------------------------------------------------------------
+// Helper function to apply FOV compensation to beam width
+//-----------------------------------------------------------------------------
+static float ApplyBeamFOVCompensation( float width )
+{
+	// Reduce base beam thickness by 40%
+	width *= 0.6f;
+	
+	// Access current view setup for FOV information
+	extern IViewRender *view;
+	if ( view && view->GetPlayerViewSetup() )
+	{
+		const CViewSetup *pViewSetup = view->GetPlayerViewSetup();
+		
+		// Calculate FOV scaling compensation factor
+		float baseFOV = 90.0f;
+		float currentFOV = pViewSetup->fov;
+		
+		// Calculate the compensation factor using tangent ratios
+		float baseTan = tanf( DEG2RAD( baseFOV * 0.5f ) );
+		float currentTan = tanf( DEG2RAD( currentFOV * 0.5f ) );
+		float fovCompensation = currentTan / baseTan;
+		
+		// Apply compensation to maintain consistent apparent size
+		width *= fovCompensation;
+	}
+	
+	return width;
+}
+
+//-----------------------------------------------------------------------------
+// Helper function to apply FOV compensation to beam amplitude/scale (spiral width)
+//-----------------------------------------------------------------------------
+static float ApplyBeamAmplitudeFOVCompensation( float amplitude )
+{
+	// Reduce base beam amplitude by 30%
+	amplitude *= 0.7f;
+	
+	// Access current view setup for FOV information
+	extern IViewRender *view;
+	if ( view && view->GetPlayerViewSetup() )
+	{
+		const CViewSetup *pViewSetup = view->GetPlayerViewSetup();
+		
+		// Calculate FOV scaling compensation factor
+		float baseFOV = 90.0f;
+		float currentFOV = pViewSetup->fov;
+		
+		// Calculate the compensation factor using tangent ratios
+		float baseTan = tanf( DEG2RAD( baseFOV * 0.5f ) );
+		float currentTan = tanf( DEG2RAD( currentFOV * 0.5f ) );
+		float fovCompensation = currentTan / baseTan;
+		
+		// Apply compensation to maintain consistent spiral width
+		amplitude *= fovCompensation;
+	}
+	
+	return amplitude;
+}
+
+//-----------------------------------------------------------------------------
 // Compute vectors perpendicular to the beam
 //-----------------------------------------------------------------------------
 static void ComputeBeamPerpendicular( const Vector &vecBeamDelta, Vector *pPerp )
@@ -299,6 +362,9 @@ void DrawSegs( int noise_divisions, float *prgNoise, const model_t* spritemodel,
 	{
 		scale *= length;
 	}
+	
+	// Apply FOV compensation to amplitude/scale for consistent spiral width
+	scale = ApplyBeamAmplitudeFOVCompensation( scale );
 
 	// Iterator to resample noise waveform (it needs to be generated in powers of 2)
 	noiseStep = (int)((float)(noise_divisions-1) * div * 65536.0f);
@@ -397,11 +463,12 @@ void DrawSegs( int noise_divisions, float *prgNoise, const model_t* spritemodel,
 		// Specify the next segment.
 		if( endWidth == startWidth )
 		{
-			curSeg.m_flWidth = startWidth * 2;
+			curSeg.m_flWidth = ApplyBeamFOVCompensation( startWidth ) * 2;
 		}
 		else
 		{
-			curSeg.m_flWidth = ((fraction*(endWidth-startWidth))+startWidth) * 2;
+			float interpolatedWidth = ((fraction*(endWidth-startWidth))+startWidth);
+			curSeg.m_flWidth = ApplyBeamFOVCompensation( interpolatedWidth ) * 2;
 		}
 		
 		curSeg.m_flTexCoord = vLast;
@@ -584,9 +651,12 @@ void DrawTeslaSegs( int noise_divisions, float *prgNoise, const model_t* spritem
 
 		// Specify the next segment.
 		if( endWidth == startWidth )
-			curSeg.m_flWidth = startWidth * 2;
+			curSeg.m_flWidth = ApplyBeamFOVCompensation( startWidth ) * 2;
 		else
-			curSeg.m_flWidth = ((fraction*(endWidth-startWidth))+startWidth) * 2;
+		{
+			float interpolatedWidth = ((fraction*(endWidth-startWidth))+startWidth);
+			curSeg.m_flWidth = ApplyBeamFOVCompensation( interpolatedWidth ) * 2;
+		}
 
 		// Reduce the width by the current number of branches we've had
 		for ( int j = 0; j < iBranches; j++ )
@@ -633,7 +703,7 @@ void DrawTeslaSegs( int noise_divisions, float *prgNoise, const model_t* spritem
 	if ( iBranches )
 	{
 		DrawTeslaSegs( noise_divisions, prgNoise, spritemodel, frame, rendermode, 
-			vecStart, vecEnd, flWidth, flEndWidth, scale, freq, speed, segments,
+			vecStart, vecEnd, flWidth, flEndWidth, ApplyBeamAmplitudeFOVCompensation( scale ), freq, speed, segments,
 			flags, color, fadeLength, flHDRColorScale );
 	}
 }
@@ -784,6 +854,9 @@ void DrawSplineSegs( int noise_divisions, float *prgNoise,
 		else
 			scale = scale * length;
 		
+		// Apply FOV compensation to amplitude/scale for consistent spiral width
+		scale = ApplyBeamAmplitudeFOVCompensation( scale );
+		
 		// -----------------------------------------------------------------------------
 		// Iterator to resample noise waveform (it needs to be generated in powers of 2)
 		// -----------------------------------------------------------------------------
@@ -900,9 +973,14 @@ void DrawSplineSegs( int noise_divisions, float *prgNoise,
 
 			// Scale width if non-zero spread
 			if (startWidth != endWidth)
-				seg.m_flWidth = ((fraction*(endSegWidth-startSegWidth))+startSegWidth)*2;
+			{
+				float interpolatedWidth = ((fraction*(endSegWidth-startSegWidth))+startSegWidth);
+				seg.m_flWidth = ApplyBeamFOVCompensation( interpolatedWidth ) * 2;
+			}
 			else
-				seg.m_flWidth = startWidth*2;
+			{
+				seg.m_flWidth = ApplyBeamFOVCompensation( startWidth ) * 2;
+			}
 
 			seg.m_flTexCoord = vLast;
 			segDraw.NextSeg( &seg );
@@ -1142,6 +1220,9 @@ void DrawCylinder( int noise_divisions, float *prgNoise, const model_t* spritemo
 	vLast = fmod(freq*speed,1);	// Scroll speed 3.5 -- initial texture position, scrolls 3.5/sec (1.0 is entire texture)
 	scale = scale * length;
 	
+	// Apply FOV compensation to amplitude/scale for consistent spiral width
+	scale = ApplyBeamAmplitudeFOVCompensation( scale );
+	
 	CMatRenderContextPtr pRenderContext( materials );
 	IMesh* pMesh = pRenderContext->GetDynamicMesh( );
 
@@ -1234,6 +1315,9 @@ void DrawRing( int noise_divisions, float *prgNoise, void (*pfnNoise)( float *no
 	// UNDONE: Expose this paramter as well(3.5)?  Texture scroll rate along beam
 	vLast = fmod(freq*speed,1);	// Scroll speed 3.5 -- initial texture position, scrolls 3.5/sec (1.0 is entire texture)
 	scale = amplitude * length / 8.0;
+	
+	// Apply FOV compensation to amplitude/scale for consistent spiral width
+	scale = ApplyBeamAmplitudeFOVCompensation( scale );
 
 	// Iterator to resample noise waveform (it needs to be generated in powers of 2)
 	noiseStep = (int)((noise_divisions-1) * div * 65536.0) * 8;

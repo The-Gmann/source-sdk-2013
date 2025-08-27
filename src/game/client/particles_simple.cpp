@@ -11,6 +11,10 @@
 #include "toolframework_client.h"
 #include "toolframework/itoolframework.h"
 #include "vstdlib/IKeyValuesSystem.h"
+#include "view.h"
+#include "view_shared.h"
+#include "iviewrender.h"
+#include "mathlib/mathlib.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -293,7 +297,40 @@ float CSimpleEmitter::UpdateAlpha( const SimpleParticle *pParticle )
 //-----------------------------------------------------------------------------
 float CSimpleEmitter::UpdateScale( const SimpleParticle *pParticle )
 {
-	return	(float)pParticle->m_uchStartSize + ( (float)pParticle->m_uchEndSize - (float)pParticle->m_uchStartSize ) * (pParticle->m_flLifetime / pParticle->m_flDieTime);
+	float baseScale = (float)pParticle->m_uchStartSize + ( (float)pParticle->m_uchEndSize - (float)pParticle->m_uchStartSize ) * (pParticle->m_flLifetime / pParticle->m_flDieTime);
+	
+	// Apply FOV compensation for muzzleflash particles to maintain consistent size
+	const char *debugName = GetEffectName();
+	if ( debugName && ( Q_stristr( debugName, "MuzzleFlash" ) || Q_stristr( debugName, "muzzle" ) ) )
+	{
+		// Access current view setup for FOV information
+		extern IViewRender *view;
+		if ( view && view->GetPlayerViewSetup() )
+		{
+			const CViewSetup *pViewSetup = view->GetPlayerViewSetup();
+			
+			// Calculate FOV scaling compensation factor
+			// At 90 degrees FOV, particles should have their natural size
+			// At higher FOV (like 120), particles get squished, so we need to scale them up
+			// At lower FOV (like 60), particles get enlarged, so we need to scale them down
+			float baseFOV = 90.0f;
+			float currentFOV = pViewSetup->fov;
+			
+			// Calculate the compensation factor using tangent ratios
+			// This ensures particles maintain visual consistency across FOV changes
+			float baseTan = tanf( DEG2RAD( baseFOV * 0.5f ) );
+			float currentTan = tanf( DEG2RAD( currentFOV * 0.5f ) );
+			float fovCompensation = currentTan / baseTan;
+			
+			// Apply compensation to maintain consistent apparent size
+			baseScale *= fovCompensation;
+		}
+		
+		// Make muzzleflash particles 45% smaller
+		baseScale *= 0.55f;
+	}
+	
+	return baseScale;
 }
 
 //-----------------------------------------------------------------------------

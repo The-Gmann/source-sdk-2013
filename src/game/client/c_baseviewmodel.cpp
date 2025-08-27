@@ -54,9 +54,16 @@ void FormatViewModelAttachment( Vector &vOrigin, bool bInverse )
 	// Presumably, SetUpView has been called so we know our FOV and render origin.
 	const CViewSetup *pViewSetup = view->GetPlayerViewSetup();
 	
-	float worldx = tan( pViewSetup->fov * M_PI/360.0 );
-	float viewx = tan( pViewSetup->fovViewmodel * M_PI/360.0 );
-
+	// Use the actual calculated FOV values from the view setup
+	// pViewSetup->fov is the current world FOV (affected by fov_desired)
+	// pViewSetup->fovViewmodel is the properly calculated viewmodel FOV
+	float flCurrentWorldFOV = pViewSetup->fov;
+	float flCurrentViewmodelFOV = pViewSetup->fovViewmodel;
+	
+	// Calculate scaling factors using the actual current FOV values
+	float worldx = tan( flCurrentWorldFOV * M_PI/360.0 );
+	float viewx = tan( flCurrentViewmodelFOV * M_PI/360.0 );
+	
 	// aspect ratio cancels out, so only need one factor
 	// the difference between the screen coordinates of the 2 systems is the ratio
 	// of the coefficients of the projection matrices (tan (fov/2) is that coefficient)

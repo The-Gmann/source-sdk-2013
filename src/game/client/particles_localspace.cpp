@@ -94,7 +94,9 @@ void CLocalSpaceEmitter::RenderParticles( CParticleRenderIterator *pIterator )
 		// Correct viewmodel squashing
 		if ( m_fFlags & FLE_VIEWMODEL )
 		{
-			FormatViewModelAttachment( worldPos, false );
+			// Skip FOV scaling for muzzleflash particles - they should maintain
+			// their natural size relative to weapon barrels
+			// FormatViewModelAttachment( worldPos, false );
 		}
 
 		TransformParticle( mModelView, worldPos, screenPos );
