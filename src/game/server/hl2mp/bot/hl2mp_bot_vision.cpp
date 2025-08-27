@@ -12,7 +12,8 @@
 // ConVar hl2mp_bot_choose_target_interval( "hl2mp_bot_choose_target_interval", "0.3f", FCVAR_CHEAT, "How often, in seconds, a HL2MPBot can reselect his target" );
 // ConVar hl2mp_bot_sniper_choose_target_interval( "hl2mp_bot_sniper_choose_target_interval", "3.0f", FCVAR_CHEAT, "How often, in seconds, a zoomed-in Sniper can reselect his target" );
 
-extern ConVar bot_ignore_real_players;
+extern ConVar bot_ignore_players;
+extern ConVar bot_ignore_bots;
 
 //------------------------------------------------------------------------------------------
 void CHL2MPBotVision::CollectPotentiallyVisibleEntities( CUtlVector< CBaseEntity* >* potentiallyVisible )
@@ -41,9 +42,15 @@ void CHL2MPBotVision::CollectPotentiallyVisibleEntities( CUtlVector< CBaseEntity
 		if ( !player->IsAlive() )
 			continue;
 
-		if ( bot_ignore_real_players.GetBool() )
+		if ( bot_ignore_players.GetBool() )
 		{
 			if ( !player->IsBot() )
+				continue;
+		}
+		
+		if ( bot_ignore_bots.GetBool() )
+		{
+			if ( player->IsBot() )
 				continue;
 		}
 

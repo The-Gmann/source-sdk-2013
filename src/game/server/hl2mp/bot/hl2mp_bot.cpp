@@ -28,6 +28,7 @@ ConVar bot_near_point_travel_distance( "bot_near_point_travel_distance", "750", 
 ConVar bot_debug_tags( "bot_debug_tags", "0", FCVAR_CHEAT, "ent_text will only show tags on bots" );
 
 ConVar bot_ignore_real_players( "bot_ignore_real_players", "0", FCVAR_CHEAT );
+ConVar bot_ignore_bots( "bot_ignore_bots", "0", FCVAR_CHEAT );
 
 ConVar bot_shotgunner_range( "bot_shotgunner_range", "320", FCVAR_NONE );
 ConVar bot_prop_freak_ratio( "bot_prop_freak_ratio", "0.3", FCVAR_NONE );
@@ -698,22 +699,23 @@ void CHL2MPBot::SetMission( MissionType mission, bool resetBehaviorSystem )
 //-----------------------------------------------------------------------------------------------------
 void CHL2MPBot::PhysicsSimulate( void )
 {
-	// Check if bot AI processing is completely disabled
+	// Check if bot_stop is enabled and handle respawning for dead bots
 	extern ConVar bot_stop;
 	if ( bot_stop.GetBool() )
 	{
-		// Force stop any movement by clearing velocity and user command inputs
-		SetAbsVelocity( vec3_origin );
-		
-		// Clear all input buttons to stop any ongoing commands
-		m_inputButtons = 0;
-		m_prevInputButtons = 0;
-		
-		// Only run basic physics simulation without any bot AI updates
-		CHL2MP_Player::PhysicsSimulate();
-		return;
+		// Force respawn dead bots immediately when bot_stop is enabled
+		if ( !IsAlive() && (m_lifeState == LIFE_DEAD || m_lifeState == LIFE_RESPAWNABLE) )
+		{
+			if ( g_pGameRules->FPlayerCanRespawn( this ) )
+			{
+				extern void respawn( CBaseEntity* pEdict, bool fCopyCorpse );
+				respawn( this, false );
+				return;
+			}
+		}
 	}
-
+	
+	// Run normal physics simulation
 	BaseClass::PhysicsSimulate();
 
 	if ( m_spawnArea == NULL )
@@ -745,6 +747,23 @@ void CHL2MPBot::Touch( CBaseEntity *pOther )
 	}
 }
 
+
+//-----------------------------------------------------------------------------------------------------
+void CHL2MPBot::Update( void )
+{
+	// Check if bot AI processing is disabled
+	extern ConVar bot_stop;
+	if ( bot_stop.GetBool() )
+	{
+		// Don't call BaseClass::Update() when bot_stop is enabled
+		// This prevents all NextBot interfaces (ILocomotion, IBody, IVision, IIntention)
+		// from updating and causing AI behaviors like movement, targeting, and reactions
+		return;
+	}
+	
+	// Normal operation - allow NextBot framework to update all interfaces
+	BaseClass::Update();
+}
 
 //-----------------------------------------------------------------------------------------------------
 void CHL2MPBot::AvoidPlayers( CUserCmd *pCmd )
@@ -2436,9 +2455,17 @@ CHL2MP_Player *CHL2MPBot::SelectRandomReachableEnemy( void )
 	{
 		CHL2MP_Player *player = livePlayerVector[i];
 
-		if ( bot_ignore_real_players.GetBool() )
+		if ( bot_ignore_players.GetBool() )
 		{
 			if ( !player->IsBot() )
+			{
+				continue;
+			}
+		}
+		
+		if ( bot_ignore_bots.GetBool() )
+		{
+			if ( player->IsBot() )
 			{
 				continue;
 			}
@@ -2583,10 +2610,17 @@ bool CHL2MPBot::IsEnemy( const CBaseEntity* them ) const
 	if ( !them->IsPlayer() )
 		return false;
 
-	if ( bot_ignore_real_players.GetBool() )
+	if ( bot_ignore_players.GetBool() )
 	{
 		CBasePlayer* pPlayer = ( CBasePlayer* )them;
 		if ( !pPlayer->IsBot() )
+			return false;
+	}
+	
+	if ( bot_ignore_bots.GetBool() )
+	{
+		CBasePlayer* pPlayer = ( CBasePlayer* )them;
+		if ( pPlayer->IsBot() )
 			return false;
 	}
 

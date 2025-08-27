@@ -61,6 +61,7 @@ public:
 	virtual void		Spawn();
 	virtual void		FireGameEvent( IGameEvent *event );
 	virtual void		Event_Killed( const CTakeDamageInfo &info );
+	virtual void		Update( void );  // Override NextBot Update to handle bot_stop
 	virtual void		PhysicsSimulate( void );
 	virtual void		Touch( CBaseEntity *pOther );
 	virtual void		AvoidPlayers( CUserCmd *pCmd );				// some game types allow players to pass through each other, this method pushes them apart

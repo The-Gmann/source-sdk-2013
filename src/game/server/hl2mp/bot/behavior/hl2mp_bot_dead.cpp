@@ -29,18 +29,11 @@ ActionResult< CHL2MPBot >	CHL2MPBotDead::Update( CHL2MPBot *me, float interval )
 		return ChangeTo( new CHL2MPBotMainAction, "This should not happen!" );
 	}
 
-	// Check if bot_stop is enabled - force immediate respawn to avoid broken bot states
+	// When bot_stop is enabled, respawn is handled in PhysicsSimulate
+	// so we just need to continue here without additional logic
 	extern ConVar bot_stop;
 	if ( bot_stop.GetBool() )
 	{
-		// Force respawn immediately when bot_stop is enabled to prevent stuck dead bots
-		if ( me->m_lifeState == LIFE_DEAD || me->m_lifeState == LIFE_RESPAWNABLE )
-		{
-			if ( g_pGameRules->FPlayerCanRespawn( me ) )
-			{
-				respawn( me, !me->IsObserver() );
-			}
-		}
 		return Continue();
 	}
 
