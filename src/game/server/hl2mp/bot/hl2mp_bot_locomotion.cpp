@@ -21,6 +21,7 @@ ConVar bot_sprint_when_fleeing( "bot_sprint_when_fleeing", "1", FCVAR_CHEAT, "Bo
 ConVar bot_sprint_long_distance( "bot_sprint_long_distance", "300", FCVAR_CHEAT, "Distance threshold for sprinting to objectives" );
 ConVar bot_sprint_low_health( "bot_sprint_low_health", "50", FCVAR_CHEAT, "Health threshold for emergency sprinting" );
 ConVar bot_sprint_min_duration( "bot_sprint_min_duration", "2.0", FCVAR_CHEAT, "Minimum time to sprint before allowing state change" );
+ConVar bot_nav_crouch( "bot_nav_crouch", "1", FCVAR_CHEAT );
 
 //-----------------------------------------------------------------------------------------
 void CHL2MPBotLocomotion::Update( void )
@@ -195,10 +196,19 @@ void CHL2MPBotLocomotion::Update( void )
 	// Manage crouch-jump behavior - but don't interfere with sprinting
 	if ( IsOnGround() )
 	{
-		// Only release crouch if we're not trying to sprint
-		if ( !shouldSprint )
+		me->ReleaseCrouchButton();
+
+		if ( bot_nav_crouch.GetBool() )
 		{
-			me->ReleaseCrouchButton();
+			const PathFollower *path = me->GetCurrentPath();
+			if ( path && path->GetCurrentGoal() && path->GetCurrentGoal()->area )
+			{
+				if ( path->GetCurrentGoal()->area->GetAttributes() & NAV_MESH_CROUCH )
+				{
+					// moving through a crouch area
+					me->PressCrouchButton( 0.3f );
+				}
+			}
 		}
 	}
 	else
