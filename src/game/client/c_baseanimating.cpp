@@ -3518,17 +3518,22 @@ int C_BaseAnimating::InternalDrawModel( int flags )
 
 extern ConVar muzzleflash_light;
 
+extern ConVar rb_dlight_muzzleflash;
+
 void C_BaseAnimating::ProcessMuzzleFlashEvent()
 {
 	// If we have an attachment, then stick a light on it.
-	if ( muzzleflash_light.GetBool() )
+	if ( rb_dlight_muzzleflash.GetBool() )
 	{
 		//FIXME: We should really use a named attachment for this
 		if ( m_Attachments.Count() > 0 )
 		{
 			Vector vAttachment;
+			QAngle angles;
+			GetAttachment(1, vAttachment, angles);
 			QAngle dummyAngles;
-			GetAttachment( 1, vAttachment, dummyAngles );
+			AngleVectors(angles, &vAttachment);
+			vAttachment += vAttachment * 2;
 
 			// Make an elight
 			dlight_t *el = effects->CL_AllocElight( LIGHT_INDEX_MUZZLEFLASH + index );
@@ -3536,9 +3541,16 @@ void C_BaseAnimating::ProcessMuzzleFlashEvent()
 			el->radius = random->RandomInt( 32, 64 ); 
 			el->decay = el->radius / 0.05f;
 			el->die = gpGlobals->curtime + 0.05f;
-			el->color.r = 255;
-			el->color.g = 192;
-			el->color.b = 64;
+
+			// Color values
+			int originalR = 200;
+			int originalG = 125;
+			int originalB = 35;
+
+			// Randomize color components within the range of +/- 20
+			el->color.r = originalR + random->RandomInt(-20, 20);
+			el->color.g = originalG + random->RandomInt(-20, 20);
+			el->color.b = originalB + random->RandomInt(0, 0);
 			el->color.exponent = 5;
 		}
 	}

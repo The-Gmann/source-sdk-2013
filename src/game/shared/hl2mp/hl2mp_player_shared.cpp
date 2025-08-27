@@ -19,6 +19,9 @@
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "in_buttons.h"
 
+// Stealth movement cvar - server-side control for silent walking/ducking
+ConVar rb_stealth_movement( "rb_stealth_movement", "1", FCVAR_REPLICATED, "Enable stealth movement (silent walking and ducking). 0 = disabled, 1 = enabled" );
+
 extern ConVar sv_footsteps;
 
 const char *g_ppszPlayerSoundPrefixNames[PLAYER_SOUNDS_MAX] =
@@ -78,58 +81,62 @@ void CHL2MP_Player::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, fl
 #endif
 
     // Check for stealth movement like Counter-Strike Source - both walking and ducking
-    // Walking stealth: Must check walk button, ground state, movement speed, and NOT shifting
-    if (m_nButtons & IN_WALK)
+    // Only if rb_stealth_movement is enabled
+    if (rb_stealth_movement.GetBool())
     {
-        // Only allow stealth walking when on the ground (prevents silent jumping/landing)
-        if (GetFlags() & FL_ONGROUND)
+        // Walking stealth: Must check walk button, ground state, movement speed, and NOT shifting
+        if (m_nButtons & IN_WALK)
         {
-            // Must NOT be holding shift/speed key to prevent silent running
-            if (!(m_nButtons & IN_SPEED))
+            // Only allow stealth walking when on the ground (prevents silent jumping/landing)
+            if (GetFlags() & FL_ONGROUND)
             {
-                // Get player's current movement speed
-                Vector velocity = GetAbsVelocity();
-                float currentSpeed = velocity.Length2D();
-                
-                // Use threshold you determined works for your setup
-                const float walkSpeedThreshold = 225.0f;
-                
-                // Only grant stealth walking if actually moving at walking speed or slower
-                if (currentSpeed <= walkSpeedThreshold)
+                // Must NOT be holding shift/speed key to prevent silent running
+                if (!(m_nButtons & IN_SPEED))
                 {
-                    // Skip step sounds completely when actually walking for stealth - like Counter-Strike Source
-                    return;
+                    // Get player's current movement speed
+                    Vector velocity = GetAbsVelocity();
+                    float currentSpeed = velocity.Length2D();
+                    
+                    // Use threshold you determined works for your setup
+                    const float walkSpeedThreshold = 225.0f;
+                    
+                    // Only grant stealth walking if actually moving at walking speed or slower
+                    if (currentSpeed <= walkSpeedThreshold)
+                    {
+                        // Skip step sounds completely when actually walking for stealth - like Counter-Strike Source
+                        return;
+                    }
                 }
             }
+            // If holding walk but shifting, not on ground, or moving too fast, play normal footsteps
         }
-        // If holding walk but shifting, not on ground, or moving too fast, play normal footsteps
-    }
-    
-    // Ducking/crouching stealth: Apply same mechanics when ducking
-    if (GetFlags() & FL_DUCKING)
-    {
-        // Only allow stealth ducking when on the ground (prevents silent jumping/landing while crouched)
-        if (GetFlags() & FL_ONGROUND)
+        
+        // Ducking/crouching stealth: Apply same mechanics when ducking
+        if (GetFlags() & FL_DUCKING)
         {
-            // Must NOT be holding shift/speed key to prevent silent crouch-running
-            if (!(m_nButtons & IN_SPEED))
+            // Only allow stealth ducking when on the ground (prevents silent jumping/landing while crouched)
+            if (GetFlags() & FL_ONGROUND)
             {
-                // Get player's current movement speed
-                Vector velocity = GetAbsVelocity();
-                float currentSpeed = velocity.Length2D();
-                
-                // Use same threshold for ducking stealth as walking
-                const float duckSpeedThreshold = 225.0f;
-                
-                // Only grant stealth ducking if moving slowly
-                if (currentSpeed <= duckSpeedThreshold)
+                // Must NOT be holding shift/speed key to prevent silent crouch-running
+                if (!(m_nButtons & IN_SPEED))
                 {
-                    // Skip step sounds completely when actually duck-walking for stealth
-                    return;
+                    // Get player's current movement speed
+                    Vector velocity = GetAbsVelocity();
+                    float currentSpeed = velocity.Length2D();
+                    
+                    // Use same threshold for ducking stealth as walking
+                    const float duckSpeedThreshold = 225.0f;
+                    
+                    // Only grant stealth ducking if moving slowly
+                    if (currentSpeed <= duckSpeedThreshold)
+                    {
+                        // Skip step sounds completely when actually duck-walking for stealth
+                        return;
+                    }
                 }
             }
+            // If ducking but shifting, not on ground, or moving too fast, play normal footsteps
         }
-        // If ducking but shifting, not on ground, or moving too fast, play normal footsteps
     }
 
     // Always play the base surface-dependent footstep sound first

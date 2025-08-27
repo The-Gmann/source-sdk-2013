@@ -702,6 +702,13 @@ void CHL2MPBot::PhysicsSimulate( void )
 	extern ConVar bot_stop;
 	if ( bot_stop.GetBool() )
 	{
+		// Force stop any movement by clearing velocity and user command inputs
+		SetAbsVelocity( vec3_origin );
+		
+		// Clear all input buttons to stop any ongoing commands
+		m_inputButtons = 0;
+		m_prevInputButtons = 0;
+		
 		// Only run basic physics simulation without any bot AI updates
 		CHL2MP_Player::PhysicsSimulate();
 		return;

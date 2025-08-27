@@ -11,6 +11,11 @@
 #include "IEffects.h"
 #include "debugoverlay_shared.h"
 
+#ifdef CLIENT_DLL
+	#include "dlight.h"
+	#include "r_efx.h"
+#endif
+
 #ifndef CLIENT_DLL
 	#include "npc_metropolice.h"
 	#include "te_effect_dispatch.h"
@@ -35,6 +40,7 @@
 #include "tier0/memdbgon.h"
 
 extern ConVar metropolice_move_and_melee;
+extern ConVar rb_dlight_stunstick;
 
 #define	STUNSTICK_RANGE				75.0f
 #define	STUNSTICK_REFIRE			0.8f
@@ -840,6 +846,32 @@ void C_WeaponStunStick::DrawFirstPersonEffects( void )
 		{
 			UTIL_GetWeaponAttachment( this, i, vecOrigin, vecAngles );
 			DrawHalo( pMaterial, vecOrigin, scale, color );
+		}
+	}
+
+	// Check the ConVar value before creating the dlight
+	if ( rb_dlight_stunstick.GetBool() )
+	{
+		if ( InSwing() )
+		{
+			Vector vAttachment;
+			QAngle tempAng;
+			UTIL_GetWeaponAttachment( this, m_BeamCenterAttachment, vAttachment, tempAng );
+
+			dlight_t *dl = effects->CL_AllocDlight(index);
+			dl->origin = vAttachment;
+
+			// Legacy colors - bright white
+			dl->color.r = 245;
+			dl->color.g = 245;
+			dl->color.b = 245;
+
+			// Randomize the die value by +/- 0.01
+			dl->die = gpGlobals->curtime + 0.05f + random->RandomFloat(-0.01f, 0.01f);
+			dl->radius = random->RandomFloat(245.0f, 256.0f);
+
+			// Randomize the decay value
+			dl->decay = 512.0f;
 		}
 	}
 }

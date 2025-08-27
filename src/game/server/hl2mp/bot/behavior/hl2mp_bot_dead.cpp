@@ -29,6 +29,21 @@ ActionResult< CHL2MPBot >	CHL2MPBotDead::Update( CHL2MPBot *me, float interval )
 		return ChangeTo( new CHL2MPBotMainAction, "This should not happen!" );
 	}
 
+	// Check if bot_stop is enabled - force immediate respawn to avoid broken bot states
+	extern ConVar bot_stop;
+	if ( bot_stop.GetBool() )
+	{
+		// Force respawn immediately when bot_stop is enabled to prevent stuck dead bots
+		if ( me->m_lifeState == LIFE_DEAD || me->m_lifeState == LIFE_RESPAWNABLE )
+		{
+			if ( g_pGameRules->FPlayerCanRespawn( me ) )
+			{
+				respawn( me, !me->IsObserver() );
+			}
+		}
+		return Continue();
+	}
+
 	if ( m_deadTimer.IsGreaterThen( 5.0f ) )
 	{
 		if ( me->HasAttribute( CHL2MPBot::REMOVE_ON_DEATH ) )

@@ -43,6 +43,10 @@
 	ConVar cl_flipviewmodels( "cl_flipviewmodels", "0", FCVAR_USERINFO | FCVAR_ARCHIVE | FCVAR_NOT_CONNECTED, "Flip view models." );
 #endif
 
+#ifdef HL2MP
+	ConVar rb_lefthand( "rb_lefthand", "0", FCVAR_USERINFO | FCVAR_ARCHIVE | FCVAR_NOT_CONNECTED, "Flip view models." );
+#endif
+
 void PostToolMessage( HTOOLHANDLE hEntity, KeyValues *msg );
 
 void FormatViewModelAttachment( Vector &vOrigin, bool bInverse )
@@ -212,6 +216,14 @@ bool C_BaseViewModel::ShouldFlipViewModel()
 	if ( pWeapon )
 	{
 		return pWeapon->m_bFlipViewModel != cl_flipviewmodels.GetBool();
+	}
+#endif
+
+#ifdef HL2MP
+	CBaseCombatWeapon *pWeapon = m_hWeapon.Get();
+	if ( pWeapon )
+	{
+		return pWeapon->m_bFlipViewModel != rb_lefthand.GetBool();
 	}
 #endif
 

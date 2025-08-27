@@ -24,7 +24,7 @@
 #define MsgPredTest(...)
 #define MsgPredTest2(...)
 
-ConVar sv_infinite_aux_power( "sv_infinite_aux_power", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
+ConVar rb_infinite_aux_power( "rb_infinite_aux_power", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
 
 LINK_ENTITY_TO_CLASS( player, C_HL2MP_Player );
 
@@ -418,7 +418,7 @@ void C_HL2MP_Player::SuitPower_Initialize( void )
 bool C_HL2MP_Player::SuitPower_Drain( float flPower )
 {
 	// Suitpower cheat on?
-	if ( sv_infinite_aux_power.GetBool() )
+	if ( rb_infinite_aux_power.GetBool() )
 		return true;
 
 	m_HL2Local.m_flSuitPower -= flPower;
