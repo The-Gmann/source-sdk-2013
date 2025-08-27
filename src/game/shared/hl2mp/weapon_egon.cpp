@@ -162,6 +162,10 @@ private:
     bool m_bClientThinking;
     int m_nBeamDelayFrames;
     int m_nSpriteDelayFrames;
+    
+    // New timing system for 0.2s movement
+    float m_flBeamStartTime;
+    Vector m_vecBeamStartPos;
 #endif
 
     // State variables
@@ -270,6 +274,10 @@ CWeaponEgon::CWeaponEgon()
     m_bClientThinking = false;
     m_nBeamDelayFrames = 0;
     m_nSpriteDelayFrames = 0;
+    
+    // Initialize new timing system
+    m_flBeamStartTime = 0.0f;
+    m_vecBeamStartPos = vec3_origin;
 #endif
 }
 
@@ -369,9 +377,13 @@ void CWeaponEgon::CreateClientBeams()
     Vector startPos = GetMuzzlePosition();
     Vector endPos = m_vecBeamEndPos;
 
-    // Wait for proper positioning data
+    // 8-frame rendering delay for beams, 12-frame delay for sprite
     m_nBeamDelayFrames = 8;
-    m_nSpriteDelayFrames = 8; // Match beam delay timing
+    m_nSpriteDelayFrames = 12;
+    
+    // Initialize timing system for 16-frame interpolation delay (separate from rendering)
+    m_flBeamStartTime = gpGlobals->curtime;
+    m_vecBeamStartPos = startPos;
 
     // Choose beam sprite based on viewmodel usage
     // Use xbeam1 for third-person (others), xbeam_nodepth for first-person (owner)
@@ -384,7 +396,7 @@ void CWeaponEgon::CreateClientBeams()
     if (m_pClientBeam)
     {
         m_pClientBeam->SetStartPos(startPos);
-        m_pClientBeam->SetEndPos(endPos);
+        m_pClientBeam->SetEndPos(startPos);  // Start at muzzle, will extend to target
         m_pClientBeam->SetBeamFlags(FBEAM_SINENOISE | FBEAM_FOREVER);
         m_pClientBeam->SetScrollRate(15);
         m_pClientBeam->SetBrightness(200);
@@ -392,8 +404,8 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientBeam->SetNoise(0.2f);
         m_pClientBeam->SetRenderMode(kRenderTransAdd);
         m_pClientBeam->SetType(BEAM_POINTS);
-        m_pClientBeam->PointsInit(startPos, endPos);
-        m_pClientBeam->AddEffects(EF_NODRAW);
+        m_pClientBeam->PointsInit(startPos, startPos);  // Start at muzzle
+        m_pClientBeam->AddEffects(EF_NODRAW);  // Hidden during delay
     }
 
     // Create noise beam
@@ -401,7 +413,7 @@ void CWeaponEgon::CreateClientBeams()
     if (m_pClientNoise)
     {
         m_pClientNoise->SetStartPos(startPos);
-        m_pClientNoise->SetEndPos(endPos);
+        m_pClientNoise->SetEndPos(startPos);  // Start at muzzle, will extend to target
         m_pClientNoise->SetBeamFlags(FBEAM_FOREVER);
         m_pClientNoise->SetScrollRate(10);
         m_pClientNoise->SetBrightness(150);
@@ -409,12 +421,12 @@ void CWeaponEgon::CreateClientBeams()
         m_pClientNoise->SetNoise(0.8f);
         m_pClientNoise->SetRenderMode(kRenderTransAdd);
         m_pClientNoise->SetType(BEAM_POINTS);
-        m_pClientNoise->PointsInit(startPos, endPos);
-        m_pClientNoise->AddEffects(EF_NODRAW);
+        m_pClientNoise->PointsInit(startPos, startPos);  // Start at muzzle
+        m_pClientNoise->AddEffects(EF_NODRAW);  // Hidden during delay
     }
 
-    // Create flare sprite - position it at the hit point to prevent wall clipping
-    Vector spritePos = endPos;
+    // Create flare sprite - start at muzzle, will move to hit point
+    Vector spritePos = startPos;  // Start at muzzle
     
     // Check if we're hitting sky and use nodepth version to prevent sky rendering
     trace_t tr;
@@ -454,7 +466,7 @@ void CWeaponEgon::CreateClientBeams()
         }
         
         m_pClientSprite->TurnOn();
-        m_pClientSprite->AddEffects(EF_NODRAW);
+        m_pClientSprite->AddEffects(EF_NODRAW);  // Hidden during delay
         
         // Validate client handle after creation
         if (m_pClientSprite->GetClientHandle() == INVALID_CLIENTENTITY_HANDLE)
@@ -479,77 +491,49 @@ void CWeaponEgon::UpdateClientBeams()
     }
 
     Vector startPos = GetMuzzlePosition();
-    Vector endPos = m_vecBeamEndPos;
+    Vector targetEndPos = m_vecBeamEndPos;
+    Vector currentEndPos = targetEndPos;
+    Vector spritePos = targetEndPos;
     
-    // Calculate sprite position - position it at the actual hit point
-    // This prevents the sprite from being pushed into walls when player gets close
-    Vector spritePos = endPos;
+    // Calculate time since firing started
+    float timeSinceFire = gpGlobals->curtime - m_flBeamStartTime;
     
     // Ensure minimum beam length
-    float beamLength = (endPos - startPos).Length();
-    
+    float beamLength = (targetEndPos - startPos).Length();
     if (beamLength < 16.0f)
     {
-        Vector beamDir = (endPos - startPos).Normalized();
-        endPos = startPos + (beamDir * 16.0f);
-        spritePos = endPos; // Keep sprite at the end position
+        Vector beamDir = (targetEndPos - startPos).Normalized();
+        targetEndPos = startPos + (beamDir * 16.0f);
     }
 
-    // Handle frame delay for initial positioning
-    if (m_nBeamDelayFrames > 0)
+    // Determine current beam end position based on timing
+    if (timeSinceFire < (16.0f / 60.0f))  // First 16 frames (interpolation delay)
     {
-        m_nBeamDelayFrames--;
+        // During interpolation delay: beams extend from muzzle to target
+        float progress = timeSinceFire / (16.0f / 60.0f);
+        currentEndPos = Lerp(progress, startPos, targetEndPos);
+        spritePos = currentEndPos;
         
-        if (m_pClientBeam)
-        {
-            m_pClientBeam->SetStartPos(startPos);
-            m_pClientBeam->SetEndPos(endPos);
-            m_pClientBeam->PointsInit(startPos, endPos);
-        }
-
-        if (m_pClientNoise)
-        {
-            m_pClientNoise->SetStartPos(startPos);
-            m_pClientNoise->SetEndPos(endPos);
-            m_pClientNoise->PointsInit(startPos, endPos);
-        }
-
-        if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
-        {
-            m_pClientSprite->SetAbsOrigin(spritePos);
-        }
-        
-        m_vecLastEndPos = endPos;
-        return;
+        // Set initial position for post-interpolation-delay tracking
+        m_vecLastEndPos = currentEndPos;
     }
-
-    // Dynamic light position uses endPos (actual surface)
-    if (!m_pBeamGlow && rb_dlight_egon.GetBool())
+    else
     {
-        m_pBeamGlow = effects->CL_AllocDlight(entindex());
-        if (m_pBeamGlow)
+        // After interpolation delay: smooth interpolation system takes over
+        Vector lastSpritePos = m_vecLastEndPos;  // Use last beam position, not static
+        if (m_vecLastEndPos != vec3_origin)
         {
-            m_pBeamGlow->origin = endPos;
-            m_pBeamGlow->radius = 55.0f;
-            m_pBeamGlow->color.r = 50;
-            m_pBeamGlow->color.g = 215;
-            m_pBeamGlow->color.b = 255;
-            m_pBeamGlow->color.exponent = 3; // Better falloff
-            m_pBeamGlow->decay = 0; // No decay while active
-            m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+            float lerpFactor = gpGlobals->frametime * 25.0f;
+            currentEndPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, targetEndPos);
+            spritePos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), lastSpritePos, targetEndPos);
         }
+        else
+        {
+            currentEndPos = targetEndPos;
+            spritePos = targetEndPos;
+        }
+        m_vecLastEndPos = currentEndPos;
     }
-
-    // Smooth interpolation for both beam end and sprite position
-    static Vector lastSpritePos = vec3_origin;
-    if (m_vecLastEndPos != vec3_origin)
-    {
-        float lerpFactor = gpGlobals->frametime * 25.0f;
-        endPos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), m_vecLastEndPos, endPos);
-        spritePos = Lerp(clamp(lerpFactor, 0.0f, 1.0f), lastSpritePos, spritePos);
-    }
-    m_vecLastEndPos = endPos;
-    lastSpritePos = spritePos;
 
     // Create beams if they don't exist
     if (!m_pClientBeam || !m_pClientNoise || !m_pClientSprite)
@@ -558,18 +542,26 @@ void CWeaponEgon::UpdateClientBeams()
         return;
     }
 
-    // Show beams
-    if (m_pClientBeam && m_pClientBeam->IsEffectActive(EF_NODRAW))
+    // Handle 8-frame rendering delay (beams move but stay hidden)
+    if (m_nBeamDelayFrames > 0)
     {
-        m_pClientBeam->RemoveEffects(EF_NODRAW);
+        m_nBeamDelayFrames--;
+    }
+    else
+    {
+        // Show beams after 8-frame rendering delay
+        if (m_pClientBeam && m_pClientBeam->IsEffectActive(EF_NODRAW))
+        {
+            m_pClientBeam->RemoveEffects(EF_NODRAW);
+        }
+        
+        if (m_pClientNoise && m_pClientNoise->IsEffectActive(EF_NODRAW))
+        {
+            m_pClientNoise->RemoveEffects(EF_NODRAW);
+        }
     }
     
-    if (m_pClientNoise && m_pClientNoise->IsEffectActive(EF_NODRAW))
-    {
-        m_pClientNoise->RemoveEffects(EF_NODRAW);
-    }
-    
-    // Handle sprite delay - show sprite only after delay period
+    // Handle sprite rendering delay (separate from beam delay)
     if (m_nSpriteDelayFrames > 0)
     {
         m_nSpriteDelayFrames--;
@@ -579,24 +571,24 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->RemoveEffects(EF_NODRAW);
     }
 
-    // Update beam positions
+    // Update beam positions (always, even during rendering delay)
     if (m_pClientBeam)
     {
         m_pClientBeam->SetStartPos(startPos);
-        m_pClientBeam->SetEndPos(endPos);
-        m_pClientBeam->PointsInit(startPos, endPos);
+        m_pClientBeam->SetEndPos(currentEndPos);
+        m_pClientBeam->PointsInit(startPos, currentEndPos);
         m_pClientBeam->SetBeamFlags(m_pClientBeam->GetBeamFlags() | FBEAM_FOREVER);
     }
 
     if (m_pClientNoise)
     {
         m_pClientNoise->SetStartPos(startPos);
-        m_pClientNoise->SetEndPos(endPos);
-        m_pClientNoise->PointsInit(startPos, endPos);
+        m_pClientNoise->SetEndPos(currentEndPos);
+        m_pClientNoise->PointsInit(startPos, currentEndPos);
         m_pClientNoise->SetBeamFlags(m_pClientNoise->GetBeamFlags() | FBEAM_FOREVER);
     }
 
-    // Update sprite position (offset from surface)
+    // Update sprite position (always, even during rendering delay)
     if (m_pClientSprite && m_pClientSprite->GetClientHandle() != INVALID_CLIENTENTITY_HANDLE)
     {
         m_pClientSprite->SetAbsOrigin(spritePos);
@@ -610,11 +602,28 @@ void CWeaponEgon::UpdateClientBeams()
         m_pClientSprite->m_flFrame = currentFrame;
     }
 
-    // Update dynamic light with proper SDK decay mechanism
+    // Dynamic light only appears after rendering delay and follows current position
+    if (m_nBeamDelayFrames == 0 && !m_pBeamGlow && rb_dlight_egon.GetBool())
+    {
+        m_pBeamGlow = effects->CL_AllocDlight(entindex());
+        if (m_pBeamGlow)
+        {
+            m_pBeamGlow->origin = currentEndPos;
+            m_pBeamGlow->radius = 55.0f;
+            m_pBeamGlow->color.r = 50;
+            m_pBeamGlow->color.g = 215;
+            m_pBeamGlow->color.b = 255;
+            m_pBeamGlow->color.exponent = 3;
+            m_pBeamGlow->decay = 0;
+            m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+        }
+    }
+
+    // Update dynamic light position if it exists
     if (m_pBeamGlow && rb_dlight_egon.GetBool())
     {
-        m_pBeamGlow->origin = endPos;
-        m_pBeamGlow->die = gpGlobals->curtime + 0.1f; // Keep light alive
+        m_pBeamGlow->origin = currentEndPos;
+        m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
     }
 }
 
@@ -652,9 +661,13 @@ void CWeaponEgon::DestroyClientBeams()
         m_pBeamGlow = nullptr; // Don't reference it anymore
     }
     
-    m_vecLastEndPos = vec3_origin;
+    m_vecLastEndPos = vec3_origin;  // Reset to prevent next firing from using stale position
     m_nBeamDelayFrames = 0;
     m_nSpriteDelayFrames = 0;
+    
+    // Reset new timing system
+    m_flBeamStartTime = 0.0f;
+    m_vecBeamStartPos = vec3_origin;
 }
 
 //-----------------------------------------------------------------------------
