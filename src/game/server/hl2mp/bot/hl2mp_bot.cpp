@@ -27,7 +27,7 @@ ConVar bot_near_point_travel_distance( "bot_near_point_travel_distance", "750", 
 
 ConVar bot_debug_tags( "bot_debug_tags", "0", FCVAR_CHEAT, "ent_text will only show tags on bots" );
 
-ConVar bot_ignore_real_players( "bot_ignore_real_players", "0", FCVAR_CHEAT );
+ConVar bot_ignore_players( "bot_ignore_players", "0", FCVAR_CHEAT );
 ConVar bot_ignore_bots( "bot_ignore_bots", "0", FCVAR_CHEAT );
 
 ConVar bot_shotgunner_range( "bot_shotgunner_range", "320", FCVAR_NONE );
