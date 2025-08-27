@@ -17,6 +17,7 @@
 
 #include "engine/IEngineSound.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "in_buttons.h"
 
 extern ConVar sv_footsteps;
 
@@ -76,6 +77,61 @@ void CHL2MP_Player::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, fl
         return;
 #endif
 
+    // Check for stealth movement like Counter-Strike Source - both walking and ducking
+    // Walking stealth: Must check walk button, ground state, movement speed, and NOT shifting
+    if (m_nButtons & IN_WALK)
+    {
+        // Only allow stealth walking when on the ground (prevents silent jumping/landing)
+        if (GetFlags() & FL_ONGROUND)
+        {
+            // Must NOT be holding shift/speed key to prevent silent running
+            if (!(m_nButtons & IN_SPEED))
+            {
+                // Get player's current movement speed
+                Vector velocity = GetAbsVelocity();
+                float currentSpeed = velocity.Length2D();
+                
+                // Use threshold you determined works for your setup
+                const float walkSpeedThreshold = 225.0f;
+                
+                // Only grant stealth walking if actually moving at walking speed or slower
+                if (currentSpeed <= walkSpeedThreshold)
+                {
+                    // Skip step sounds completely when actually walking for stealth - like Counter-Strike Source
+                    return;
+                }
+            }
+        }
+        // If holding walk but shifting, not on ground, or moving too fast, play normal footsteps
+    }
+    
+    // Ducking/crouching stealth: Apply same mechanics when ducking
+    if (GetFlags() & FL_DUCKING)
+    {
+        // Only allow stealth ducking when on the ground (prevents silent jumping/landing while crouched)
+        if (GetFlags() & FL_ONGROUND)
+        {
+            // Must NOT be holding shift/speed key to prevent silent crouch-running
+            if (!(m_nButtons & IN_SPEED))
+            {
+                // Get player's current movement speed
+                Vector velocity = GetAbsVelocity();
+                float currentSpeed = velocity.Length2D();
+                
+                // Use same threshold for ducking stealth as walking
+                const float duckSpeedThreshold = 225.0f;
+                
+                // Only grant stealth ducking if moving slowly
+                if (currentSpeed <= duckSpeedThreshold)
+                {
+                    // Skip step sounds completely when actually duck-walking for stealth
+                    return;
+                }
+            }
+        }
+        // If ducking but shifting, not on ground, or moving too fast, play normal footsteps
+    }
+
     // Always play the base surface-dependent footstep sound first
     BaseClass::PlayStepSound(vecOrigin, psurface, fvol, force);
 
@@ -86,8 +142,7 @@ void CHL2MP_Player::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, fl
         if (gpGlobals->maxClients > 1 && !sv_footsteps.GetFloat())
             return;
 
-        if (GetFlags() & FL_DUCKING)
-            return;
+        // Note: Removed FL_DUCKING check here to allow ducking stealth mechanics
 
         char szCharacterStepSound[128];
         if (m_Local.m_nStepside)

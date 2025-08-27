@@ -4337,51 +4337,8 @@ Play suit update if it's time
 
 void CBasePlayer::CheckSuitUpdate()
 {
-	int i;
-	int isentence = 0;
-	int isearch = m_iSuitPlayNext;
-	
-	// Ignore suit updates if no suit
-	if ( !IsSuitEquipped() )
-		return;
-
-	// if in range of radiation source, ping geiger counter
-	UpdateGeigerCounter();
-
-	if ( gpGlobals->curtime >= m_flSuitUpdate && m_flSuitUpdate > 0)
-	{
-		// play a sentence off of the end of the queue
-		for (i = 0; i < CSUITPLAYLIST; i++)
-			{
-			if ((isentence = m_rgSuitPlayList[isearch]) != 0)
-				break;
-			
-			if (++isearch == CSUITPLAYLIST)
-				isearch = 0;
-			}
-
-		if (isentence)
-		{
-			m_rgSuitPlayList[isearch] = 0;
-			if (isentence > 0)
-			{
-				// play sentence number
-
-				char sentence[512];
-				Q_snprintf( sentence, sizeof( sentence ), "!%s", engine->SentenceNameFromIndex( isentence ) );
-				UTIL_EmitSoundSuit( edict(), sentence );
-			}
-			else
-			{
-				// play sentence group
-				UTIL_EmitGroupIDSuit(edict(), -isentence);
-			}
-		m_flSuitUpdate = gpGlobals->curtime + SUITUPDATETIME;
-		}
-		else
-			// queue is empty, don't check 
-			m_flSuitUpdate = 0;
-	}
+	// Suit voice is completely disabled in this mod
+	return;
 }
  
 // add sentence to suit playlist queue. if fgroup is true, then

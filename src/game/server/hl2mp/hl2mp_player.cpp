@@ -159,6 +159,7 @@ CHL2MP_Player::CHL2MP_Player() : m_PlayerAnimState( this )
 	m_bReady = false;
 	m_fLongJump = false; // Initialize longjump capability
 	m_bKilledByHeadshot = false; // Initialize headshot tracking
+	m_bTookHeadshotDamage = false; // Initialize headshot damage tracking
 
 	BaseClass::ChangeTeam( 0 );
 
@@ -1690,6 +1691,18 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 	StopZooming();
 }
 
+	void CHL2MP_Player::TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator )
+	{
+		// Check for headshot at trace level where hit group is reliable
+		if ( ptr && ptr->hitgroup == HITGROUP_HEAD && (info.GetDamageType() & DMG_BULLET) )
+		{
+			m_bTookHeadshotDamage = true;
+		}
+
+		// Call base class to handle the actual trace attack
+		BaseClass::TraceAttack( info, vecDir, ptr, pAccumulator );
+	}
+
 int CHL2MP_Player::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 {
 	//return here if the player is in the respawn grace period vs. slams.
@@ -1700,36 +1713,18 @@ int CHL2MP_Player::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 	
 	gamestats->Event_PlayerDamage( this, inputInfo );
 
-	// Check if this damage will kill the player and if it's a headshot
-	if ( GetHealth() - inputInfo.GetDamage() <= 0 )
+	// Check if this damage would be fatal and we took headshot damage
+	if ( m_bTookHeadshotDamage && (GetHealth() <= inputInfo.GetDamage()) )
 	{
-		// This damage will kill the player, check if it's a bullet to the head
-		if ( (inputInfo.GetDamageType() & DMG_BULLET) && inputInfo.GetDamage() > 0 )
-		{
-			// We need to call the base class first to set the hit group info
-			int result = BaseClass::OnTakeDamage( inputInfo );
-			
-			// Now check if the last hit was to the head
-			if ( LastHitGroup() == HITGROUP_HEAD )
-			{
-				m_bKilledByHeadshot = true;
-			}
-			else
-			{
-				m_bKilledByHeadshot = false;
-			}
-			
-			return result;
-		}
-		else
-		{
-			m_bKilledByHeadshot = false;
-		}
+		m_bKilledByHeadshot = true;
 	}
 	else
 	{
 		m_bKilledByHeadshot = false;
 	}
+
+	// Reset headshot damage flag after processing
+	m_bTookHeadshotDamage = false;
 
 	return BaseClass::OnTakeDamage( inputInfo );
 }

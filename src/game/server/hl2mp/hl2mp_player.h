@@ -65,6 +65,7 @@ public:
 	virtual bool BecomeRagdollOnClient( const Vector &force );
 	virtual void Event_Killed( const CTakeDamageInfo &info );
 	virtual int OnTakeDamage( const CTakeDamageInfo &inputInfo );
+	virtual void TraceAttack( const CTakeDamageInfo &info, const Vector &vecDir, trace_t *ptr, CDmgAccumulator *pAccumulator );
 	virtual bool WantsLagCompensationOnEntity( const CBasePlayer *pPlayer, const CUserCmd *pCmd, const CBitVec<MAX_EDICTS> *pEntityTransmitBits ) const;
 	virtual void FireBullets ( const FireBulletsInfo_t &info );
 	virtual void OnMyWeaponFired( CBaseCombatWeapon* weapon );
@@ -172,6 +173,7 @@ private:
 
 	// Headshot tracking
 	bool m_bKilledByHeadshot;
+	bool m_bTookHeadshotDamage;
 
     bool m_bEnterObserver;
 	bool m_bReady;

@@ -698,6 +698,15 @@ void CHL2MPBot::SetMission( MissionType mission, bool resetBehaviorSystem )
 //-----------------------------------------------------------------------------------------------------
 void CHL2MPBot::PhysicsSimulate( void )
 {
+	// Check if bot AI processing is completely disabled
+	extern ConVar bot_stop;
+	if ( bot_stop.GetBool() )
+	{
+		// Only run basic physics simulation without any bot AI updates
+		CHL2MP_Player::PhysicsSimulate();
+		return;
+	}
+
 	BaseClass::PhysicsSimulate();
 
 	if ( m_spawnArea == NULL )

@@ -44,6 +44,7 @@ ConVar bot_fire_weapon_allowed( "bot_fire_weapon_allowed", "1", FCVAR_CHEAT, "If
 
 ConVar bot_allow_retreat( "bot_allow_retreat", "1", FCVAR_CHEAT, "If zero, bots will not attempt to retreat if they are are in a bad situation." );
 ConVar bot_physcannon_wait_fire_time( "bot_physcannon_wait_fire_time", "1", FCVAR_CHEAT, "Time to wait after picking up a prop to firing." );
+ConVar bot_stop( "bot_stop", "0", FCVAR_CHEAT, "If nonzero, completely stops all HL2MP bot AI processing" );
 
 // New ConVars for enhanced weapon handling
 ConVar bot_pistol_fire_rate( "bot_pistol_fire_rate", "0.15", FCVAR_CHEAT, "Fire rate for pistol spam firing" );
@@ -91,6 +92,13 @@ ActionResult< CHL2MPBot >	CHL2MPBotMainAction::OnStart( CHL2MPBot *me, Action< C
 ActionResult< CHL2MPBot >	CHL2MPBotMainAction::Update( CHL2MPBot *me, float interval )
 {
 	VPROF_BUDGET( "CHL2MPBotMainAction::Update", "NextBot" );
+
+	// Check if bot AI processing is disabled
+	if ( bot_stop.GetBool() )
+	{
+		// Completely stop all bot AI processing - don't update weapons, vision, or movement
+		return Continue();
+	}
 
 	// TEAM_UNASSIGNED -> deathmatch
 	if ( me->GetTeamNumber() != TEAM_COMBINE && me->GetTeamNumber() != TEAM_REBELS && me->GetTeamNumber() != TEAM_UNASSIGNED )
