@@ -506,3 +506,7 @@ FodyWeavers.xsd
 /src/game/shared/tf
 /halflife-master
 /legacysrc
+.qoder/rules/KeepSummariesShort.md
+.qoder/rules/DoNotCompileOrRunBatch.md
+.qoder/rules/AlwaysUpdateMemoryWithGoodPracticesAndRemoveOrChangeDisprovenPractices.md
+.qoder/rules/AlwaysSearchWellAndIfYouCantFindSomethingTellUser.md
