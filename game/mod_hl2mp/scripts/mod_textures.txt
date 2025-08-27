@@ -202,23 +202,23 @@
 		}
 		"death_gauss"
 		{
-				"font"		"HL2MPTypeDeath"
-				"character"	"6"
+				"font"		"HL2DMRHUDDeath"
+				"character"	"C"
 		}
 		"death_egon"
 		{
-				"font"		"HL2MPTypeDeath"
-				"character"	"6"
+				"font"		"HL2DMRHUDDeath"
+				"character"	"D"
 		}
 		"d_headshot"
 		{
-				"font"		"HL2MPTypeDeath"
-				"character"	"H"
+				"font"		"HL2DMRHUDHeadshot"
+				"character"	"B"
 		}
 		"d_skull"
 		{
-				"font"		"HL2MPTypeDeath"
-				"character"	"6"
+				"font"		"HL2DMRHUDDeath"
+				"character"	"A"
 		}
 		"voice_player"
 		{

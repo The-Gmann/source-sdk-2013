@@ -233,11 +233,13 @@ void CHudDeathNotice::Paint()
 				if( m_iconD_headshot->bRenderUsingFont )
 				{
 					headshotWide = surface()->GetCharacterWidth( m_iconD_headshot->hFont, m_iconD_headshot->cCharacterInFont );
+					// Apply scaling to reduce headshot icon spacing
+					headshotWide = (int)(headshotWide * 0.7f); // Reduce width by 30%
 				}
 				else
 				{
 					float scale = ( (float)ScreenHeight() / 480.0f );
-					headshotWide = (int)( scale * (float)m_iconD_headshot->Width() );
+					headshotWide = (int)( scale * (float)m_iconD_headshot->Width() * 0.7f ); // Apply scaling here too
 				}
 			}
 			
@@ -281,12 +283,15 @@ void CHudDeathNotice::Paint()
 			{
 				headshotWide = surface()->GetCharacterWidth( m_iconD_headshot->hFont, m_iconD_headshot->cCharacterInFont );
 				headshotTall = surface()->GetFontTall( m_iconD_headshot->hFont );
+				// Apply scaling to reduce headshot icon size
+				headshotWide = (int)(headshotWide * 0.7f);
+				headshotTall = (int)(headshotTall * 0.7f);
 			}
 			else
 			{
 				float scale = ( (float)ScreenHeight() / 480.0f );
-				headshotWide = (int)( scale * (float)m_iconD_headshot->Width() );
-				headshotTall = (int)( scale * (float)m_iconD_headshot->Height() );
+				headshotWide = (int)( scale * (float)m_iconD_headshot->Width() * 0.7f ); // Apply scaling here too
+				headshotTall = (int)( scale * (float)m_iconD_headshot->Height() * 0.7f );
 			}
 			
 			m_iconD_headshot->DrawSelf( x, y, headshotWide, headshotTall, iconColor );
