@@ -57,6 +57,7 @@ public:
 	virtual void Spawn( void );
 	virtual void PostThink( void );
 	virtual void PreThink( void );
+	virtual void ReduceTimers( CMoveData* mv );
 	virtual void PlayerDeathThink( void );
 	virtual void SetAnimation( PLAYER_ANIM playerAnim );
 	virtual bool HandleCommand_JoinTeam( int team );
@@ -177,6 +178,9 @@ private:
 
     bool m_bEnterObserver;
 	bool m_bReady;
+	
+	// Ground time tracking for aux power requirement
+	float m_flGroundStartTime = -1.0f;
 };
 
 inline CHL2MP_Player *ToHL2MPPlayer( CBaseEntity *pEntity )

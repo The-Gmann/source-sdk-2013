@@ -358,6 +358,12 @@ Vector CHL2MPBotMainAction::SelectTargetPoint( const INextBot *meBot, const CBas
 			}
 		}
 
+		// expert difficulty bots aim for the head instead of torso
+		if ( me->IsDifficulty( CHL2MPBot::EXPERT ) )
+		{
+			return subject->EyePosition();
+		}
+
 		// aim for the center of the object (ie: sentry gun)
 		return subject->WorldSpaceCenter();
 	}

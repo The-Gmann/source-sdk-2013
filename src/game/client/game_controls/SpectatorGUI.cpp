@@ -181,6 +181,10 @@ void CSpectatorMenu::ApplySchemeSettings(IScheme *pScheme)
 		hudColor = Color(r, g, b, 255);
 	}
 	SetPlayerFgColor(hudColor);
+	
+	// Also set the foreground color for the player list dropdown menu
+	// This ensures player names use rb_hud_color when not in teamplay mode
+	m_pPlayerList->GetMenu()->SetFgColor(hudColor);
 }
 
 //-----------------------------------------------------------------------------

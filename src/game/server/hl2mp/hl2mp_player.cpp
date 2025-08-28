@@ -30,6 +30,12 @@
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 
 #include "ilagcompensationmanager.h"
+#include "shareddefs.h"
+
+// ConVar and definitions needed for ReduceTimers
+extern ConVar hl2_sprintspeed;
+extern CSuitPowerDevice SuitDeviceSprint;
+#define	HL2_SPRINT_SPEED hl2_sprintspeed.GetFloat()
 
 int g_iLastCitizenModel = 0;
 int g_iLastCombineModel = 0;
@@ -2119,4 +2125,45 @@ bool CHL2MP_Player::IsThreatFiringAtMe( CBaseEntity* threat ) const
 	}
 
 	return false;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Handle aux power sprint ground time requirement
+//-----------------------------------------------------------------------------
+void CHL2MP_Player::ReduceTimers( CMoveData *mv )
+{
+	bool bSprinting = mv->m_flClientMaxSpeed == HL2_SPRINT_SPEED;
+	bool bPressingMovementKeys = (m_nButtons & (IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT)) != 0;
+	bool bOnGround = (GetGroundEntity() != NULL);
+	
+	// Track ground time for aux power requirement
+	if ( bOnGround )
+	{
+		if ( m_flGroundStartTime < 0.0f )
+		{
+			m_flGroundStartTime = gpGlobals->curtime;
+		}
+	}
+	else
+	{
+		m_flGroundStartTime = -1.0f; // Reset when not on ground
+	}
+	
+	// Check if player has been on ground for at least 0.2 seconds
+	bool bGroundTimeRequirement = (m_flGroundStartTime >= 0.0f && (gpGlobals->curtime - m_flGroundStartTime) >= 0.2f);
+	
+	// Only modify sprint device state if there's actual movement intent AND player is on ground for sufficient time
+	// This prevents exploit where spamming sprint key while stationary drains power
+	// Also prevents suit power drain when sprinting mid-air (jumping/falling) or when just landing
+	if ( bSprinting && bPressingMovementKeys && bOnGround && bGroundTimeRequirement )
+	{
+		SuitPower_AddDevice( SuitDeviceSprint );
+	}
+	else
+	{
+		// Remove sprint device if conditions aren't met
+		SuitPower_RemoveDevice( SuitDeviceSprint );
+	}
+
+	SuitPower_Update();
 }

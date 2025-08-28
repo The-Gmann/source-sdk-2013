@@ -893,6 +893,9 @@ void CWeaponCrossbow::FireSniperBolt(void)
                 pBolt->SetOwnerEntity(pOwner);
                 pBolt->Spawn();
                 
+                // Prevent cosmetic bolt from casting shadows
+                pBolt->AddEffects(EF_NOSHADOW);
+                
                 // Set removal timer
                 pBolt->SetThink(&CBaseEntity::SUB_Remove);
                 pBolt->SetNextThink(gpGlobals->curtime + 30.0f);

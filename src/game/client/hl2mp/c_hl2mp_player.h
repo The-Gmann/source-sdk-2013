@@ -163,6 +163,9 @@ private:
 	CNetworkVar( HL2MPPlayerState, m_iPlayerState );	
 
 	bool m_fIsWalking = false;
+	
+	// Ground time tracking for aux power requirement
+	float m_flGroundStartTime = -1.0f;
 };
 
 inline C_HL2MP_Player *ToHL2MPPlayer( CBaseEntity *pEntity )

@@ -16,6 +16,7 @@
 #include "soundenvelope.h"
 #include "hl2mp/weapon_hl2mpbasebasebludgeon.h"
 #include "hl2mp/weapon_physcannon.h"
+#include "props.h"
 #include "ammodef.h"
 
 #include "bot/behavior/hl2mp_bot_behavior.h"
@@ -763,6 +764,32 @@ void CHL2MPBot::Update( void )
 		// This prevents all NextBot interfaces (ILocomotion, IBody, IVision, IIntention)
 		// from updating and causing AI behaviors like movement, targeting, and reactions
 		return;
+	}
+	
+	// Check if bot is holding a burning barrel that might explode
+	CBaseEntity *pHeldEntity = Physcannon_GetHeldProp();
+	if ( pHeldEntity )
+	{
+		CBreakableProp *pBarrel = dynamic_cast< CBreakableProp* >( pHeldEntity );
+		if ( pBarrel && pBarrel->IsOnFire() )
+		{
+			// Check if this is an explosive barrel (has explode damage)
+			if ( pBarrel->GetExplosiveDamage() > 0 )
+			{
+				// Estimate remaining burn time based on health
+				float healthRatio = (float)pBarrel->GetHealth() / (float)pBarrel->GetMaxHealth();
+				
+				// Drop the barrel if health is low (about to explode)
+				if ( healthRatio < 0.3f ) // Drop when health < 30%
+				{
+					CBaseCombatWeapon *pPhyscannon = Weapon_OwnsThisType( "weapon_physcannon" );
+					if ( pPhyscannon )
+					{
+						PhysCannonForceDrop( pPhyscannon, pHeldEntity );
+					}
+				}
+			}
+		}
 	}
 	
 	// Normal operation - allow NextBot framework to update all interfaces
