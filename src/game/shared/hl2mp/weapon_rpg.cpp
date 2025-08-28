@@ -1873,6 +1873,20 @@ void CWeaponRPG::UpdateLaserPosition(Vector vecMuzzlePos, Vector vecEndPos)
 		Vector	laserPos = tr.endpos;
 		m_hLaserDot->SetLaserPosition(laserPos, tr.plane.normal);
 
+		// Hide laser dot if hitting skybox surface
+		if (tr.surface.flags & SURF_SKY)
+		{
+			m_hLaserDot->TurnOff();
+		}
+		else
+		{
+			// Only turn on if not hitting skybox
+			if (m_bGuiding)
+			{
+				m_hLaserDot->TurnOn();
+			}
+		}
+
 		if (tr.DidHitNonWorldEntity())
 		{
 			CBaseEntity* pHit = tr.m_pEnt;

@@ -150,6 +150,7 @@ private:
     CNetworkVar(float, m_flDamageTime);
     CNetworkVar(EFireState, m_fireState);
     CNetworkVar(Vector, m_vecBeamEndPos);
+    CNetworkVar(bool, m_bHitSkybox);  // Track if beam hit skybox to prevent dynamic light
 
 #ifdef CLIENT_DLL
     // Client-only beam rendering
@@ -207,11 +208,13 @@ BEGIN_NETWORK_TABLE(CWeaponEgon, DT_WeaponEgon)
     RecvPropFloat(RECVINFO(m_flDamageTime)),
     RecvPropInt(RECVINFO(m_fireState)),
     RecvPropVector(RECVINFO(m_vecBeamEndPos)),
+    RecvPropBool(RECVINFO(m_bHitSkybox)),
 #else
     SendPropFloat(SENDINFO(m_flAmmoUseTime)),
     SendPropFloat(SENDINFO(m_flDamageTime)),
     SendPropInt(SENDINFO(m_fireState)),
     SendPropVector(SENDINFO(m_vecBeamEndPos)),
+    SendPropBool(SENDINFO(m_bHitSkybox)),
 #endif
 END_NETWORK_TABLE()
 
@@ -222,6 +225,7 @@ BEGIN_PREDICTION_DATA(CWeaponEgon)
     DEFINE_PRED_FIELD(m_flDamageTime, FIELD_FLOAT, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_fireState, FIELD_INTEGER, FTYPEDESC_INSENDTABLE),
     DEFINE_PRED_FIELD(m_vecBeamEndPos, FIELD_VECTOR, FTYPEDESC_INSENDTABLE),
+    DEFINE_PRED_FIELD(m_bHitSkybox, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE),
 END_PREDICTION_DATA()
 #endif
 
@@ -252,6 +256,7 @@ CWeaponEgon::CWeaponEgon()
     m_flDamageTime = 0.0f;
     m_fireState = FIRE_OFF;
     m_vecBeamEndPos = vec3_origin;
+    m_bHitSkybox = false;
     m_flStartFireTime = 0.0f;
     m_flShakeTime = 0.0f;
     m_flStartSoundDuration = EgonConstants::DEFAULT_SOUND_DURATION;
@@ -568,7 +573,17 @@ void CWeaponEgon::UpdateClientBeams()
     }
     else if (m_pClientSprite && m_pClientSprite->IsEffectActive(EF_NODRAW))
     {
-        m_pClientSprite->RemoveEffects(EF_NODRAW);
+        // Only show sprite if not hitting skybox
+        if (!m_bHitSkybox)
+        {
+            m_pClientSprite->RemoveEffects(EF_NODRAW);
+        }
+    }
+    
+    // Hide sprite if hitting skybox
+    if (m_pClientSprite && m_bHitSkybox && !m_pClientSprite->IsEffectActive(EF_NODRAW))
+    {
+        m_pClientSprite->AddEffects(EF_NODRAW);
     }
 
     // Update beam positions (always, even during rendering delay)
@@ -603,7 +618,8 @@ void CWeaponEgon::UpdateClientBeams()
     }
 
     // Dynamic light only appears after rendering delay and follows current position
-    if (m_nBeamDelayFrames == 0 && !m_pBeamGlow && rb_dlight_egon.GetBool())
+    // Don't create dynamic light if beam hit skybox
+    if (m_nBeamDelayFrames == 0 && !m_pBeamGlow && rb_dlight_egon.GetBool() && !m_bHitSkybox)
     {
         m_pBeamGlow = effects->CL_AllocDlight(entindex());
         if (m_pBeamGlow)
@@ -619,11 +635,18 @@ void CWeaponEgon::UpdateClientBeams()
         }
     }
 
-    // Update dynamic light position if it exists
-    if (m_pBeamGlow && rb_dlight_egon.GetBool())
+    // Update dynamic light position if it exists and not hitting skybox
+    if (m_pBeamGlow && rb_dlight_egon.GetBool() && !m_bHitSkybox)
     {
         m_pBeamGlow->origin = currentEndPos;
         m_pBeamGlow->die = gpGlobals->curtime + 0.1f;
+    }
+    else if (m_pBeamGlow && m_bHitSkybox)
+    {
+        // If we start hitting skybox, fade out the light
+        m_pBeamGlow->decay = m_pBeamGlow->radius / 0.1f; // Quick fade
+        m_pBeamGlow->die = gpGlobals->curtime + 0.15f;
+        m_pBeamGlow = nullptr;
     }
 }
 
@@ -942,6 +965,7 @@ void CWeaponEgon::Fire()
 
     // Update beam end position for networking
     m_vecBeamEndPos = tr.endpos;
+    m_bHitSkybox = !!(tr.surface.flags & SURF_SKY);  // Track skybox hits
 
     // Set rapid fire rate for continuous beam (important for bot AI)
     m_flNextPrimaryAttack = gpGlobals->curtime + 0.05f;

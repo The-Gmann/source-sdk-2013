@@ -274,6 +274,12 @@ void CWeaponGauss::PrimaryAttack(void)
     if (!pOwner)
         return;
 
+    // Prevent primary attack during secondary charging
+    if (m_bCharging)
+    {
+        return;
+    }
+
     // Check for minimum ammo requirement (2 ammo)
     if (pOwner->GetAmmoCount(m_iPrimaryAmmoType) < 2)
     {
@@ -533,10 +539,13 @@ void CWeaponGauss::Fire(void)
             #endif
         }
 
-        // Add impact effects
-        CPVSFilter filter(tr.endpos);
-        te->GaussExplosion(filter, 0.0f, tr.endpos, tr.plane.normal, 0);
-        UTIL_ImpactTrace(&tr, GetAmmoDef()->DamageType(m_iPrimaryAmmoType), "ImpactGauss");
+        // Add impact effects only if not hitting sky
+        if (!(tr.surface.flags & SURF_SKY))
+        {
+            CPVSFilter filter(tr.endpos);
+            te->GaussExplosion(filter, 0.0f, tr.endpos, tr.plane.normal, 0);
+            UTIL_ImpactTrace(&tr, GetAmmoDef()->DamageType(m_iPrimaryAmmoType), "ImpactGauss");
+        }
 
         // Stop if we hit sky
         if (tr.surface.flags & SURF_SKY)
@@ -700,7 +709,19 @@ void CWeaponGauss::ChargedFire(void)
             break;
 
         // Draw beam segment from last hit position to current hit position
-        float beamWidth = firstBeam ? 9.6f : 4.8f;
+        // Calculate charge-based beam width scaling
+        float baseWidth = firstBeam ? 9.6f : 4.8f;
+        float chargeRatio = 0.0f;
+        if (chargeTime > 0)
+        {
+            chargeRatio = MIN(chargeTime / MAX_GAUSS_CHARGE_TIME, 1.0f);
+        }
+        
+        // Scale from primary beam size (1.6f) at minimum charge to 20% reduced base width at maximum charge
+        float primaryBeamWidth = firstBeam ? 1.6f : 0.4f; // Primary fire beam widths
+        float maxChargeWidth = baseWidth * 0.8f; // 20% reduction from base width
+        float beamWidth = primaryBeamWidth + (maxChargeWidth - primaryBeamWidth) * chargeRatio;
+        
         DrawBeam(lastHitPos, tr.endpos, beamWidth, firstBeam);
         lastHitPos = tr.endpos; // Update last hit position
 
@@ -731,10 +752,13 @@ void CWeaponGauss::ChargedFire(void)
             #endif
         }
 
-        // Add impact effects
-        CPVSFilter filter(tr.endpos);
-        te->GaussExplosion(filter, 0.0f, tr.endpos, tr.plane.normal, 0);
-        UTIL_ImpactTrace(&tr, GetAmmoDef()->DamageType(m_iPrimaryAmmoType), "ImpactGauss");
+        // Add impact effects only if not hitting sky
+        if (!(tr.surface.flags & SURF_SKY))
+        {
+            CPVSFilter filter(tr.endpos);
+            te->GaussExplosion(filter, 0.0f, tr.endpos, tr.plane.normal, 0);
+            UTIL_ImpactTrace(&tr, GetAmmoDef()->DamageType(m_iPrimaryAmmoType), "ImpactGauss");
+        }
         DoImpactEffect(tr, GetAmmoDef()->DamageType(m_iPrimaryAmmoType));
 
         #ifndef CLIENT_DLL
@@ -1185,10 +1209,12 @@ void CWeaponGauss::DoImpactEffect(trace_t &tr, int nDamageType)
     data.m_vOrigin = tr.endpos + (tr.plane.normal * 1.0f);
     data.m_vNormal = tr.plane.normal;
 
+    // Only create GaussImpact effect on valid static surfaces (not skyboxes)
     if (shouldCreateGaussImpact && tr.fraction != 1.0 && !(tr.surface.flags & SURF_SKY))
     {
         DispatchEffect("GaussImpact", data);
     }
+    // Note: Beam effects are handled separately and should not be affected by skybox hits
 
     BaseClass::DoImpactEffect(tr, nDamageType);
 }
