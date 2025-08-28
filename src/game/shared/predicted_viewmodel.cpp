@@ -47,7 +47,7 @@ CPredictedViewModel::~CPredictedViewModel()
 #if defined( HL2_DLL ) || defined( HL2_CLIENT_DLL )
 ConVar sv_wpn_sway_pred_legacy( "sv_wpn_sway_pred_legacy", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 #else
-ConVar sv_wpn_sway_pred_legacy( "sv_wpn_sway_pred_legacy", "1", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar sv_wpn_sway_pred_legacy( "sv_wpn_sway_pred_legacy", "0", FCVAR_REPLICATED | FCVAR_CHEAT );
 #endif
 
 #ifdef CLIENT_DLL

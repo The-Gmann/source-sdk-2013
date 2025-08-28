@@ -458,12 +458,19 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 //-----------------------------------------------------------------------------
 float g_fMaxViewModelLag = 1.5f;
 
-// CVars for customizable viewmodel sway
-ConVar rb_viewmodel_sway_scale( "rb_viewmodel_sway_scale", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway power scale (lower = less sway)", true, 0.0f, true, 2.0f );
-ConVar rb_viewmodel_sway_speed( "rb_viewmodel_sway_speed", "10.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway recovery speed (higher = faster recovery)", true, 1.0f, true, 20.0f );
+// CVars for customizable viewmodel sway - client-only definitions
+#ifdef CLIENT_DLL
+	ConVar rb_viewmodel_sway_scale( "rb_viewmodel_sway_scale", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway power scale (lower = less sway)", true, 0.0f, true, 5.0f );
+	ConVar rb_viewmodel_sway_speed( "rb_viewmodel_sway_speed", "10.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway recovery speed (higher = faster recovery)", true, 1.0f, true, 50.0f );
+	ConVar rb_viewmodel_zoffset( "rb_viewmodel_zoffset", "0.3", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Scale for viewmodel position shift when looking up/down (0.0 = disabled)", true, 0.0f, true, 5.0f );
+#else
+	extern ConVar rb_viewmodel_sway_scale;
+	extern ConVar rb_viewmodel_sway_speed;
+	extern ConVar rb_viewmodel_zoffset;
+#endif
 
-// Define the missing ConVar that's only extern'd elsewhere
-ConVar sv_viewmodel_lag_do_angles( "sv_viewmodel_lag_do_angles", "1", FCVAR_REPLICATED, "Enable viewmodel lag angle adjustments" );
+// Define the missing ConVar that's only extern'd elsewhere - REMOVED: replaced with rb_viewmodel_zoffset
+// ConVar sv_viewmodel_lag_do_angles( "sv_viewmodel_lag_do_angles", "1", FCVAR_REPLICATED, "Enable viewmodel lag angle adjustments" );
 
 void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& original_angles )
 {
@@ -479,6 +486,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		Vector vDifference;
 		VectorSubtract( forward, m_vecLastFacing, vDifference );
 
+#ifdef CLIENT_DLL
 		float flSpeed = rb_viewmodel_sway_speed.GetFloat();
 
 		// If we start to lag too far behind, we'll increase the "catch up" speed.  Solves the problem with fast cl_yawspeed, m_yaw or joysticks
@@ -498,9 +506,24 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		VectorMA( origin, rb_viewmodel_sway_scale.GetFloat() * 5.0f, vDifference * -1.0f, origin );
 
 		Assert( m_vecLastFacing.IsValid() );
+#else
+		// Server-side: minimal sway processing without ConVar access
+		float flSpeed = 20.0f; // Default speed
+		float flDiff = vDifference.Length();
+		if ( (flDiff > g_fMaxViewModelLag) && (g_fMaxViewModelLag > 0.0f) )
+		{
+			float flScale = flDiff / g_fMaxViewModelLag;
+			flSpeed *= flScale;
+		}
+		VectorMA( m_vecLastFacing, flSpeed * gpGlobals->frametime, vDifference, m_vecLastFacing );
+		VectorNormalize( m_vecLastFacing );
+		VectorMA( origin, 0.5f * 5.0f, vDifference * -1.0f, origin ); // Default scale
+#endif
 	}
 
-	if ( sv_viewmodel_lag_do_angles.GetBool() )
+	// Apply pitch-based viewmodel shift only on client
+#ifdef CLIENT_DLL
+	if ( rb_viewmodel_zoffset.GetFloat() > 0.0f )
 	{
 		Vector right, up;
 		AngleVectors( original_angles, &forward, &right, &up );
@@ -518,10 +541,12 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		}
 
 		//FIXME: These are the old settings that caused too many exposed polys on some models
-		VectorMA( origin, -pitch * 0.035f,	forward,	origin );
-		VectorMA( origin, -pitch * 0.03f,		right,	origin );
-		VectorMA( origin, -pitch * 0.02f,		up,		origin);
+		float zOffsetScale = rb_viewmodel_zoffset.GetFloat();
+		VectorMA( origin, -pitch * 0.035f * zOffsetScale,	forward,	origin );
+		VectorMA( origin, -pitch * 0.03f * zOffsetScale,		right,	origin );
+		VectorMA( origin, -pitch * 0.02f * zOffsetScale,		up,		origin);
 	}
+#endif
 }
 
 //-----------------------------------------------------------------------------
