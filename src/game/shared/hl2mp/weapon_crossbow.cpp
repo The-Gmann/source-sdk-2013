@@ -20,6 +20,7 @@
 	#include "IEffects.h"
 	#include "Sprite.h"
 	#include "SpriteTrail.h"
+	#include "ilagcompensationmanager.h"
 #endif
 
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
@@ -47,6 +48,7 @@ extern ConVar sk_plr_dmg_crossbow;
 extern ConVar sk_npc_dmg_crossbow;
 
 void TE_StickyBolt( IRecipientFilter& filter, float delay,    Vector vecDirection, const Vector *origin );
+void TE_Sparks( IRecipientFilter& filter, float delay, const Vector* pos, int nMagnitude, int nTrailLength, const Vector *pDir );
 
 void ExplosionCreate(const Vector &vecOrigin, const QAngle &vecAngles, CBaseEntity *pOwner, int magnitude, int radius, bool doDamage)
 {
@@ -324,14 +326,6 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
             CalculateMeleeDamageForce(&dmgInfo, vecNormalizedVel, tr.endpos, 0.7f);
             dmgInfo.SetDamagePosition(tr.endpos);
             pOther->DispatchTraceAttack(dmgInfo, vecNormalizedVel, &tr);
-            
-            // Sniper bolts remove immediately after hitting and dealing damage
-            if (m_bIsSniperBolt)
-            {
-                ApplyMultiDamage();
-                UTIL_Remove(this);
-                return;
-            }
         }
         else
         {
@@ -339,14 +333,6 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
             CalculateMeleeDamageForce(&dmgInfo, vecNormalizedVel, tr.endpos, 0.7f);
             dmgInfo.SetDamagePosition(tr.endpos);
             pOther->DispatchTraceAttack(dmgInfo, vecNormalizedVel, &tr);
-            
-            // Sniper bolts remove immediately after hitting a player and dealing damage
-            if (m_bIsSniperBolt && pOther->IsPlayer())
-            {
-                ApplyMultiDamage();
-                UTIL_Remove(this);
-                return;
-            }
             // if what we hit is static architecture, can stay around for a while.
             Vector vecDir = GetAbsVelocity();
             float speed = VectorNormalize(vecDir);
@@ -588,6 +574,7 @@ private:
 
 #ifndef CLIENT_DLL
     CHandle<CSprite> m_hChargerSprite;
+    CHandle<CBaseEntity> m_hLastCosmeticBolt; // Track last cosmetic bolt for removal
 #endif
 
     CNetworkVar( bool,    m_bInZoom );
@@ -818,7 +805,7 @@ void CWeaponCrossbow::FireBolt(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Sniper bolt
+// Purpose: Hitscan sniper bolt - instant damage with visual effects
 //-----------------------------------------------------------------------------
 void CWeaponCrossbow::FireSniperBolt(void)
 {
@@ -840,45 +827,100 @@ void CWeaponCrossbow::FireSniperBolt(void)
     if (pOwner == NULL)
         return;
 
-#ifndef CLIENT_DLL
-    Vector vecAiming = pOwner->GetAutoaimVector(0);
+    // Standard weapon firing setup like other hitscan weapons
+    WeaponSound(SINGLE);
+    WeaponSound(SPECIAL2);
+    // No muzzle flash for sniper bolt to avoid giving away position
+    SendWeaponAnim(ACT_VM_PRIMARYATTACK);
+    pOwner->SetAnimation(PLAYER_ATTACK1);
+
     Vector vecSrc = pOwner->Weapon_ShootPosition();
-    QAngle angAiming;
-    VectorAngles(vecAiming, angAiming);
+    Vector vecAiming = pOwner->GetAutoaimVector(AUTOAIM_5DEGREES);
 
-    // Perform trace to find impact point
-    trace_t tr;
-    UTIL_TraceLine(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &tr);
-
-    // Calculate spawn position slightly before impact point
-    const float spawnDistanceFromImpact = 7.0f; // 7 units before impact
-    Vector vecSpawnPos;
-    if (tr.fraction < 1.0) // If we hit something
+#ifndef CLIENT_DLL
+    // Clean up any previous cosmetic bolt
+    CBaseEntity *pLastBolt = m_hLastCosmeticBolt.Get();
+    if (pLastBolt)
     {
-        vecSpawnPos = tr.endpos - (vecAiming * spawnDistanceFromImpact);
+        UTIL_Remove(pLastBolt);
+        m_hLastCosmeticBolt = NULL;
     }
-    else
+    
+    // IMPROVED FIX: Do a comprehensive trace to determine what we actually hit
+    // This accounts for lag compensation by using the same trace that FireBullets would use
+    trace_t actualTrace;
+    
+    // Use lag compensation manager for accurate hit detection
+    lagcompensation->StartLagCompensation(pOwner, pOwner->GetCurrentCommand());
+    
+    // Perform the actual bullet trace with lag compensation active
+    UTIL_TraceLine(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &actualTrace);
+    
+    // Check what we actually hit
+    bool hitLivingTarget = false;
+    if (actualTrace.fraction < 1.0f && actualTrace.m_pEnt)
     {
-        vecSpawnPos = tr.endpos;
+        CBaseEntity *pHitEnt = actualTrace.m_pEnt;
+        // Check if we hit a player or NPC (living target)
+        if (pHitEnt->IsPlayer() || pHitEnt->IsNPC())
+        {
+            hitLivingTarget = true;
+        }
     }
-
-    // Create bolt at the calculated position
-    CCrossbowBolt* pBolt = CCrossbowBolt::BoltCreate(vecSpawnPos, angAiming, GetHL2MPWpnData().m_iPlayerDamage, pOwner, true);
-    if (pBolt)
+    
+    // Restore lag compensation state
+    lagcompensation->FinishLagCompensation(pOwner);
+    
+    // Only create cosmetic bolt if we didn't hit a living target
+    if (!hitLivingTarget)
     {
-        pBolt->SetSniperBolt(true);
-        pBolt->SetExplosive(false);
-        // Set high velocity for near-instant impact
-        pBolt->SetAbsVelocity(vecAiming * BOLT_AIR_VELOCITY * 2.0f);
+        // Now do a world-only trace to find the final resting place
+        trace_t worldTrace;
+        UTIL_TraceLine(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, MASK_SOLID_BRUSHONLY, pOwner, COLLISION_GROUP_NONE, &worldTrace);
+        
+        if (worldTrace.fraction < 1.0f && !(worldTrace.surface.flags & SURF_SKY) && worldTrace.DidHitWorld())
+        {
+            // Create the cosmetic bolt on world geometry
+            Vector vecBoltPos = worldTrace.endpos - (vecAiming * 6.0f);
+            QAngle angAiming;
+            VectorAngles(vecAiming, angAiming);
+            CBaseEntity *pBolt = CreateEntityByName("prop_dynamic");
+            if (pBolt)
+            {
+                pBolt->SetModel(BOLT_MODEL);
+                pBolt->SetAbsOrigin(vecBoltPos);
+                pBolt->SetAbsAngles(angAiming);
+                pBolt->SetOwnerEntity(pOwner);
+                pBolt->Spawn();
+                
+                // Set removal timer
+                pBolt->SetThink(&CBaseEntity::SUB_Remove);
+                pBolt->SetNextThink(gpGlobals->curtime + 30.0f);
+                
+                // Store reference
+                m_hLastCosmeticBolt = pBolt;
+                
+                // Create sparks when bolt hits the wall
+                CBroadcastRecipientFilter filter;
+                Vector sparkDir = worldTrace.plane.normal;
+                TE_Sparks(filter, 0.0f, &worldTrace.endpos, 1, 1, &sparkDir);
+                
+                // Play the bolt hit world sound
+                CPASAttenuationFilter soundFilter(worldTrace.endpos);
+                EmitSound(soundFilter, 0, "Weapon_Crossbow.BoltHitWorld", &worldTrace.endpos);
+            }
+        }
     }
 #endif
+
+    // Fire the bullet using player FireBullets - handles lag compensation, damage, and impact effects
+    FireBulletsInfo_t info(1, vecSrc, vecAiming, vec3_origin, MAX_TRACE_LENGTH, m_iPrimaryAmmoType);
+    info.m_pAttacker = pOwner;
+    pOwner->FireBullets(info);
 
     m_iClip1--;
     SetBolt(1);
     pOwner->ViewPunch(QAngle(-2, 0, 0));
-    WeaponSound(SINGLE);
-    WeaponSound(SPECIAL2);
-    SendWeaponAnim(ACT_VM_PRIMARYATTACK);
 
     if (!m_iClip1 && pOwner->GetAmmoCount(m_iPrimaryAmmoType) <= 0)
     {
