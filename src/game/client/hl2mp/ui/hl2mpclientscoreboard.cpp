@@ -657,7 +657,16 @@ void CHL2MPClientScoreBoardDialog::UpdatePlayerInfo()
 			CHL2MPRules *pRules = HL2MPRulesSafe();
 			if ( pRules && pRules->IsTeamplay() )
 			{
-				m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( g_PR->GetTeam( i ) ) );
+				int playerTeam = g_PR->GetTeam( i );
+				if ( playerTeam == TEAM_UNASSIGNED )
+				{
+					// Use custom HUD color for unassigned players in teamplay mode
+					m_pPlayerList->SetItemFgColor( itemID, GetCustomSchemeColor( "FgColor" ) );
+				}
+				else
+				{
+					m_pPlayerList->SetItemFgColor( itemID, g_PR->GetTeamColor( playerTeam ) );
+				}
 			}
 			else
 			{

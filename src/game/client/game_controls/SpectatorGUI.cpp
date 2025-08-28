@@ -46,6 +46,10 @@
 void AddSubKeyNamed( KeyValues *pKeys, const char *pszName );
 #endif
 
+#ifdef HL2MP
+#include "hl2mp/hl2mp_gamerules.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -694,6 +698,25 @@ void CSpectatorGUI::Update()
 	if ( playernum > 0 && playernum <= gpGlobals->maxClients && gr )
 	{
 		Color c = gr->GetTeamColor( gr->GetTeam(playernum) ); // Player's team color
+		
+		// Override color for unassigned team players when not in teamplay mode
+		int playerTeam = gr->GetTeam(playernum);
+		#ifdef HL2MP
+		CHL2MPRules* hl2mpRules = HL2MPRulesSafe();
+		if (hl2mpRules && !hl2mpRules->IsTeamplay() && playerTeam == TEAM_UNASSIGNED)
+		{
+			// Use rb_hud_color for unassigned team players in non-teamplay mode
+			int r, g, b;
+			if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+			{
+				c = Color(r, g, b, 255);
+			}
+			else
+			{
+				c = Color(255, 255, 255, 255); // fallback to white
+			}
+		}
+		#endif
 
 		m_pPlayerLabel->SetFgColor( c );
 		

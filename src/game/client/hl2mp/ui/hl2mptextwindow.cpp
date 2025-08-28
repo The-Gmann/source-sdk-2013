@@ -9,6 +9,7 @@
 #include "hl2mptextwindow.h"
 #include "backgroundpanel.h"
 #include <cdll_client_int.h>
+#include "hl2mp_gamerules.h"
 
 #include <vgui/IScheme.h>
 #include <vgui/ILocalize.h>
@@ -27,6 +28,9 @@
 extern IGameUIFuncs *gameuifuncs; // for key binding details
 
 #include <game/client/iviewport.h>
+
+// Forward declarations for custom color system
+extern Color GetCustomSchemeColor( const char *colorName );
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -168,6 +172,23 @@ void CHL2MPSpectatorGUI::Update()
 	{
 		m_nLastSpecMode = pLocalPlayer->GetObserverMode();
 		m_nLastSpecTarget = pLocalPlayer->GetObserverTarget();
+	}
+
+	// Fix player label color for unassigned team players in teamplay mode
+	IGameResources *gr = GameResources();
+	int playernum = GetSpectatorTarget();
+	if ( playernum > 0 && playernum <= gpGlobals->maxClients && gr )
+	{
+		CHL2MPRules *pRules = HL2MPRulesSafe();
+		if ( pRules && pRules->IsTeamplay() )
+		{
+			int playerTeam = gr->GetTeam(playernum);
+			if ( playerTeam == TEAM_UNASSIGNED )
+			{
+				// Override with custom HUD color for unassigned players in teamplay mode
+				m_pPlayerLabel->SetFgColor( GetCustomSchemeColor( "FgColor" ) );
+			}
+		}
 	}
 }
 
