@@ -234,10 +234,7 @@ ConVar rb_viewmodel_bob_scale( "rb_viewmodel_bob_scale", "1.0", FCVAR_ARCHIVE | 
 ConVar rb_viewmodel_bob_air_scale( "rb_viewmodel_bob_air_scale", "1.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing scale when mid-air", true, 0.0f, true, 2.5f );
 ConVar rb_viewmodel_bob_air_enabled( "rb_viewmodel_bob_air_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable enhanced air bobbing effects" );
 
-// Landing bump system - user-configurable
-ConVar rb_viewmodel_bob_landing_bump( "rb_viewmodel_bob_landing_bump", "3.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump effect intensity", true, 0.0f, true, 10.0f );
-ConVar rb_viewmodel_bob_landing_duration( "rb_viewmodel_bob_landing_duration", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump effect duration in seconds", true, 0.1f, true, 2.0f );
-ConVar rb_viewmodel_bob_landing_frequency( "rb_viewmodel_bob_landing_frequency", "2.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump oscillation frequency", true, 1.0f, true, 20.0f );
+// Landing bump system - REMOVED
 
 // Advanced air behavior ConVars - hidden from typical users
 static ConVar rb_viewmodel_bob_air_transition_in( "rb_viewmodel_bob_air_transition_in", "2.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning to air state", true, 0.5f, true, 8.0f );
@@ -269,8 +266,7 @@ struct ViewModelAirState
 	float smoothedVerticalVel = 0.0f;
 	float lastVerticalVel = 0.0f;
 	float airborneTime = 0.0f;
-	float landingTime = 0.0f; // Time when we last landed
-	float landingVelocity = 0.0f; // Velocity when we landed
+	// Landing bump functionality removed
 };
 
 static ViewModelAirState s_airState;
@@ -300,7 +296,6 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 			s_airState.airTransitionBlend = 0.0f;
 			s_airState.airStartTime = 0.0f;
 			s_airState.airborneTime = 0.0f;
-			s_airState.landingTime = 0.0f;
 			s_airState.smoothedVerticalVel = 0.0f;
 		}
 		return 0.0f;
@@ -334,9 +329,7 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	}
 	else if ( bOnGround && s_airState.lastGroundState < 0.5f )
 	{
-		// Just landed - record landing data for bump effect
-		s_airState.landingTime = gpGlobals->curtime;
-		s_airState.landingVelocity = fabs(s_airState.smoothedVerticalVel);
+		// Just landed - landing bump functionality removed
 	}
 	else if ( bOnGround && s_airState.lastGroundState > 0.8f )
 	{
@@ -387,7 +380,6 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 		s_airState.airTransitionBlend = 0.0f;
 		s_airState.airStartTime = 0.0f;
 		s_airState.airborneTime = 0.0f;
-		s_airState.landingTime = 0.0f;
 	}
 
 	// Calculate bob scaling with air state considerations
@@ -453,45 +445,12 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 		airRaiseAmount += sin( airTime * 0.6f ) * oscillationAmp;
 	}
 	
-	// Add improved landing bump effect
-	float landingBumpAmount = 0.0f;
-	if ( s_airState.landingTime > 0.0f )
-	{
-		float timeSinceLanding = gpGlobals->curtime - s_airState.landingTime;
-		float landingDuration = rb_viewmodel_bob_landing_duration.GetFloat();
-		
-		if ( timeSinceLanding < landingDuration )
-		{
-			// Create a powerful, configurable landing bump
-			float bumpIntensity = rb_viewmodel_bob_landing_bump.GetFloat();
-			float frequency = rb_viewmodel_bob_landing_frequency.GetFloat();
-			
-			// Scale bump based on landing velocity - more velocity = bigger bump
-			float velocityScale = clamp( s_airState.landingVelocity / 300.0f, 0.3f, 3.0f );
-			
-			// Create smooth decay curve
-			float normalizedTime = timeSinceLanding / landingDuration;
-			float decayFactor = 1.0f - normalizedTime;
-			decayFactor = decayFactor * decayFactor; // Quadratic decay for smooth fade
-			
-			// Create oscillating bump with configurable frequency
-			float oscillation = sin( timeSinceLanding * frequency * M_PI );
-			
-			// Combine all factors for powerful, configurable landing bump
-			landingBumpAmount = -2.0f * bumpIntensity * velocityScale * decayFactor * oscillation;
-		}
-		else
-		{
-			// Reset landing time after effect ends
-			s_airState.landingTime = 0.0f;
-			s_airState.landingVelocity = 0.0f;
-		}
-	}
+	// Landing bump effect removed
 
-	// Add the air raise and landing bump to vertical bob
-	g_verticalBob += airRaiseAmount + landingBumpAmount;
+	// Add the air raise to vertical bob
+	g_verticalBob += airRaiseAmount;
 
-	g_verticalBob = clamp( g_verticalBob, -4.0f * bob_scale, (3.0f * bob_scale) + fabs(airRaiseAmount) + fabs(landingBumpAmount) );
+	g_verticalBob = clamp( g_verticalBob, -4.0f * bob_scale, (3.0f * bob_scale) + fabs(airRaiseAmount) );
 
 	//Calculate the lateral bob
 	cycle = bobtime - (int)(bobtime/HL2_BOB_CYCLE_MAX*2)*HL2_BOB_CYCLE_MAX*2;
@@ -535,7 +494,6 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 		s_airState.airTransitionBlend = 0.0f;
 		s_airState.airStartTime = 0.0f;
 		s_airState.airborneTime = 0.0f;
-		s_airState.landingTime = 0.0f;
 		s_airState.smoothedVerticalVel = 0.0f;
 		return;
 	}
@@ -555,12 +513,7 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 	}
 	else if ( bOnGround && s_airState.lastGroundState < 0.5f )
 	{
-		// Just landed - record landing data
-		if ( s_airState.landingTime <= 0.0f )
-		{
-			s_airState.landingTime = gpGlobals->curtime;
-			s_airState.landingVelocity = fabs(s_airState.smoothedVerticalVel);
-		}
+		// Just landed - landing bump functionality removed
 	}
 	else if ( bOnGround && s_airState.lastGroundState > 0.8f )
 	{
@@ -589,7 +542,6 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 		s_airState.airTransitionBlend = 0.0f;
 		s_airState.airStartTime = 0.0f;
 		s_airState.airborneTime = 0.0f;
-		s_airState.landingTime = 0.0f;
 	}
 	
 	CalcViewmodelBob();
