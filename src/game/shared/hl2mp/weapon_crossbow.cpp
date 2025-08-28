@@ -97,6 +97,7 @@ protected:
     bool CreateSprites(void);
 
     CHandle<CSprite> m_pGlowSprite;
+    CHandle<CSpriteTrail> m_pGlowTrail;
 
     int m_iDamage;
     bool m_bIsSniperBolt; // Add this flag
@@ -117,6 +118,7 @@ BEGIN_DATADESC(CCrossbowBolt)
 
     // These are recreated on reload, they don't need storage
     DEFINE_FIELD(m_pGlowSprite, FIELD_EHANDLE),
+    DEFINE_FIELD(m_pGlowTrail, FIELD_EHANDLE),
     DEFINE_FIELD(m_bIsSniperBolt, FIELD_BOOLEAN), // Add this field
 
 END_DATADESC()
@@ -136,12 +138,14 @@ CCrossbowBolt *CCrossbowBolt::BoltCreate(const Vector &vecOrigin, const QAngle &
 
     UTIL_SetOrigin(pBolt, vecOrigin);
     pBolt->SetAbsAngles(angAngles);
+    
+    // Set flags before spawning so CreateSprites can check them
+    pBolt->m_iDamage = iDamage;
+    pBolt->SetSniperBolt(bIsSniperBolt);
+    pBolt->SetExplosive(!bIsSniperBolt && rb_crossbow_explosivebolt.GetBool());
+    
     pBolt->Spawn();
     pBolt->SetOwnerEntity(pentOwner);
-
-    pBolt->m_iDamage = iDamage;
-    pBolt->SetSniperBolt(bIsSniperBolt); // Set the sniper bolt flag
-    pBolt->SetExplosive(!bIsSniperBolt && rb_crossbow_explosivebolt.GetBool()); // Set the explosive flag only if it's not a sniper bolt
 
     return pBolt;
 }
@@ -154,6 +158,11 @@ CCrossbowBolt::~CCrossbowBolt( void )
     if ( m_pGlowSprite )
     {
         UTIL_Remove( m_pGlowSprite );
+    }
+    
+    if ( m_pGlowTrail )
+    {
+        UTIL_Remove( m_pGlowTrail );
     }
 }
 
@@ -191,13 +200,32 @@ bool CCrossbowBolt::CreateSprites(void)
         m_pGlowSprite->SetTransparency(kRenderGlow, 255, 255, 255, 128, kRenderFxNoDissipation);
         m_pGlowSprite->SetScale(0.2f);
         m_pGlowSprite->TurnOff();
-        return true;
     }
     else
     {
         Warning("Failed to create glow sprite for crossbow bolt\n");
-        return false;
     }
+    
+    // Create orange trail for regular bolts (not sniper bolts)
+    if (!m_bIsSniperBolt)
+    {
+        m_pGlowTrail = CSpriteTrail::SpriteTrailCreate("sprites/bluelaser1.vmt", GetLocalOrigin(), false);
+        
+        if (m_pGlowTrail != NULL)
+        {
+            m_pGlowTrail->FollowEntity(this);
+            m_pGlowTrail->SetTransparency(kRenderTransAdd, 255, 50, 0, 200, kRenderFxNone); // Darker orange color
+            m_pGlowTrail->SetStartWidth(3.0f); // 1.5x thicker (was 2.0f)
+            m_pGlowTrail->SetEndWidth(0.15f); // 1.5x thicker (was 0.1f)
+            m_pGlowTrail->SetLifeTime(0.75f); // Quick fade
+        }
+        else
+        {
+            Warning("Failed to create trail sprite for crossbow bolt\n");
+        }
+    }
+
+    return (m_pGlowSprite != NULL);
 }
 
 //-----------------------------------------------------------------------------
@@ -250,6 +278,7 @@ void CCrossbowBolt::Precache( void )
     PrecacheModel( BOLT_MODEL );
 
     PrecacheModel( "sprites/light_glow02_noz.vmt" );
+    PrecacheModel( "sprites/bluelaser1.vmt" ); // For the orange trail
 }
 
 //-----------------------------------------------------------------------------
@@ -295,6 +324,14 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
             CalculateMeleeDamageForce(&dmgInfo, vecNormalizedVel, tr.endpos, 0.7f);
             dmgInfo.SetDamagePosition(tr.endpos);
             pOther->DispatchTraceAttack(dmgInfo, vecNormalizedVel, &tr);
+            
+            // Sniper bolts remove immediately after hitting and dealing damage
+            if (m_bIsSniperBolt)
+            {
+                ApplyMultiDamage();
+                UTIL_Remove(this);
+                return;
+            }
         }
         else
         {
@@ -302,6 +339,14 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
             CalculateMeleeDamageForce(&dmgInfo, vecNormalizedVel, tr.endpos, 0.7f);
             dmgInfo.SetDamagePosition(tr.endpos);
             pOther->DispatchTraceAttack(dmgInfo, vecNormalizedVel, &tr);
+            
+            // Sniper bolts remove immediately after hitting a player and dealing damage
+            if (m_bIsSniperBolt && pOther->IsPlayer())
+            {
+                ApplyMultiDamage();
+                UTIL_Remove(this);
+                return;
+            }
             // if what we hit is static architecture, can stay around for a while.
             Vector vecDir = GetAbsVelocity();
             float speed = VectorNormalize(vecDir);
@@ -350,6 +395,11 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
                 if (m_pGlowSprite != NULL)
                 {
                     m_pGlowSprite->TurnOff();
+                }
+                
+                if (m_pGlowTrail != NULL)
+                {
+                    m_pGlowTrail->FadeAndDie(0.2f);
                 }
             }
         }
@@ -423,6 +473,11 @@ void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
                 {
                     m_pGlowSprite->TurnOn();
                     m_pGlowSprite->FadeAndDie(3.0f);
+                }
+                
+                if (m_pGlowTrail != NULL)
+                {
+                    m_pGlowTrail->FadeAndDie(0.2f);
                 }
             }
 
@@ -763,7 +818,7 @@ void CWeaponCrossbow::FireBolt(void)
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Sniper bolt - True hitscan version
+// Purpose: Sniper bolt
 //-----------------------------------------------------------------------------
 void CWeaponCrossbow::FireSniperBolt(void)
 {
@@ -786,68 +841,35 @@ void CWeaponCrossbow::FireSniperBolt(void)
         return;
 
 #ifndef CLIENT_DLL
+    Vector vecAiming = pOwner->GetAutoaimVector(0);
     Vector vecSrc = pOwner->Weapon_ShootPosition();
-    Vector vecAiming;
-    QAngle eyeAngles = pOwner->EyeAngles();
-    AngleVectors(eyeAngles, &vecAiming);
-    VectorNormalize(vecAiming);
+    QAngle angAiming;
+    VectorAngles(vecAiming, angAiming);
 
-    // Perform instant trace for true hitscan
+    // Perform trace to find impact point
     trace_t tr;
     UTIL_TraceLine(vecSrc, vecSrc + vecAiming * MAX_TRACE_LENGTH, MASK_SHOT, pOwner, COLLISION_GROUP_NONE, &tr);
-    
-    // Create visual bolt at impact point (or far distance if no hit)
-    Vector boltSpawnPos;
-    if (tr.fraction < 1.0f)
+
+    // Calculate spawn position slightly before impact point
+    const float spawnDistanceFromImpact = 7.0f; // 7 units before impact
+    Vector vecSpawnPos;
+    if (tr.fraction < 1.0) // If we hit something
     {
-        // Hit something - spawn bolt just before impact
-        boltSpawnPos = tr.endpos - (vecAiming * 8.0f);
+        vecSpawnPos = tr.endpos - (vecAiming * spawnDistanceFromImpact);
     }
     else
     {
-        // No hit - spawn bolt far away
-        boltSpawnPos = vecSrc + vecAiming * 4000.0f;
+        vecSpawnPos = tr.endpos;
     }
-    
-    // Create visual bolt
-    CCrossbowBolt* pBolt = CCrossbowBolt::BoltCreate(boltSpawnPos, eyeAngles, GetHL2MPWpnData().m_iPlayerDamage, pOwner, true);
+
+    // Create bolt at the calculated position
+    CCrossbowBolt* pBolt = CCrossbowBolt::BoltCreate(vecSpawnPos, angAiming, GetHL2MPWpnData().m_iPlayerDamage, pOwner, true);
     if (pBolt)
     {
         pBolt->SetSniperBolt(true);
         pBolt->SetExplosive(false);
-        // Give it minimal velocity to trigger collision immediately
-        pBolt->SetAbsVelocity(vecAiming * 100.0f);
-        pBolt->SetGravity(0.0f);
-    }
-    
-    // If we hit something, deal damage immediately
-    if (tr.fraction < 1.0f && tr.m_pEnt)
-    {
-        CBaseEntity* pHit = tr.m_pEnt;
-        if (pHit && pHit->m_takedamage != DAMAGE_NO)
-        {
-            CTakeDamageInfo dmgInfo(pBolt, pOwner, GetHL2MPWpnData().m_iPlayerDamage, DMG_BULLET | DMG_NEVERGIB);
-            dmgInfo.SetDamagePosition(tr.endpos);
-            
-            Vector vecDir = vecAiming;
-            CalculateMeleeDamageForce(&dmgInfo, vecDir, tr.endpos, 0.7f);
-            
-            pHit->DispatchTraceAttack(dmgInfo, vecDir, &tr);
-            ApplyMultiDamage();
-        }
-        
-        // Create impact effects
-        UTIL_ImpactTrace(&tr, DMG_BULLET);
-        
-        // Play hit sound
-        if (pHit && pHit->IsNPC())
-        {
-            EmitSound("Weapon_Crossbow.BoltHitBody");
-        }
-        else
-        {
-            EmitSound("Weapon_Crossbow.BoltHitWorld");
-        }
+        // Set high velocity for near-instant impact
+        pBolt->SetAbsVelocity(vecAiming * BOLT_AIR_VELOCITY * 2.0f);
     }
 #endif
 

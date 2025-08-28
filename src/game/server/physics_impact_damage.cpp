@@ -273,7 +273,9 @@ float CalculatePhysicsImpactDamage( int index, gamevcollisionevent_t *pEvent, co
 	if ( ( pEvent->pObjects[otherIndex]->GetGameFlags() & FVPHYSICS_DMG_DISSOLVE ) && 
 			!pEvent->pEntities[index]->IsEFlagSet(EFL_NO_DISSOLVE) )
 	{
-		damageType |= DMG_DISSOLVE;
+		// For combine balls and similar entities, use DMG_NEVERGIB to prevent gibbing
+		// Replace DMG_CRUSH with DMG_NEVERGIB for dissolve damage to prevent unwanted gibbing
+		damageType = DMG_DISSOLVE | DMG_NEVERGIB;
 		return 1000;
 	}
 
