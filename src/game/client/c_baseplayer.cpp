@@ -1776,7 +1776,8 @@ void C_BasePlayer::CalcInEyeCamView(Vector& eyeOrigin, QAngle& eyeAngles, float&
 		return;
 	}
 
-	fov = GetFOV();	// TODO use tragets FOV
+	// Always use watcher's fov_desired for spectator FOV calculation
+	fov = GetFOV();
 
 	m_flObserverChaseDistance = 0.0;
 
@@ -2035,6 +2036,14 @@ bool C_BasePlayer::ShouldDrawThisPlayer()
 			return true;
 		}
 	}
+	
+	// Don't draw player shadow when spectating in first person
+	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE && pLocalPlayer->GetObserverTarget() == ToBasePlayer(this) )
+	{
+		return false;
+	}
+	
 	return rb_playershadow.GetBool();
 }
 
@@ -2474,15 +2483,8 @@ float C_BasePlayer::GetFOV( void )
 
 	if ( GetObserverMode() == OBS_MODE_IN_EYE )
 	{
-		C_BasePlayer *pTargetPlayer = dynamic_cast<C_BasePlayer*>( GetObserverTarget() );
-
-		/* get fov from observer target. Not if target is observer itself
-		if ( pTargetPlayer && !pTargetPlayer->IsObserver() )
-		{
-			return pTargetPlayer->GetFOV();
-		}
-		*/
-		return 110;
+		// Always use watcher's fov_desired setting for spectator FOV
+		return GetDefaultFOV();
 	}
 
 	// Allow our vehicle to override our FOV if it's currently at the default FOV.

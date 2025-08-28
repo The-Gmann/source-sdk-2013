@@ -725,9 +725,23 @@ void CViewRender::SetUpViews()
 	float fDefaultFov = default_fov.GetFloat();
 	float flFOVOffset = fDefaultFov - view.fov;
 
+	// For spectators, don't apply FOV offset to viewmodel FOV to ensure consistent viewmodel scaling
+	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+	bool bIsSpectating = ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE );
+
 	//Adjust the viewmodel's FOV to move with any FOV offsets on the viewer's end
 	// Calculate fovViewmodel
-	float fovViewmodel = g_pClientMode->GetViewModelFOV() - flFOVOffset;
+	float fovViewmodel;
+	if ( bIsSpectating )
+	{
+		// For spectators, use viewmodel FOV directly without offset adjustment
+		fovViewmodel = g_pClientMode->GetViewModelFOV();
+	}
+	else
+	{
+		// For normal players, apply FOV offset as usual
+		fovViewmodel = g_pClientMode->GetViewModelFOV() - flFOVOffset;
+	}
 	
 	// Check if fovViewmodel is less than 5
 	if (fovViewmodel < 5) {

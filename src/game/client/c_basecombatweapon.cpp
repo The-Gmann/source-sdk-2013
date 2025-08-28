@@ -326,7 +326,19 @@ bool C_BaseCombatWeapon::IsCarriedByLocalPlayer( void )
 //-----------------------------------------------------------------------------
 bool C_BaseCombatWeapon::ShouldDrawUsingViewModel( void )
 {
-	return IsCarriedByLocalPlayer() && !C_BasePlayer::ShouldDrawLocalPlayer();
+	// Normal case: local player carrying the weapon in first person
+	if ( IsCarriedByLocalPlayer() && !C_BasePlayer::ShouldDrawLocalPlayer() )
+		return true;
+	
+	// Spectator case: local player spectating the weapon owner in first person
+	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE && 
+		 pLocalPlayer->GetObserverTarget() == GetOwner() )
+	{
+		return true;
+	}
+	
+	return false;
 }
 
 

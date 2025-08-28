@@ -988,6 +988,14 @@ void ClientModeShared::Layout()
 
 float ClientModeShared::GetViewModelFOV( void )
 {
+	// Check if we're spectating in first person
+	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE )
+	{
+		// Use watcher's viewmodel_fov setting for spectator viewmodel FOV
+		return v_viewmodel_fov.GetFloat();
+	}
+	
 	return v_viewmodel_fov.GetFloat();
 }
 

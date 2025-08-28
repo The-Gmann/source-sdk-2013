@@ -1624,7 +1624,25 @@ void CEconEntity::UpdateSingleParticleSystem( bool bVisible, const attachedparti
 	bool bIsVM = false;
 	C_BasePlayer *pOwner = ToBasePlayer(GetOwnerEntity());
 	bool bDrawThisEffect = true;
+	
+	// Check if we should use viewmodel effects
+	bool bShouldUseViewModelEffects = false;
+	
 	if ( !pOwner->ShouldDrawThisPlayer() )
+	{
+		// Owner is in first person view
+		bShouldUseViewModelEffects = true;
+	}
+	else
+	{
+		// Check if a spectator is watching this player in first person
+		if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE && pLocalPlayer->GetObserverTarget() == pOwner )
+		{
+			bShouldUseViewModelEffects = true;
+		}
+	}
+	
+	if ( bShouldUseViewModelEffects )
 	{
 		// only draw effects designated for this
 		if ( !pSystem->bDrawInViewModel )
@@ -1637,6 +1655,16 @@ void CEconEntity::UpdateSingleParticleSystem( bool bVisible, const attachedparti
 		{
 			bIsVM = true;
 			pEffectOwner = pEffectOwnerVM;
+		}
+		else if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE && pLocalPlayer->GetObserverTarget() == pOwner )
+		{
+			// Spectator case: use the target's viewmodel
+			C_BaseViewModel *pTargetVM = pOwner->GetViewModel();
+			if ( pTargetVM && pTargetVM->GetOwningWeapon() == this )
+			{
+				bIsVM = true;
+				pEffectOwner = pEffectOwnerVM;
+			}
 		}
 	}
 

@@ -2845,6 +2845,9 @@ void CWeaponPhysCannon::DoEffectHolding( void )
 			m_Parameters[i].SetVisible();
 		}
 
+		// Hide third-person beams when using viewmodel
+		m_Beams[2].SetVisible( false );
+
 		// Create our beams
 		CBasePlayer *pOwner = ToBasePlayer( GetOwner() );
 		CBaseEntity *pBeamEnt = pOwner->GetViewModel();
@@ -3176,6 +3179,20 @@ void CWeaponPhysCannon::DrawEffects( void )
 //-----------------------------------------------------------------------------
 int CWeaponPhysCannon::DrawModel( int flags )
 {
+	// Check if local player is spectating owner of this weapon in first person
+	C_BasePlayer *localplayer = C_BasePlayer::GetLocalPlayer();
+
+	if ( localplayer && localplayer->IsObserver() && GetOwner() )
+	{
+		// don't draw weapon effects if chasing this guy as spectator in first person
+		if ( localplayer->GetObserverMode() == OBS_MODE_IN_EYE &&
+			 localplayer->GetObserverTarget() == GetOwner() ) 
+		{
+			// Call base class to handle the model drawing, but skip our effects
+			return BaseClass::DrawModel( flags );
+		}
+	}
+
 	// Only render these on the transparent pass
 	if ( flags & STUDIO_TRANSPARENCY )
 	{

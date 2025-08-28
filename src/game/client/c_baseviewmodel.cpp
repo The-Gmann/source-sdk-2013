@@ -54,6 +54,14 @@ void FormatViewModelAttachment( Vector &vOrigin, bool bInverse )
 	// Presumably, SetUpView has been called so we know our FOV and render origin.
 	const CViewSetup *pViewSetup = view->GetPlayerViewSetup();
 	
+	// Don't apply viewmodel transforms when spectating in first person
+	C_BasePlayer *pLocalPlayer = C_BasePlayer::GetLocalPlayer();
+	if ( pLocalPlayer && pLocalPlayer->GetObserverMode() == OBS_MODE_IN_EYE )
+	{
+		// When spectating, don't transform viewmodel attachments to avoid third-person particle effects
+		return;
+	}
+	
 	// Use the actual calculated FOV values from the view setup
 	// pViewSetup->fov is the current world FOV (affected by fov_desired)
 	// pViewSetup->fovViewmodel is the properly calculated viewmodel FOV
