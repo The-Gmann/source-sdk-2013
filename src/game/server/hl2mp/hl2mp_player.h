@@ -121,6 +121,10 @@ public:
 	// Headshot tracking
 	bool WasKilledByHeadshot() const { return m_bKilledByHeadshot; }
 
+	// Damage feedback methods
+	void OnDamageDealt( CBaseEntity* pVictim, const CTakeDamageInfo& info );
+	void OnKilledOther( CBaseEntity* pVictim, const CTakeDamageInfo& info );
+
 	void CheckChatText( char *p, int bufsize );
 
 	void State_Transition( HL2MPPlayerState newState );

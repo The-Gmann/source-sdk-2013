@@ -122,6 +122,46 @@
 	"wave"			"player/longjump_pickup.wav"
 }
 
+// Player feedback sounds
+"Player.Hitsound"
+{
+	"channel"		"CHAN_STATIC"
+	"volume"		"1.0"
+	"soundlevel"	"SNDLVL_NONE"
+	"pitch"			"PITCH_NORM"
+	"soundmixergroup"	"Player_Hitsound"
+
+	"wave"			"player/hitsound.wav"
+}
+
+"Player.Killsound"
+{
+	"channel"		"CHAN_STATIC"
+	"volume"		"1.0"
+	"soundlevel"	"SNDLVL_NONE"
+	"soundmixergroup"	"Player_Hitsound"
+
+	"wave"			"player/killsound.wav"
+}
+
+"Player.Headshot1"
+{
+	"channel"		"CHAN_STATIC"
+	"volume"		"0.75"
+	"soundlevel"	"SNDLVL_80dB"
+
+	"wave"			"player/headshot1.wav"
+}
+
+"Player.Headshot2"
+{
+	"channel"		"CHAN_STATIC"
+	"volume"		"0.75"
+	"soundlevel"	"SNDLVL_80dB"
+
+	"wave"			"player/headshot2.wav"
+}
+
 // *******
 // WEAPONS
 

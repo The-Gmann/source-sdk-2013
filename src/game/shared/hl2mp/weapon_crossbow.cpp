@@ -574,7 +574,7 @@ private:
 
 #ifndef CLIENT_DLL
     CHandle<CSprite> m_hChargerSprite;
-    CHandle<CBaseEntity> m_hLastCosmeticBolt; // Track last cosmetic bolt for removal
+    // REMOVED: m_hLastCosmeticBolt - no longer limiting sniper bolts to 1
 #endif
 
     CNetworkVar( bool,    m_bInZoom );
@@ -838,13 +838,8 @@ void CWeaponCrossbow::FireSniperBolt(void)
     Vector vecAiming = pOwner->GetAutoaimVector(AUTOAIM_5DEGREES);
 
 #ifndef CLIENT_DLL
-    // Clean up any previous cosmetic bolt
-    CBaseEntity *pLastBolt = m_hLastCosmeticBolt.Get();
-    if (pLastBolt)
-    {
-        UTIL_Remove(pLastBolt);
-        m_hLastCosmeticBolt = NULL;
-    }
+    // REMOVED: No longer clean up previous cosmetic bolt to allow multiple like regular bolts
+    // Let each cosmetic bolt manage its own lifetime with the 30-second timer
     
     // IMPROVED FIX: Do a comprehensive trace to determine what we actually hit
     // This accounts for lag compensation by using the same trace that FireBullets would use
@@ -900,8 +895,8 @@ void CWeaponCrossbow::FireSniperBolt(void)
                 pBolt->SetThink(&CBaseEntity::SUB_Remove);
                 pBolt->SetNextThink(gpGlobals->curtime + 30.0f);
                 
-                // Store reference
-                m_hLastCosmeticBolt = pBolt;
+                // REMOVED: No longer store reference to allow multiple bolts
+                // Each bolt manages its own 30-second lifetime automatically
                 
                 // Create sparks when bolt hits the wall
                 CBroadcastRecipientFilter filter;

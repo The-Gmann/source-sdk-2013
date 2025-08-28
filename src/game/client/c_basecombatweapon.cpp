@@ -206,6 +206,11 @@ ShadowType_t C_BaseCombatWeapon::ShadowCastType()
 	if (IsCarriedByLocalPlayer() && !C_BasePlayer::ShouldDrawLocalPlayer())
 		return SHADOWS_NONE;
 
+	// Only allow active weapons to cast shadows when carried
+	C_BaseCombatCharacter *pOwner = GetOwner();
+	if ( pOwner && pOwner->GetActiveWeapon() != this )
+		return SHADOWS_NONE;
+
 	return SHADOWS_RENDER_TO_TEXTURE;
 }
 

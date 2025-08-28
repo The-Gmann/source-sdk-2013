@@ -28,6 +28,7 @@
 
 #include "engine/IEngineSound.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
+#include "recipientfilter.h"
 
 #include "ilagcompensationmanager.h"
 #include "shareddefs.h"
@@ -229,6 +230,9 @@ void CHL2MP_Player::Precache( void )
 	PrecacheScriptSound( "NPC_Citizen.die" );
 	// Precache gib sound script
 	PrecacheScriptSound( "Player.BodySplat" );
+	// Precache headshot sounds for audio feedback
+	PrecacheScriptSound( "Player.Headshot1" );
+	PrecacheScriptSound( "Player.Headshot2" );
 }
 
 void CHL2MP_Player::GiveAllItems( void )
@@ -704,6 +708,52 @@ void CHL2MP_Player::OnMyWeaponFired( CBaseCombatWeapon* weapon )
 	BaseClass::OnMyWeaponFired( weapon );
 
 	TheNextBots().OnWeaponFired( this, weapon );
+}
+
+// Damage feedback methods
+void CHL2MP_Player::OnDamageDealt( CBaseEntity* pVictim, const CTakeDamageInfo& info )
+{
+	// Only send hitsound for player victims that are alive
+	if ( !pVictim || !pVictim->IsPlayer() || pVictim == this || !pVictim->IsAlive() )
+		return;
+
+	// Send hitsound message to this player
+	CSingleUserRecipientFilter filter( this );
+	filter.MakeReliable();
+	
+	float damage = info.GetDamage();
+	
+	// Calculate pitch based on damage (higher damage = higher pitch)
+	// Use wider range for more noticeable pitch variation: 60-160 pitch range for 0-100 damage
+	float pitchMin = 60.0f;
+	float pitchMax = 160.0f;
+	float maxDamage = 100.0f;
+	
+	// Clamp damage to reasonable range and calculate pitch
+	float clampedDamage = clamp( damage, 0.0f, maxDamage );
+	float pitchRange = pitchMax - pitchMin;
+	float pitch = pitchMin + (pitchRange * (clampedDamage / maxDamage));
+	int iPitch = (int)clamp( pitch, 50.0f, 200.0f ); // Final safety clamps
+	
+	UserMessageBegin( filter, "HitSound" );
+		WRITE_FLOAT( damage );
+		WRITE_BYTE( iPitch );
+	MessageEnd();
+}
+
+void CHL2MP_Player::OnKilledOther( CBaseEntity* pVictim, const CTakeDamageInfo& info )
+{
+	// Only send killsound for player victims
+	if ( !pVictim || !pVictim->IsPlayer() || pVictim == this )
+		return;
+
+	// Send killsound message to this player
+	CSingleUserRecipientFilter filter( this );
+	filter.MakeReliable();
+	
+	UserMessageBegin( filter, "KillSound" );
+		WRITE_BYTE( 1 ); // Just a trigger
+	MessageEnd();
 }
 
 void CHL2MP_Player::NoteWeaponFired( void )
@@ -1704,6 +1754,26 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		if ( ptr && ptr->hitgroup == HITGROUP_HEAD && (info.GetDamageType() & DMG_BULLET) )
 		{
 			m_bTookHeadshotDamage = true;
+			
+			// Emit server-side headshot sound from player's head position
+			Vector headPos = GetAbsOrigin();
+			headPos.z += 64.0f; // Approximate head height
+			
+			// Create a recipient filter for all players in the area
+			CPASFilter filter( headPos );
+			
+			// Choose random headshot sound
+			const char* headshotSound = (random->RandomInt(0, 1) == 0) ? "Player.Headshot1" : "Player.Headshot2";
+			
+			// Emit the headshot sound at the victim's head position
+			EmitSound_t soundParams;
+			soundParams.m_pSoundName = headshotSound;
+			soundParams.m_flVolume = 1.0f;
+			soundParams.m_nChannel = CHAN_STATIC;
+			soundParams.m_SoundLevel = SNDLVL_80dB; // Audible in local area
+			soundParams.m_pOrigin = &headPos;
+			
+			EmitSound( filter, entindex(), soundParams );
 		}
 
 		// Call base class to handle the actual trace attack

@@ -1205,6 +1205,15 @@ void C_HL2MPRagdoll::CreateHL2MPRagdoll( void )
 
 	if ( pPlayer && !pPlayer->IsDormant() )
 	{
+		// For local player, force bone setup regardless of rb_playershadow setting
+		bool bIsLocalPlayer = (pPlayer == C_BasePlayer::GetLocalPlayer());
+		if ( bIsLocalPlayer )
+		{
+			// Temporarily force the player model to be drawable to ensure proper bone setup
+			pPlayer->RemoveEffects( EF_NODRAW );
+			pPlayer->SetupBones( NULL, -1, BONE_USED_BY_ANYTHING, gpGlobals->curtime );
+		}
+		
 		pPlayer->GetRagdollInitBoneArrays( boneDelta0, boneDelta1, currentBones, boneDt );
 	}
 	else
@@ -1283,4 +1292,135 @@ void C_HL2MP_Player::PostThink( void )
 	{
 		SetCollisionBounds( VEC_CROUCH_TRACE_MIN, VEC_CROUCH_TRACE_MAX );
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Console command completion functions
+//-----------------------------------------------------------------------------
+
+// Completion function for jointeam command
+static int JoinTeamCompletion( const char *partial, char commands[ COMMAND_COMPLETION_MAXITEMS ][ COMMAND_COMPLETION_ITEM_LENGTH ] )
+{
+	int current = 0;
+	int partialLength = Q_strlen( partial );
+	
+	// Determine if we're in teamplay mode
+	bool bIsTeamplay = false;
+	if ( HL2MPRules() )
+	{
+		bIsTeamplay = HL2MPRules()->IsTeamplay();
+	}
+	
+	// Extract the partial team number if any
+	const char *pTeamStart = Q_strstr( partial, "jointeam " );
+	if ( pTeamStart )
+	{
+		pTeamStart += 9; // Skip "jointeam "
+		partialLength = Q_strlen( pTeamStart );
+		
+		// Check each team number based on teamplay mode
+		const char *teamNumbers[] = { "1", "2", "3" };
+		const char *teamDescriptions[3];
+		
+		if ( bIsTeamplay )
+		{
+			// Teamplay mode: 1-Spectator, 2-Combine, 3-Rebels
+			teamDescriptions[0] = "(Spectator)";
+			teamDescriptions[1] = "(Combine)";
+			teamDescriptions[2] = "(Rebels)";
+		}
+		else
+		{
+			// Non-teamplay mode: 1-Spectator, 2-Unassigned, 3 non-existent
+			teamDescriptions[0] = "(Spectator)";
+			teamDescriptions[1] = "(Unassigned)";
+			teamDescriptions[2] = NULL; // 3 doesn't exist in non-teamplay
+		}
+		
+		int maxTeams = bIsTeamplay ? 3 : 2; // Only 1 and 2 exist in non-teamplay
+		
+		for ( int i = 0; i < maxTeams && current < COMMAND_COMPLETION_MAXITEMS; i++ )
+		{
+			if ( !Q_strnicmp( teamNumbers[i], pTeamStart, partialLength ) )
+			{
+				Q_snprintf( commands[current], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam %s %s", teamNumbers[i], teamDescriptions[i] );
+				current++;
+			}
+		}
+	}
+	else
+	{
+		// No team specified yet, show all options based on teamplay mode
+		if ( bIsTeamplay )
+		{
+			// Teamplay mode: 1-Spectator, 2-Combine, 3-Rebels
+			Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam 1 (Spectator)" );
+			if ( current < COMMAND_COMPLETION_MAXITEMS )
+				Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam 2 (Combine)" );
+			if ( current < COMMAND_COMPLETION_MAXITEMS )
+				Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam 3 (Rebels)" );
+		}
+		else
+		{
+			// Non-teamplay mode: 1-Spectator, 2-Unassigned, 3 non-existent
+			Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam 1 (Spectator)" );
+			if ( current < COMMAND_COMPLETION_MAXITEMS )
+				Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "jointeam 2 (Unassigned)" );
+			// Team 3 doesn't exist in non-teamplay mode
+		}
+	}
+	
+	return current;
+}
+
+// Completion function for spectate command
+static int SpectateCompletion( const char *partial, char commands[ COMMAND_COMPLETION_MAXITEMS ][ COMMAND_COMPLETION_ITEM_LENGTH ] )
+{
+	int current = 0;
+	
+	Q_snprintf( commands[current++], COMMAND_COMPLETION_ITEM_LENGTH, "spectate (Join spectator team)" );
+	
+	return current;
+}
+
+// Register the console commands with completion
+CON_COMMAND_F_COMPLETION( jointeam, "Join a team - mappings depend on teamplay mode", FCVAR_CLIENTCMD_CAN_EXECUTE, JoinTeamCompletion )
+{
+	if ( args.ArgC() < 2 )
+	{
+		ConMsg( "Usage: jointeam <team_number>\n" );
+		
+		// Show current team mappings based on teamplay mode
+		bool bIsTeamplay = false;
+		if ( HL2MPRules() )
+		{
+			bIsTeamplay = HL2MPRules()->IsTeamplay();
+		}
+		
+		if ( bIsTeamplay )
+		{
+			ConMsg( "Teamplay mode:\n" );
+			ConMsg( "  1 = Spectator\n" );
+			ConMsg( "  2 = Combine\n" );
+			ConMsg( "  3 = Rebels\n" );
+		}
+		else
+		{
+			ConMsg( "Non-teamplay mode:\n" );
+			ConMsg( "  1 = Spectator\n" );
+			ConMsg( "  2 = Unassigned\n" );
+		}
+		return;
+	}
+	
+	// Forward to server
+	char command[128];
+	Q_snprintf( command, sizeof(command), "jointeam %s", args[1] );
+	engine->ServerCmd( command );
+}
+
+CON_COMMAND_F_COMPLETION( spectate, "Join the spectator team", FCVAR_CLIENTCMD_CAN_EXECUTE, SpectateCompletion )
+{
+	// Forward to server
+	engine->ServerCmd( "spectate" );
 }

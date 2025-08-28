@@ -46,6 +46,10 @@ void RegisterUserMessages( void )
 	usermessages->Register( "AchievementEvent", -1 );
 	usermessages->Register( "UpdateJalopyRadar", -1 );
 	usermessages->Register( "ShowScope", 1); // show the sniper scope
+	
+	// HL2MP Reborn audio feedback messages
+	usermessages->Register( "HitSound", 5 ); // damage amount (float) + pitch (byte)
+	usermessages->Register( "KillSound", 1 ); // just a trigger
 
 #ifndef _X360
 	// NVNT register haptic user messages
