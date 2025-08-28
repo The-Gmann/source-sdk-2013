@@ -1359,6 +1359,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 			if (info.GetDamage() >= 200.0f)
 			{
 				bShouldGib = true;
+				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_FALL\n", info.GetDamage());
 			}
 			else
 			{
@@ -1372,6 +1373,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 			if (info.GetDamage() >= 450.0f)
 			{
 				bShouldGib = true;
+				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_CRUSH\n", info.GetDamage());
 			}
 			else
 			{
@@ -1383,11 +1385,13 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		else if (info.GetDamageType() & DMG_BLAST && flDamageRatio >= 1.0f)
 		{
 			bShouldGib = true;
+			DevMsg("Player gibbed! Damage: %.1f, Type: DMG_BLAST (Damage Ratio >= 1.0)\n", info.GetDamage());
 		}
 		// General gibbing condition (damage ratio >= 1.5)
 		else if (flDamageRatio >= 1.5f)
 		{
 			bShouldGib = true;
+			DevMsg("Player gibbed! Damage: %.1f, Type: General (Damage Ratio >= 1.5)\n", info.GetDamage());
 		}
 
 		if (bShouldGib)
