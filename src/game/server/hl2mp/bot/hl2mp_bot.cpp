@@ -343,6 +343,10 @@ CON_COMMAND_F( bot_kick, "Remove a bot by name, or all bots (\"all\").", FCVAR_G
 				}
 				else
 				{
+					// Release the bot's name back to the available pool
+					extern void ReleaseBotName(const char* name);
+					ReleaseBotName( player->GetPlayerName() );
+					
 					engine->ServerCommand( UTIL_VarArgs( "kickid %d\n", player->GetUserID() ) );
 				}
 				CHL2MPBot* pBot = dynamic_cast< CHL2MPBot* >( player );

@@ -5,6 +5,7 @@
 #include "bot/hl2mp_bot.h"
 #include "item_healthkit.h"
 #include "bot/behavior/hl2mp_bot_get_health.h"
+#include "hl2/func_recharge.h"
 
 extern ConVar bot_path_lookahead_range;
 
@@ -70,6 +71,37 @@ public:
 					return false;
 
 				return true;
+			}
+			
+			// Add suit charger support for bots
+			if ( candidate->ClassMatches( "item_suitcharger" ) )
+			{
+				// Check if bot needs armor and suit charger has juice
+				CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
+				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 100 )
+				{
+					CNewRecharge* pSuitCharger = dynamic_cast< CNewRecharge* >( candidate );
+					if ( pSuitCharger && pSuitCharger->GetJuice() > 0 )
+					{
+						return true;
+					}
+				}
+				return false;
+			}
+			
+			if ( candidate->ClassMatches( "func_recharge" ) )
+			{
+				// Check if bot needs armor and suit charger has juice
+				CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
+				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 100 )
+				{
+					CRecharge* pSuitCharger = dynamic_cast< CRecharge* >( candidate );
+					if ( pSuitCharger && pSuitCharger->GetJuice() > 0 )
+					{
+						return true;
+					}
+				}
+				return false;
 			}
 		}
 
@@ -212,6 +244,19 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 	{
 		hHealthKits.AddToTail( healthkit );
 	}
+	
+	// Add suit chargers to the search
+	healthkit = NULL;
+	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "item_suitcharger" ) ) != NULL )
+	{
+		hHealthKits.AddToTail( healthkit );
+	}
+	
+	healthkit = NULL;
+	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "func_recharge" ) ) != NULL )
+	{
+		hHealthKits.AddToTail( healthkit );
+	}
 
 	bool bFindChargers = true;
 	bool bLowHealth = healthRatio < bot_health_critical_ratio.GetFloat();
@@ -339,11 +384,20 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 
 			if ( me->GetVisionInterface()->IsLineOfSightClearToEntity( m_healthKit ) )
 			{
+				// Check if we're done with health chargers
 				if ( me->GetHealth() == me->GetMaxHealth() )
 				{
 					return Done( "Health refilled by the Charger" );
 				}
+				
+				// Check if we're done with suit chargers (armor full)
+				CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
+				if ( pPlayer && pPlayer->ArmorValue() >= 100 )
+				{
+					return Done( "Armor refilled by the Suit Charger" );
+				}
 
+				// Check health charger juice
 				CNewWallHealth* pNewWallHealth = dynamic_cast< CNewWallHealth* >( m_healthKit.Get() );
 				if ( pNewWallHealth )
 				{
@@ -356,6 +410,21 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 				{
 					if ( pWallHealth->GetJuice() == 0 )
 						return Done( "Charger is out of juice!" );
+				}
+				
+				// Check suit charger juice
+				CNewRecharge* pNewRecharge = dynamic_cast< CNewRecharge* >( m_healthKit.Get() );
+				if ( pNewRecharge )
+				{
+					if ( pNewRecharge->GetJuice() == 0 )
+						return Done( "Suit Charger is out of juice!" );
+				}
+				
+				CRecharge* pRecharge = dynamic_cast< CRecharge* >( m_healthKit.Get() );
+				if ( pRecharge )
+				{
+					if ( pRecharge->GetJuice() == 0 )
+						return Done( "Suit Charger is out of juice!" );
 				}
 
 				float healthRatio = ( float )me->GetHealth() / ( float )me->GetMaxHealth();

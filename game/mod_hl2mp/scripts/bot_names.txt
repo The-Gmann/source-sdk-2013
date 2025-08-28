@@ -1,48 +1,107 @@
-Viktor
-Lesha
-FREX
-Xeller
-Kisel
-Altruist
-Cooler
-Azamat
-Aboba
-Supportman
-Oni
-Hillbily
-Soma Cruz
-Bebrik
-Cocojambo
-Celty
-Shinra
-Shidzyo
-Dracula
-Trevor Belmont
-Alucard
-Rouxls Kaard
-Martlet
-Ceroba
-Keboba
-Vadim
-BasementTrapper6909
-Bogdan
-Roma
-Xenomorph
-Dima
-Yura
-Mefik
-Vitya Nedovolen
-Vladislav
-GoldenFreddy116
-Playstation
-Sol'
-O cholera
-Chi to Freddy Fazbear?
-NESISTOL
-I AM GOD
-Lil Darkie
-Snoop Dogg
-Tomas
-Kartoplya
-454
-49
+# Bot names file for Half-Life 2: Deathmatch Reborn
+# Each name should be on a separate line
+# Lines starting with # or / are ignored
+
+# HL2 Main Characters
+Gordon Freeman
+Alyx Vance
+Eli Vance
+Isaac Kleiner
+Barney Calhoun
+Judith Mossman
+Wallace Breen
+Dog
+Father Grigori
+Arne Magnusson
+
+# Citizens and Rebels
+Odessa Cubbage
+Winston
+Sheckley
+Griggs
+Lars
+Lazlo
+Captain Vance
+Vortigaunt
+The G-Man
+Civil Protection
+
+# Half-Life Mods & Extended Universe
+Adrian Shephard
+Otis Laurey
+Gina Cross
+Colette Green
+Damien Reeves
+Walter Bennet
+Ivan the Space Biker
+Kate
+Richard Keller
+Dr. Rosenberg
+Nick
+Pit Drone Wrangler
+Race X Survivor
+HECU Marine
+Black Ops Agent
+Freeman's Mind
+Civil Protection 01
+Metrocop Beta
+Rebel Medic
+City Scanner
+
+# Opposing Force References
+Corporal Shephard
+Sergeant Major
+Drill Instructor
+Bootcamp Survivor
+Military Police
+Hazmat Specialist
+Gene Worm Hunter
+Portal Storm Witness
+Displacer Cannon User
+Spore Launcher Expert
+Shock Trooper
+Alien Grunt Slayer
+
+# Blue Shift & Decay References
+Security Guard Calhoun
+Dr. Cross
+Dr. Green
+Maintenance Worker
+Sector C Guard
+Anomalous Materials
+Lambda Complex
+Xen Borderworld
+Resonance Cascade
+Black Mesa East
+Nova Prospekt
+The Citadel
+
+# Community Mod References
+Sweet Half-Life
+Azure Sheep
+Point of View
+They Hunger
+USS Darkstar
+Wanted!
+Half-Quake
+Poke646
+Science and Industry
+Sven Coop
+Natural Selection
+Day of Defeat
+Ricochet
+Deathmatch Classic
+
+# HL2 Episode Characters
+Advisor Victim
+Strider Pilot
+Hunter Synth
+Combine Elite
+Zombie Torso
+Antlion Worker
+Vortigaunt Elder
+Resistance Fighter
+White Forest Base
+Episode Three
+Borealis Crew
+Aperture Scientist

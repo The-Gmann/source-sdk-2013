@@ -3,6 +3,7 @@
 
 #include "cbase.h"
 #include "hl2mp_bot_manager.h"
+#include "filesystem.h"
 
 #include "Player/NextBotPlayer.h"
 #include "team.h"
@@ -27,9 +28,14 @@ ConVar bot_quota_debug( "bot_quota_debug", "0", FCVAR_CHEAT, "Enable debug outpu
 
 extern const char *GetRandomBotName( void );
 extern void CreateBotName( int iTeam, CHL2MPBot::DifficultyType skill, char* pBuffer, int iBufferSize );
+extern void ReleaseBotName(const char* name);
 
-// Unique bot names list - HL2 characters and obscure names
-static const char *g_ppszUniqueBotNames[] = 
+// Dynamic bot names list loaded from scripts/bot_names.cfg
+static CUtlVector<CUtlString> g_BotNamesList;
+static CUtlVector<int> g_AvailableNameIndices; // Tracks which names haven't been used yet
+
+// Fallback bot names if file cannot be loaded
+static const char *g_ppszFallbackBotNames[] = 
 {
 	// HL2 Main Characters
 	"Gordon Freeman", "Alyx Vance", "Eli Vance", "Isaac Kleiner", "Barney Calhoun",
@@ -66,15 +72,136 @@ static const char *g_ppszUniqueBotNames[] =
 	"White Forest Base", "Episode Three", "Borealis Crew", "Aperture Scientist"
 };
 
-static int g_iNextUniqueBotNameIndex = 0;
+//----------------------------------------------------------------------------------------------------------------
+// Load bot names from scripts/bot_names.cfg or fall back to hardcoded names
+void LoadBotNamesFromFile()
+{
+	g_BotNamesList.Purge();
+	
+	// Try to load from scripts/bot_names.cfg first
+	FileHandle_t file = filesystem->Open("scripts/bot_names.cfg", "r", "MOD");
+	if (file == FILESYSTEM_INVALID_HANDLE)
+	{
+		// Try .txt extension if .cfg doesn't exist
+		file = filesystem->Open("scripts/bot_names.txt", "r", "MOD");
+	}
+	
+	if (file != FILESYSTEM_INVALID_HANDLE)
+	{
+		// File found, read line by line
+		char line[256];
+		while (filesystem->ReadLine(line, sizeof(line), file))
+		{
+			// Remove newline and whitespace
+			int len = V_strlen(line);
+			while (len > 0 && (line[len-1] == '\n' || line[len-1] == '\r' || line[len-1] == ' ' || line[len-1] == '\t'))
+			{
+				line[--len] = 0;
+			}
+			
+			// Skip empty lines and comments
+			if (len > 0 && line[0] != '/' && line[0] != '#')
+			{
+				g_BotNamesList.AddToTail(CUtlString(line));
+			}
+		}
+		filesystem->Close(file);
+		
+		if (g_BotNamesList.Count() > 0)
+		{
+			DevMsg("[BOT_NAMES] Loaded %d bot names from file\n", g_BotNamesList.Count());
+			return;
+		}
+	}
+	
+	// Fallback to hardcoded names if file loading failed
+	DevMsg("[BOT_NAMES] Using fallback hardcoded bot names\n");
+	for (int i = 0; i < ARRAYSIZE(g_ppszFallbackBotNames); i++)
+	{
+		g_BotNamesList.AddToTail(CUtlString(g_ppszFallbackBotNames[i]));
+	}
+}
 
 //----------------------------------------------------------------------------------------------------------------
-// Get a unique bot name from our list, cycling back to start if we run out
+// Get a random bot name from our list, avoiding duplicates until all names are used
 const char* GetUniqueBotName()
 {
-	const char* name = g_ppszUniqueBotNames[g_iNextUniqueBotNameIndex];
-	g_iNextUniqueBotNameIndex = (g_iNextUniqueBotNameIndex + 1) % ARRAYSIZE(g_ppszUniqueBotNames);
+	// Load names on first use
+	if (g_BotNamesList.Count() == 0)
+	{
+		LoadBotNamesFromFile();
+	}
+	
+	if (g_BotNamesList.Count() == 0)
+	{
+		// Emergency fallback
+		return "Bot";
+	}
+	
+	// Initialize available indices if empty or if we've used all names
+	if (g_AvailableNameIndices.Count() == 0)
+	{
+		// Refill the available names list with all indices
+		for (int i = 0; i < g_BotNamesList.Count(); i++)
+		{
+			g_AvailableNameIndices.AddToTail(i);
+		}
+		
+		if (g_AvailableNameIndices.Count() > 0)
+		{
+			DevMsg("[BOT_NAMES] Refreshed available names pool with %d names\n", g_AvailableNameIndices.Count());
+		}
+	}
+	
+	if (g_AvailableNameIndices.Count() == 0)
+	{
+		// This shouldn't happen, but just in case
+		return "Bot";
+	}
+	
+	// Pick a random index from the available names
+	int randomIndex = RandomInt(0, g_AvailableNameIndices.Count() - 1);
+	int nameIndex = g_AvailableNameIndices[randomIndex];
+	
+	// Get the name and remove this index from available list
+	const char* name = g_BotNamesList[nameIndex].String();
+	g_AvailableNameIndices.Remove(randomIndex);
+	
 	return name;
+}
+
+//----------------------------------------------------------------------------------------------------------------
+// Make a bot name available again when a bot disconnects
+void ReleaseBotName(const char* name)
+{
+	if (!name)
+		return;
+	
+	// Find the index of this name in our list
+	for (int i = 0; i < g_BotNamesList.Count(); i++)
+	{
+		if (V_strcmp(g_BotNamesList[i].String(), name) == 0)
+		{
+			// Check if this index is already available
+			bool alreadyAvailable = false;
+			for (int j = 0; j < g_AvailableNameIndices.Count(); j++)
+			{
+				if (g_AvailableNameIndices[j] == i)
+				{
+					alreadyAvailable = true;
+					break;
+				}
+			}
+			
+			// Add it back to available list if not already there
+			if (!alreadyAvailable)
+			{
+				g_AvailableNameIndices.AddToTail(i);
+				DevMsg("[BOT_NAMES] Released name '%s' back to available pool\n", name);
+			}
+			break;
+		}
+	}
 }
 
 static bool UTIL_KickBotFromTeam( int kickTeam )
@@ -98,6 +225,9 @@ static bool UTIL_KickBotFromTeam( int kickTeam )
 
 		if ( !pPlayer->IsAlive() && pPlayer->GetTeamNumber() == kickTeam )
 		{
+			// Release the bot's name back to the available pool
+			ReleaseBotName( pPlayer->GetPlayerName() );
+			
 			// its a bot on the right team - kick it
 			engine->ServerCommand( UTIL_VarArgs( "kickid %d\n", pPlayer->GetUserID() ) );
 
@@ -122,6 +252,9 @@ static bool UTIL_KickBotFromTeam( int kickTeam )
 
 		if (pPlayer->GetTeamNumber() == kickTeam)
 		{
+			// Release the bot's name back to the available pool
+			ReleaseBotName( pPlayer->GetPlayerName() );
+			
 			// its a bot on the right team - kick it
 			engine->ServerCommand( UTIL_VarArgs( "kickid %d\n", pPlayer->GetUserID() ) );
 

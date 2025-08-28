@@ -1576,7 +1576,8 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 				pGib->m_nBody = i;
 				pGib->InitGib( this, adjustedMinVel, adjustedMaxVel );
 				pGib->m_lifeTime = flFadeTime;
-				pGib->SetOwnerEntity( this );
+				// Remove owner entity so all players can interact with gibs
+				// pGib->SetOwnerEntity( this );
 				
 				// NOW get the velocity that InitGib() set and add player momentum to it
 				IPhysicsObject *pPhysics = pGib->VPhysicsGetObject();

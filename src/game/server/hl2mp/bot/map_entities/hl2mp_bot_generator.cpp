@@ -215,6 +215,10 @@ void CHL2MPBotGenerator::InputRemoveBots( inputdata_t &inputdata )
 		CHL2MPBot *pBot = m_spawnedBotVector[i];
 		if ( pBot )
 		{
+			// Release the bot's name back to the available pool
+			extern void ReleaseBotName(const char* name);
+			ReleaseBotName( pBot->GetPlayerName() );
+			
 			pBot->Remove();
 			engine->ServerCommand( UTIL_VarArgs( "kickid %d\n", pBot->GetUserID() ) );
 		}

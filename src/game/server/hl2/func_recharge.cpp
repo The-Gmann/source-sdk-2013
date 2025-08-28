@@ -18,6 +18,7 @@
 #include "player.h"
 #include "engine/IEngineSound.h"
 #include "in_buttons.h"
+#include "func_recharge.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -29,42 +30,7 @@ static ConVar	sk_suitcharger_citadel_maxarmor( "sk_suitcharger_citadel_maxarmor"
 #define SF_CITADEL_RECHARGER	0x2000
 #define SF_KLEINER_RECHARGER	0x4000 // Gives only 25 health
 
-class CRecharge : public CBaseToggle
-{
-public:
-	DECLARE_CLASS( CRecharge, CBaseToggle );
 
-	void Spawn( );
-	bool CreateVPhysics();
-	int DrawDebugTextOverlays(void);
-	void Off(void);
-	void Recharge(void);
-	bool KeyValue( const char *szKeyName, const char *szValue );
-	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
-	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | FCAP_CONTINUOUS_USE); }
-
-private:
-	void InputRecharge( inputdata_t &inputdata );
-	
-	float MaxJuice() const;
-	void UpdateJuice( int newJuice );
-
-	DECLARE_DATADESC();
-
-	float	m_flNextCharge; 
-	int		m_iReactivate ; // DeathMatch Delay until reactvated
-	int		m_iJuice;
-	int		m_iOn;			// 0 = off, 1 = startup, 2 = going
-	float   m_flSoundTime;
-	
-	int		m_nState;
-	
-	COutputFloat m_OutRemainingCharge;
-	COutputEvent m_OnHalfEmpty;
-	COutputEvent m_OnEmpty;
-	COutputEvent m_OnFull;
-	COutputEvent m_OnPlayerUse;
-};
 
 BEGIN_DATADESC( CRecharge )
 
@@ -331,50 +297,6 @@ void CRecharge::Off(void)
 
 
 //NEW
-class CNewRecharge : public CBaseAnimating
-{
-public:
-	DECLARE_CLASS( CNewRecharge, CBaseAnimating );
-
-	void Spawn( );
-	bool CreateVPhysics();
-	int DrawDebugTextOverlays(void);
-	void Off(void);
-	void Recharge(void);
-	bool KeyValue( const char *szKeyName, const char *szValue );
-	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
-	virtual int	ObjectCaps( void ) { return (BaseClass::ObjectCaps() | m_iCaps ); }
-
-	void SetInitialCharge( void );
-
-private:
-	void InputRecharge( inputdata_t &inputdata );
-	void InputSetCharge( inputdata_t &inputdata );
-	float MaxJuice() const;
-	void UpdateJuice( int newJuice );
-	void Precache( void );
-
-	DECLARE_DATADESC();
-
-	float	m_flNextCharge; 
-	int		m_iReactivate ; // DeathMatch Delay until reactvated
-	int		m_iJuice;
-	int		m_iOn;			// 0 = off, 1 = startup, 2 = going
-	float   m_flSoundTime;
-	
-	int		m_nState;
-	int		m_iCaps;
-	int		m_iMaxJuice;
-	
-	COutputFloat m_OutRemainingCharge;
-	COutputEvent m_OnHalfEmpty;
-	COutputEvent m_OnEmpty;
-	COutputEvent m_OnFull;
-	COutputEvent m_OnPlayerUse;
-
-	virtual void StudioFrameAdvance ( void );
-	float m_flJuice;
-};
 
 BEGIN_DATADESC( CNewRecharge )
 

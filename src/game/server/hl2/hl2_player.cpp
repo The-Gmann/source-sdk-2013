@@ -577,13 +577,21 @@ void CHL2_Player::HandleSpeedChanges( CMoveData *mv )
 void CHL2_Player::ReduceTimers( CMoveData *mv )
 {
 	bool bSprinting = mv->m_flClientMaxSpeed == HL2_SPRINT_SPEED;
-
-	if ( bSprinting )
+	bool bPressingMovementKeys = (m_nButtons & (IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT)) != 0;
+	bool bOnGround = (GetGroundEntity() != NULL);
+	
+	// Only modify sprint device state if there's actual movement intent AND player is on ground
+	// This prevents exploit where spamming sprint key while stationary drains power
+	// Also prevents suit power drain when sprinting mid-air (jumping/falling)
+	if ( bSprinting && bPressingMovementKeys && bOnGround )
 	{
 		SuitPower_AddDevice( SuitDeviceSprint );
 	}
-	else
+	else if ( !bSprinting || !bPressingMovementKeys || !bOnGround )
 	{
+		// Only remove sprint device if we're not sprinting OR not moving OR not on ground
+		// This prevents rapid add/remove cycles from sprint key spam while stationary
+		// and stops power drain when mid-air
 		SuitPower_RemoveDevice( SuitDeviceSprint );
 	}
 
@@ -1791,7 +1799,18 @@ void CHL2_Player::SetupVisibility( CBaseEntity *pViewEntity, unsigned char *pvs,
 //-----------------------------------------------------------------------------
 void CHL2_Player::SuitPower_Update( void )
 {
-	if( SuitPower_ShouldRecharge() )
+	// Check for special case: sprinting but not moving (should allow regeneration)
+	bool bSprintNoMovement = false;
+	if( SuitPower_IsDeviceActive(SuitDeviceSprint) )
+	{
+		bool bNotPressingMovementKeys = !(m_nButtons & (IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT));
+		if( bNotPressingMovementKeys )
+		{
+			bSprintNoMovement = true;
+		}
+	}
+	
+	if( SuitPower_ShouldRecharge() || bSprintNoMovement )
 	{
 		SuitPower_Charge( SUITPOWER_CHARGE_RATE * gpGlobals->frametime );
 	}
@@ -1804,7 +1823,11 @@ void CHL2_Player::SuitPower_Update( void )
 		{
 			if( SuitPower_IsDeviceActive(SuitDeviceSprint) )
 			{
-				if ( CloseEnough( fabs( GetAbsVelocity().x ), 0.0f ) && CloseEnough( fabs( GetAbsVelocity().y ), 0.0f ) )
+				// Check if player is holding sprint but not pressing any movement keys
+				// Allow aux power regeneration when holding shift but not moving
+				bool bNotPressingMovementKeys = !(m_nButtons & (IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT));
+				
+				if( bNotPressingMovementKeys )
 				{
 					if ( CloseEnough( m_HL2Local.m_flSuitPowerLoad, SuitDeviceSprint.GetDeviceDrainRate() ) )
 					{
@@ -1812,7 +1835,7 @@ void CHL2_Player::SuitPower_Update( void )
 					}
 					else
 					{
-						// If player's not moving, don't drain sprint juice.
+						// If player's not pressing movement keys, don't drain sprint juice.
 						flPowerLoad -= SuitDeviceSprint.GetDeviceDrainRate();
 					}
 				}
