@@ -57,6 +57,9 @@ extern IGameUIFuncs *gameuifuncs; // for key binding details
 
 ConVar spec_scoreboard( "spec_scoreboard", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
 
+// Access to custom HUD color
+extern ConVar rb_hud_color;
+
 CSpectatorGUI *g_pSpectatorGUI = NULL;
 
 
@@ -169,6 +172,15 @@ void CSpectatorMenu::ApplySchemeSettings(IScheme *pScheme)
 		m_pViewOptions->GetMenu()->SetBgColor( g_pSpectatorGUI->GetBlackBarColor() );
 		m_pPlayerList->GetMenu()->SetBgColor( g_pSpectatorGUI->GetBlackBarColor() );
 	}
+	
+	// Set spectator menu text color using rb_hud_color
+	Color hudColor(255, 255, 255, 255);
+	int r, g, b;
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	{
+		hudColor = Color(r, g, b, 255);
+	}
+	SetPlayerFgColor(hudColor);
 }
 
 //-----------------------------------------------------------------------------

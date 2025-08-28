@@ -228,9 +228,29 @@ void CBaseHL2MPCombatWeapon::WeaponIdle( void )
 extern float	g_lateralBob;
 extern float	g_verticalBob;
 
-static ConVar	cl_bobcycle( "cl_bobcycle","0.8" );
-static ConVar	cl_bob( "cl_bob","0.002" );
-static ConVar	cl_bobup( "cl_bobup","0.5" );
+// Enhanced bobbing system with rb_ CVars - defined here for HL2MP
+ConVar rb_viewmodel_bob_enabled( "rb_viewmodel_bob_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable viewmodel bobbing" );
+ConVar rb_viewmodel_bob_scale( "rb_viewmodel_bob_scale", "1.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing intensity scale", true, 0.0f, true, 3.0f );
+ConVar rb_viewmodel_bob_air_scale( "rb_viewmodel_bob_air_scale", "1.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing scale when mid-air", true, 0.0f, true, 2.5f );
+ConVar rb_viewmodel_bob_air_enabled( "rb_viewmodel_bob_air_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable enhanced air bobbing effects" );
+
+// Landing bump system - user-configurable
+ConVar rb_viewmodel_bob_landing_bump( "rb_viewmodel_bob_landing_bump", "3.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump effect intensity", true, 0.0f, true, 10.0f );
+ConVar rb_viewmodel_bob_landing_duration( "rb_viewmodel_bob_landing_duration", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump effect duration in seconds", true, 0.1f, true, 2.0f );
+ConVar rb_viewmodel_bob_landing_frequency( "rb_viewmodel_bob_landing_frequency", "2.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Landing bump oscillation frequency", true, 1.0f, true, 20.0f );
+
+// Advanced air behavior ConVars - hidden from typical users
+static ConVar rb_viewmodel_bob_air_transition_in( "rb_viewmodel_bob_air_transition_in", "2.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning to air state", true, 0.5f, true, 8.0f );
+static ConVar rb_viewmodel_bob_air_transition_out( "rb_viewmodel_bob_air_transition_out", "1.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning back to ground", true, 0.5f, true, 8.0f );
+static ConVar rb_viewmodel_bob_air_smoothing( "rb_viewmodel_bob_air_smoothing", "1.2", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Air transition smoothing curve power (higher = smoother)", true, 0.5f, true, 3.0f );
+static ConVar rb_viewmodel_bob_air_velocity_scale( "rb_viewmodel_bob_air_velocity_scale", "0.4", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "How much air velocity affects bobbing", true, 0.0f, true, 1.5f );
+static ConVar rb_viewmodel_bob_air_weight_effect( "rb_viewmodel_bob_air_weight_effect", "0.8", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Intensity of weight simulation in air", true, 0.0f, true, 2.0f );
+static ConVar rb_viewmodel_bob_air_minimum_speed( "rb_viewmodel_bob_air_minimum_speed", "50.0", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Minimum effective speed for air bobbing", true, 0.0f, true, 200.0f );
+
+// Hidden obsolete CVars - keeping them for compatibility but hiding them
+static ConVar	cl_bobcycle( "cl_bobcycle","0.8", FCVAR_HIDDEN );
+static ConVar	cl_bob( "cl_bob","0.002", FCVAR_HIDDEN );
+static ConVar	cl_bobup( "cl_bobup","0.5", FCVAR_HIDDEN );
 
 // Register these cvars if needed for easy tweaking
 static ConVar	v_iyaw_cycle( "v_iyaw_cycle", "2", FCVAR_REPLICATED | FCVAR_CHEAT );
@@ -240,20 +260,51 @@ static ConVar	v_iyaw_level( "v_iyaw_level", "0.3", FCVAR_REPLICATED | FCVAR_CHEA
 static ConVar	v_iroll_level( "v_iroll_level", "0.1", FCVAR_REPLICATED | FCVAR_CHEAT );
 static ConVar	v_ipitch_level( "v_ipitch_level", "0.3", FCVAR_REPLICATED | FCVAR_CHEAT );
 
+// Shared air state data structure to synchronize between CalcViewmodelBob and AddViewmodelBob
+struct ViewModelAirState
+{
+	float airTransitionBlend = 0.0f;
+	float lastGroundState = 1.0f; // 1.0f = on ground, 0.0f = in air
+	float airStartTime = 0.0f;
+	float smoothedVerticalVel = 0.0f;
+	float lastVerticalVel = 0.0f;
+	float airborneTime = 0.0f;
+	float landingTime = 0.0f; // Time when we last landed
+	float landingVelocity = 0.0f; // Velocity when we landed
+};
+
+static ViewModelAirState s_airState;
+
 //-----------------------------------------------------------------------------
-// Purpose: 
+// Purpose: Enhanced viewmodel bobbing with improved air behavior and smooth transitions
 // Output : float
 //-----------------------------------------------------------------------------
 float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 {
-	static	float bobtime;
-	static	float lastbobtime;
-	float	cycle;
+	static float bobtime;
+	static float lastbobtime;
+	float cycle;
 	
 	CBasePlayer *player = ToBasePlayer( GetOwner() );
 	//Assert( player );
 
-	//NOTENOTE: For now, let this cycle continue when in the air, because it snaps badly without it
+	// Check if bobbing is disabled or player is invalid
+	if ( !rb_viewmodel_bob_enabled.GetBool() || !player )
+	{
+		g_verticalBob = 0.0f;
+		g_lateralBob = 0.0f;
+		// Reset air state when player is invalid
+		if ( !player )
+		{
+			s_airState.lastGroundState = 1.0f;
+			s_airState.airTransitionBlend = 0.0f;
+			s_airState.airStartTime = 0.0f;
+			s_airState.airborneTime = 0.0f;
+			s_airState.landingTime = 0.0f;
+			s_airState.smoothedVerticalVel = 0.0f;
+		}
+		return 0.0f;
+	}
 
 	if ( ( !gpGlobals->frametime ) || ( player == NULL ) )
 	{
@@ -268,6 +319,94 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	//		 MaxSpeed() is not sufficient for dealing with sprinting - jdw
 
 	speed = clamp( speed, -320, 320 );
+
+	// Enhanced air state tracking and velocity management
+	bool bOnGround = (player->GetGroundEntity() != NULL);
+	float targetGroundState = bOnGround ? 1.0f : 0.0f;
+	float currentVerticalVel = player->GetAbsVelocity().z;
+	
+	// Handle air/ground state transitions
+	if ( !bOnGround && s_airState.lastGroundState > 0.5f )
+	{
+		// Becoming airborne - initialize air tracking
+		s_airState.airStartTime = gpGlobals->curtime;
+		s_airState.airborneTime = 0.0f;
+	}
+	else if ( bOnGround && s_airState.lastGroundState < 0.5f )
+	{
+		// Just landed - record landing data for bump effect
+		s_airState.landingTime = gpGlobals->curtime;
+		s_airState.landingVelocity = fabs(s_airState.smoothedVerticalVel);
+	}
+	else if ( bOnGround && s_airState.lastGroundState > 0.8f )
+	{
+		// Fully grounded - reset air tracking
+		s_airState.airStartTime = 0.0f;
+		s_airState.airborneTime = 0.0f;
+	}
+	else if ( s_airState.airStartTime > 0.0f )
+	{
+		// Update airborne time
+		s_airState.airborneTime = gpGlobals->curtime - s_airState.airStartTime;
+	}
+	
+	// Smooth vertical velocity tracking
+	if ( !bOnGround )
+	{
+		// Active smoothing while airborne
+		float smoothingFactor = 0.12f;
+		s_airState.smoothedVerticalVel = Lerp( smoothingFactor, s_airState.smoothedVerticalVel, currentVerticalVel );
+	}
+	else if ( s_airState.lastGroundState > 0.8f )
+	{
+		// Gradual reset when grounded
+		s_airState.smoothedVerticalVel = Lerp( 0.1f, s_airState.smoothedVerticalVel, 0.0f );
+	}
+	s_airState.lastVerticalVel = currentVerticalVel;
+	
+	// Smooth air-ground transition system
+	if ( rb_viewmodel_bob_air_enabled.GetBool() )
+	{
+		// Calculate transition speeds based on direction
+		float transitionSpeed = (targetGroundState < s_airState.lastGroundState) ? 
+			rb_viewmodel_bob_air_transition_in.GetFloat() : rb_viewmodel_bob_air_transition_out.GetFloat();
+		
+		// Smooth state transition
+		s_airState.lastGroundState = Approach( targetGroundState, s_airState.lastGroundState, gpGlobals->frametime * transitionSpeed );
+		
+		// Apply smoothing curve for natural feel
+		float rawBlend = 1.0f - s_airState.lastGroundState;
+		float smoothingPower = rb_viewmodel_bob_air_smoothing.GetFloat();
+		float smoothedBlend = rawBlend * rawBlend * (3.0f - 2.0f * rawBlend); // Smoothstep
+		s_airState.airTransitionBlend = pow( smoothedBlend, 1.0f / smoothingPower );
+	}
+	else
+	{
+		// Air effects disabled - reset to ground state
+		s_airState.lastGroundState = 1.0f;
+		s_airState.airTransitionBlend = 0.0f;
+		s_airState.airStartTime = 0.0f;
+		s_airState.airborneTime = 0.0f;
+		s_airState.landingTime = 0.0f;
+	}
+
+	// Calculate bob scaling with air state considerations
+	float bob_scale = rb_viewmodel_bob_scale.GetFloat();
+	
+	if ( s_airState.airTransitionBlend > 0.0f )
+	{
+		// Blend between ground and air bob scaling
+		float airBobScale = bob_scale * rb_viewmodel_bob_air_scale.GetFloat();
+		bob_scale = Lerp( s_airState.airTransitionBlend, bob_scale, airBobScale );
+		
+		// Adjust speed calculation for air movement
+		float velocityInfluence = rb_viewmodel_bob_air_velocity_scale.GetFloat();
+		float baseAirSpeed = MAX( speed * 0.4f, rb_viewmodel_bob_air_minimum_speed.GetFloat() );
+		float verticalSpeedFactor = 1.0f + (fabs(s_airState.smoothedVerticalVel) / 800.0f) * velocityInfluence;
+		verticalSpeedFactor = clamp( verticalSpeedFactor, 0.5f, 2.0f );
+		
+		speed = Lerp( s_airState.airTransitionBlend, speed, baseAirSpeed * verticalSpeedFactor );
+	}
 
 	float bob_offset = RemapVal( speed, 0, 320, 0.0f, 1.0f );
 	
@@ -287,10 +426,72 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 		cycle = M_PI + M_PI*(cycle-HL2_BOB_UP)/(1.0 - HL2_BOB_UP);
 	}
 	
-	g_verticalBob = speed*0.005f;
+	// Base vertical bob calculation
+	g_verticalBob = speed*0.005f * bob_scale;
 	g_verticalBob = g_verticalBob*0.3 + g_verticalBob*0.7*sin(cycle);
 
-	g_verticalBob = clamp( g_verticalBob, -7.0f, 4.0f );
+	// Enhanced air physics simulation
+	float airRaiseAmount = 0.0f;
+	if ( s_airState.airTransitionBlend > 0.0f && s_airState.airStartTime > 0.0f )
+	{
+		float airTime = clamp( s_airState.airborneTime, 0.0f, 6.0f );
+		float velocityFactor = clamp( -s_airState.smoothedVerticalVel / 600.0f, -1.0f, 1.0f );
+		float timeFactor = 1.0f - exp( -airTime * 1.0f );
+		float weightEffect = rb_viewmodel_bob_air_weight_effect.GetFloat();
+		
+		// Weight simulation: falling = heavier, rising = lighter
+		float weightFactor = 1.0f + (velocityFactor * 0.2f * weightEffect);
+		weightFactor = clamp( weightFactor, 0.6f, 1.4f );
+		
+		// Combine factors for air movement effect
+		float combinedFactor = velocityFactor * timeFactor * s_airState.airTransitionBlend * weightFactor;
+		float maxRaise = 0.9f * weightEffect;
+		airRaiseAmount = maxRaise * combinedFactor;
+		
+		// Add subtle oscillation for dynamic air feel
+		float oscillationAmp = 0.12f * s_airState.airTransitionBlend * weightEffect;
+		airRaiseAmount += sin( airTime * 0.6f ) * oscillationAmp;
+	}
+	
+	// Add improved landing bump effect
+	float landingBumpAmount = 0.0f;
+	if ( s_airState.landingTime > 0.0f )
+	{
+		float timeSinceLanding = gpGlobals->curtime - s_airState.landingTime;
+		float landingDuration = rb_viewmodel_bob_landing_duration.GetFloat();
+		
+		if ( timeSinceLanding < landingDuration )
+		{
+			// Create a powerful, configurable landing bump
+			float bumpIntensity = rb_viewmodel_bob_landing_bump.GetFloat();
+			float frequency = rb_viewmodel_bob_landing_frequency.GetFloat();
+			
+			// Scale bump based on landing velocity - more velocity = bigger bump
+			float velocityScale = clamp( s_airState.landingVelocity / 300.0f, 0.3f, 3.0f );
+			
+			// Create smooth decay curve
+			float normalizedTime = timeSinceLanding / landingDuration;
+			float decayFactor = 1.0f - normalizedTime;
+			decayFactor = decayFactor * decayFactor; // Quadratic decay for smooth fade
+			
+			// Create oscillating bump with configurable frequency
+			float oscillation = sin( timeSinceLanding * frequency * M_PI );
+			
+			// Combine all factors for powerful, configurable landing bump
+			landingBumpAmount = -2.0f * bumpIntensity * velocityScale * decayFactor * oscillation;
+		}
+		else
+		{
+			// Reset landing time after effect ends
+			s_airState.landingTime = 0.0f;
+			s_airState.landingVelocity = 0.0f;
+		}
+	}
+
+	// Add the air raise and landing bump to vertical bob
+	g_verticalBob += airRaiseAmount + landingBumpAmount;
+
+	g_verticalBob = clamp( g_verticalBob, -4.0f * bob_scale, (3.0f * bob_scale) + fabs(airRaiseAmount) + fabs(landingBumpAmount) );
 
 	//Calculate the lateral bob
 	cycle = bobtime - (int)(bobtime/HL2_BOB_CYCLE_MAX*2)*HL2_BOB_CYCLE_MAX*2;
@@ -305,9 +506,9 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 		cycle = M_PI + M_PI*(cycle-HL2_BOB_UP)/(1.0 - HL2_BOB_UP);
 	}
 
-	g_lateralBob = speed*0.005f;
+	g_lateralBob = speed*0.005f * bob_scale;
 	g_lateralBob = g_lateralBob*0.3 + g_lateralBob*0.7*sin(cycle);
-	g_lateralBob = clamp( g_lateralBob, -7.0f, 4.0f );
+	g_lateralBob = clamp( g_lateralBob, -7.0f * bob_scale, 4.0f * bob_scale );
 	
 	//NOTENOTE: We don't use this return value in our case (need to restructure the calculation function setup!)
 	return 0.0f;
@@ -324,6 +525,73 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 	Vector	forward, right;
 	AngleVectors( angles, &forward, &right, NULL );
 
+	CBasePlayer *player = ToBasePlayer( GetOwner() );
+	
+	// Safety check - if player is invalid (e.g., when dying), reset air state and return
+	if ( !player )
+	{
+		// Reset air state when player becomes invalid
+		s_airState.lastGroundState = 1.0f;
+		s_airState.airTransitionBlend = 0.0f;
+		s_airState.airStartTime = 0.0f;
+		s_airState.airborneTime = 0.0f;
+		s_airState.landingTime = 0.0f;
+		s_airState.smoothedVerticalVel = 0.0f;
+		return;
+	}
+	
+	bool bOnGround = (player->GetGroundEntity() != NULL);
+	float targetGroundState = bOnGround ? 1.0f : 0.0f;
+	
+	// Update shared air state (synchronized with CalcViewmodelBob)
+	if ( !bOnGround && s_airState.lastGroundState > 0.5f )
+	{
+		// Just became airborne, record the time (if not already set)
+		if ( s_airState.airStartTime <= 0.0f )
+		{
+			s_airState.airStartTime = gpGlobals->curtime;
+			s_airState.airborneTime = 0.0f;
+		}
+	}
+	else if ( bOnGround && s_airState.lastGroundState < 0.5f )
+	{
+		// Just landed - record landing data
+		if ( s_airState.landingTime <= 0.0f )
+		{
+			s_airState.landingTime = gpGlobals->curtime;
+			s_airState.landingVelocity = fabs(s_airState.smoothedVerticalVel);
+		}
+	}
+	else if ( bOnGround && s_airState.lastGroundState > 0.8f )
+	{
+		// Fully grounded - safe to reset air time
+		s_airState.airStartTime = 0.0f;
+		s_airState.airborneTime = 0.0f;
+	}
+	
+	// Ensure air state is synchronized (in case CalcViewmodelBob wasn't called)
+	if ( rb_viewmodel_bob_air_enabled.GetBool() )
+	{
+		float transitionSpeed = (targetGroundState < s_airState.lastGroundState) ? 
+			rb_viewmodel_bob_air_transition_in.GetFloat() : rb_viewmodel_bob_air_transition_out.GetFloat();
+		
+		s_airState.lastGroundState = Approach( targetGroundState, s_airState.lastGroundState, gpGlobals->frametime * transitionSpeed );
+		
+		float rawBlend = 1.0f - s_airState.lastGroundState;
+		float smoothingPower = rb_viewmodel_bob_air_smoothing.GetFloat();
+		// Use smoothstep-like curve for better transition feel
+		float smoothedBlend = rawBlend * rawBlend * (3.0f - 2.0f * rawBlend);
+		s_airState.airTransitionBlend = pow( smoothedBlend, 1.0f / smoothingPower );
+	}
+	else
+	{
+		s_airState.lastGroundState = 1.0f;
+		s_airState.airTransitionBlend = 0.0f;
+		s_airState.airStartTime = 0.0f;
+		s_airState.airborneTime = 0.0f;
+		s_airState.landingTime = 0.0f;
+	}
+	
 	CalcViewmodelBob();
 
 	// Apply bob, but scaled down to 40%
@@ -339,6 +607,59 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 	angles[ YAW ]	-= g_lateralBob  * 0.3f;
 
 	VectorMA( origin, g_lateralBob * 0.8f, right, origin );
+	
+	// Enhanced air tilt effects with optimized calculations
+	if ( s_airState.airTransitionBlend > 0.0f && s_airState.airStartTime > 0.0f )
+	{
+		// Update airborne time if needed
+		if ( s_airState.airborneTime <= 0.0f )
+		{
+			s_airState.airborneTime = gpGlobals->curtime - s_airState.airStartTime;
+		}
+		
+		// Sync velocity tracking with CalcViewmodelBob
+		float currentVerticalVel = player->GetAbsVelocity().z;
+		if ( s_airState.smoothedVerticalVel == 0.0f )
+		{
+			s_airState.smoothedVerticalVel = currentVerticalVel;
+		}
+		else
+		{
+			s_airState.smoothedVerticalVel = Lerp( 0.15f, s_airState.smoothedVerticalVel, currentVerticalVel );
+		}
+		
+		// Calculate air effects
+		float airTime = clamp( s_airState.airborneTime, 0.0f, 6.0f );
+		float velocityFactor = clamp( -s_airState.smoothedVerticalVel / 600.0f, -0.8f, 0.8f );
+		float timeFactor = 1.0f - exp( -airTime * 0.8f );
+		float weightEffect = rb_viewmodel_bob_air_weight_effect.GetFloat();
+		
+		// Weight modifier for tilt intensity
+		float weightModifier = 1.0f + (velocityFactor > 0 ? velocityFactor * 0.2f * weightEffect : velocityFactor * 0.1f * weightEffect);
+		weightModifier = clamp( weightModifier, 0.6f, 1.4f );
+		
+		// Air tilt effect
+		float combinedFactor = velocityFactor * timeFactor * s_airState.airTransitionBlend * weightModifier;
+		float maxTiltDegrees = 2.7f * weightEffect;
+		float airTiltAmount = maxTiltDegrees * combinedFactor;
+		angles[ PITCH ] -= airTiltAmount;
+		
+		// Horizontal movement roll effect
+		Vector2D horizontalVel = Vector2D( player->GetAbsVelocity().x, player->GetAbsVelocity().y );
+		float horizontalSpeed = horizontalVel.Length();
+		if ( horizontalSpeed > 150.0f )
+		{
+			float rollInfluence = clamp( horizontalSpeed / 800.0f, 0.0f, 1.0f ) * 0.6f * s_airState.airTransitionBlend;
+			angles[ ROLL ] += sin( airTime * 1.2f ) * rollInfluence;
+		}
+		
+		// Extended air breathing effect
+		if ( airTime > 1.5f )
+		{
+			float breathingAmp = 0.225f * s_airState.airTransitionBlend * weightEffect;
+			angles[ PITCH ] += sin( airTime * 1.0f ) * breathingAmp;
+		}
+	}
 }
 
 //-----------------------------------------------------------------------------

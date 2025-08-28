@@ -458,7 +458,12 @@ void CBaseViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePos
 //-----------------------------------------------------------------------------
 float g_fMaxViewModelLag = 1.5f;
 
-ConVar sv_viewmodel_lag_do_angles( "sv_viewmodel_lag_do_angles", "1", FCVAR_CHEAT | FCVAR_REPLICATED );
+// CVars for customizable viewmodel sway
+ConVar rb_viewmodel_sway_scale( "rb_viewmodel_sway_scale", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway power scale (lower = less sway)", true, 0.0f, true, 2.0f );
+ConVar rb_viewmodel_sway_speed( "rb_viewmodel_sway_speed", "10.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway recovery speed (higher = faster recovery)", true, 1.0f, true, 20.0f );
+
+// Define the missing ConVar that's only extern'd elsewhere
+ConVar sv_viewmodel_lag_do_angles( "sv_viewmodel_lag_do_angles", "1", FCVAR_REPLICATED, "Enable viewmodel lag angle adjustments" );
 
 void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& original_angles )
 {
@@ -474,7 +479,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		Vector vDifference;
 		VectorSubtract( forward, m_vecLastFacing, vDifference );
 
-		float flSpeed = 5.0f;
+		float flSpeed = rb_viewmodel_sway_speed.GetFloat();
 
 		// If we start to lag too far behind, we'll increase the "catch up" speed.  Solves the problem with fast cl_yawspeed, m_yaw or joysticks
 		//  rotating quickly.  The old code would slam lastfacing with origin causing the viewmodel to pop to a new position
@@ -489,7 +494,8 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		VectorMA( m_vecLastFacing, flSpeed * gpGlobals->frametime, vDifference, m_vecLastFacing );
 		// Make sure it doesn't grow out of control!!!
 		VectorNormalize( m_vecLastFacing );
-		VectorMA( origin, 5.0f, vDifference * -1.0f, origin );
+		// Apply viewmodel sway using original VectorMA approach with configurable scale
+		VectorMA( origin, rb_viewmodel_sway_scale.GetFloat() * 5.0f, vDifference * -1.0f, origin );
 
 		Assert( m_vecLastFacing.IsValid() );
 	}
