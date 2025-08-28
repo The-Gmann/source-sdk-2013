@@ -510,3 +510,4 @@ FodyWeavers.xsd
 .qoder/rules/DoNotCompileOrRunBatch.md
 .qoder/rules/AlwaysUpdateMemoryWithGoodPracticesAndRemoveOrChangeDisprovenPractices.md
 .qoder/rules/AlwaysSearchWellAndIfYouCantFindSomethingTellUser.md
+*.md

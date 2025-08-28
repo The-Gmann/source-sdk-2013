@@ -932,7 +932,8 @@ void CHudWeaponSelection::Paint()
 	}
 
 	// draw text
-	col = hudColor;
+	// Use danger color for weapons with no ammo or that cannot be selected, same logic as icons
+	col = (hasNoAmmo || cannotBeSelected) ? dangerColor : hudColor;
 	const FileWeaponInfo_t &weaponInfo = pWeapon->GetWpnData();
 
 	if ( bSelected )

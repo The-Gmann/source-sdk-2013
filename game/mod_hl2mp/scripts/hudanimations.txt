@@ -262,6 +262,7 @@ event HealthIncreasedAbove20
 	StopEvent	HealthLoop  0.0
 	StopEvent	HealthPulse 0.0
 	StopEvent	HealthLow   0.0
+	StopEvent	HealthDamageTaken 0.0
 
 	Animate	HudHealth	BgColor	"BgColor"	Linear	0.0	0.0
 	
@@ -289,6 +290,11 @@ event HealthIncreasedAbove20_NoColor
 
 event HealthIncreasedBelow20
 {
+	StopEvent	HealthLoop  0.0
+	StopEvent	HealthPulse 0.0
+	StopEvent	HealthLow   0.0
+	StopEvent	HealthDamageTaken 0.0
+	
 	Animate HudHealth	FgColor		"BrightFg"	Linear	0.0		0.25
 	Animate HudHealth	FgColor		"FgColor"		Linear	0.3		0.75
 	
@@ -353,6 +359,10 @@ event TestMovement
 
 event HealthDamageTaken
 {
+	StopEvent HealthLow	0.0
+	StopEvent HealthPulse	0.0
+	StopEvent HealthLoop	0.0
+	
 	Animate HudHealth	FgColor		"BrightFg"	Linear	0.0		0.25
 	Animate HudHealth	FgColor		"FgColor"		Linear	0.3		0.75
 	
@@ -472,6 +482,9 @@ event SuitLoop
 // ammo has been picked up
 event AmmoIncreased
 {
+	// Ensure danger colors are properly reset to normal state
+	StopEvent AmmoEmpty	0.0
+	
 	Animate HudAmmo		FgColor	"FgColor"		Linear	0.0	0.15
 	Animate HudAmmo		FgColor	"FgColor"		Deaccel	0.15	1.5
 	Animate HudAmmo		Blur		"5"			Linear	0.0	0.0 
@@ -500,6 +513,9 @@ event AmmoEmpty
 // ammo2 is the total ammo for a weapon that uses clip ammo
 event Ammo2Increased
 {
+	StopEvent Ammo2Empty	0.0
+	StopEvent Ammo2Decreased	0.0
+	
 	Animate Hudammo	ammo2color		"BrightFg"		Linear	0.0	0.2
 	Animate Hudammo	ammo2color		"FgColor"		Accel		0.2	1.2		
 }
@@ -507,6 +523,8 @@ event Ammo2Increased
 // total ammo has been decreased, but there is still some remaining
 event Ammo2Decreased
 {
+	StopEvent Ammo2Empty	0.0
+	
 	Animate Hudammo	ammo2color		"BrightFg"		Linear	0.0	0.2
 	Animate Hudammo	ammo2color		"FgColor"		Accel		0.2	1.2		
 }
@@ -514,12 +532,18 @@ event Ammo2Decreased
 // total ammo is zero
 event Ammo2Empty
 {
+	StopEvent Ammo2Increased	0.0
+	StopEvent Ammo2Decreased	0.0
+	
 	Animate Hudammo	ammo2color		"BrightDamagedFg"	Linear	0.0	0.2
 	Animate Hudammo	ammo2color		"DamagedFg"		Accel		0.2	1.2		
 }
 
 event AmmoSecondaryIncreased
 {
+	StopEvent AmmoSecondaryEmpty	0.0
+	StopEvent AmmoSecondaryDecreased	0.0
+	
 	Animate HudAmmoSecondary		FgColor	"BrightFg"		Linear	0.0	0.15
 	Animate HudAmmoSecondary		FgColor	"FgColor"		Deaccel	0.15	1.5
 	Animate HudAmmoSecondary		Blur		"5"			Linear	0.0	0.0 
@@ -529,6 +553,7 @@ event AmmoSecondaryIncreased
 event AmmoSecondaryDecreased
 {
 	StopEvent AmmoSecondaryIncreased	0.0
+	StopEvent AmmoSecondaryEmpty	0.0
 	
 	Animate HudAmmoSecondary		Blur		"7"			Linear	0.0	0.0
 	Animate HudAmmoSecondary		Blur		"0"			Deaccel	0.1	1.5
@@ -539,6 +564,9 @@ event AmmoSecondaryDecreased
 
 event AmmoSecondaryEmpty
 {
+	StopEvent AmmoSecondaryIncreased	0.0
+	StopEvent AmmoSecondaryDecreased	0.0
+	
 	Animate HudAmmoSecondary		FgColor		"BrightDamagedFg"	Linear	0.0	0.2
 	Animate HudAmmoSecondary		FgColor		"DamagedFg"		Accel		0.2	1.2
 	Animate HudAmmoSecondary		Blur		"7"			Linear	0.0	0.0
