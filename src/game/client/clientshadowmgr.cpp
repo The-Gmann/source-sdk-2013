@@ -81,6 +81,8 @@
 #include "toolframework_client.h"
 #include "bonetoworldarray.h"
 #include "cmodel.h"
+#include "debugoverlay_shared.h"
+#include "worldlight.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -90,6 +92,16 @@ static ConVar r_flashlightdrawfrustum( "r_flashlightdrawfrustum", "0" );
 static ConVar r_flashlightmodels( "r_flashlightmodels", "1" );
 static ConVar r_shadowrendertotexture( "r_shadowrendertotexture", "0" );
 static ConVar r_flashlight_version2( "r_flashlight_version2", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
+
+void WorldLightCastShadowCallback( IConVar *pVar, const char *pszOldValue, float flOldValue );
+static ConVar r_worldlight_castshadows( "r_worldlight_castshadows", "1", 0, "Allow world lights to cast shadows", true, 0, true, 1, WorldLightCastShadowCallback );
+static ConVar r_worldlight_shortenfactor( "r_worldlight_shortenfactor", "2" , FCVAR_HIDDEN, "Makes shadows cast from local lights shorter" );
+ConVar r_worldlight_mincastintensity( "r_worldlight_mincastintensity", "0.3", FCVAR_HIDDEN, "Minimum brightness of a light to be classed as shadow casting", true, 0, false, 0 );
+static ConVar r_shadow_minquality( "r_shadow_minquality", "128", 0, "Minimum shadow texture resolution (prevents overly blurry shadows)" );
+static ConVar r_shadow_maxquality( "r_shadow_maxquality", "512", 0, "Maximum shadow texture resolution (higher = sharper shadows, more memory)" );
+static ConVar r_shadow_qualitybias( "r_shadow_qualitybias", "2.0", FCVAR_HIDDEN, "Bias factor for shadow texture resolution (higher = better quality)" );
+static ConVar r_shadow_texelsize( "r_shadow_texelsize", "2.0", FCVAR_HIDDEN, "Base shadow texels per unit size" );
+static ConVar r_worldlight_lerpdistance( "r_worldlight_lerpdistance", "100", 0, "Distance entity must move to complete light transition" );
 
 ConVar r_flashlightdepthtexture( "r_flashlightdepthtexture", "1", FCVAR_ALLOWED_IN_COMPETITIVE );
 
@@ -512,10 +524,23 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 
 	TextureInfo_t& info = m_Textures[h];
 
+	// Apply quality bias and enforce minimum/maximum quality to prevent blurry or overly large shadows
+	float flAdjustedArea = flArea * r_shadow_qualitybias.GetFloat();
+	int nMinQuality = r_shadow_minquality.GetInt();
+	int nMaxQuality = r_shadow_maxquality.GetInt();
+	if ( flAdjustedArea < (nMinQuality * nMinQuality) )
+	{
+		flAdjustedArea = nMinQuality * nMinQuality;
+	}
+	else if ( flAdjustedArea > (nMaxQuality * nMaxQuality) )
+	{
+		flAdjustedArea = nMaxQuality * nMaxQuality;
+	}
+
 	// spin up to the best fragment size
 	int nDesiredPower = MIN_TEXTURE_POWER;
 	int nDesiredWidth = MIN_TEXTURE_SIZE;
-	while ( (nDesiredWidth * nDesiredWidth) < flArea )
+	while ( (nDesiredWidth * nDesiredWidth) < flAdjustedArea )
 	{
 		if ( nDesiredPower >= info.m_Power )
 		{
@@ -535,7 +560,8 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 		// If the current fragment is at or near the desired power, we're done
 		nCurrentPower = GetFragmentPower(info.m_Fragment);
 		Assert( nCurrentPower <= info.m_Power );
-		bool bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nDesiredPower - nCurrentPower <= 1);
+		// Be less aggressive about downgrading shadow quality
+		bool bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nCurrentPower >= nDesiredPower - 1);
 		if ((nCurrentPower == nDesiredPower) || bShouldKeepTexture)
 		{
 			// Move to the back of the LRU
@@ -676,7 +702,7 @@ void CTextureAllocator::GetTextureRect(TextureHandle_t handle, int& x, int& y, i
 //-----------------------------------------------------------------------------
 // Defines how big of a shadow texture we should be making per caster...
 //-----------------------------------------------------------------------------
-#define TEXEL_SIZE_PER_CASTER_SIZE	2.0f 
+#define TEXEL_SIZE_PER_CASTER_SIZE	3.0f 
 #define MAX_FALLOFF_AMOUNT 240
 #define MAX_CLIP_PLANE_COUNT 4
 #define SHADOW_CULL_TOLERANCE 0.5f
@@ -782,7 +808,7 @@ public:
 	void RestoreRenderState();
 
 	// Computes a rough bounding box encompassing the volume of the shadow
-	void ComputeShadowBBox( IClientRenderable *pRenderable, const Vector &vecAbsCenter, float flRadius, Vector *pAbsMins, Vector *pAbsMaxs );
+	void ComputeShadowBBox( IClientRenderable *pRenderable, ClientShadowHandle_t shadowHandle, const Vector &vecAbsCenter, float flRadius, Vector *pAbsMins, Vector *pAbsMaxs );
 
 	bool WillParentRenderBlobbyShadow( IClientRenderable *pRenderable );
 
@@ -793,6 +819,10 @@ public:
 	{ 
 		r_shadows_gamecontrol.SetValue( bDisabled != 1 );
 	}
+
+	void SuppressShadowFromWorldLights( bool bSuppress );
+	void SetShadowFromWorldLightsEnabled( bool bEnabled );
+	bool IsShadowingFromWorldLights() const { return m_bShadowFromWorldLights; }
 
 private:
 	enum
@@ -811,8 +841,14 @@ private:
 		unsigned short			m_Flags;
 		VMatrix					m_WorldToShadow;
 		Vector2D				m_WorldSize;
+		Vector					m_ShadowDir;
 		Vector					m_LastOrigin;
 		QAngle					m_LastAngles;
+		Vector					m_CurrentLightPos;	// When shadowing from local lights, stores the position of the currently shadowing light
+		Vector					m_TargetLightPos;	// When shadowing from local lights, stores the position of the new shadowing light
+		float					m_LightPosLerp;		// Lerp progress when going from current to target light
+		Vector					m_LerpStartPos;		// Entity position when lerp started
+		float					m_LerpStartDistance;	// Total distance needed to complete lerp
 		TextureHandle_t			m_ShadowTexture;
 		CTextureReference		m_ShadowDepthTexture;
 		int						m_nRenderFrame;
@@ -910,6 +946,7 @@ private:
 	// Returns renderable-specific shadow info
 	float GetShadowDistance( IClientRenderable *pRenderable ) const;
 	const Vector &GetShadowDirection( IClientRenderable *pRenderable ) const;
+	const Vector &GetShadowDirection( ClientShadowHandle_t shadowHandle ) const;
 
 	// Initialize, shutdown render-to-texture shadows
 	void InitDepthTextureShadows();
@@ -944,6 +981,9 @@ private:
 	// Sets the view's active flashlight render state
 	void	SetViewFlashlightState( int nActiveFlashlightCount, ClientShadowHandle_t* pActiveFlashlights );
 
+	void	UpdateDirtyShadow( ClientShadowHandle_t handle );
+	void	UpdateShadowDirectionFromLocalLightSource( ClientShadowHandle_t shadowHandle );
+
 private:
 	Vector	m_SimpleShadowDir;
 	color32	m_AmbientLightColor;
@@ -971,6 +1011,8 @@ private:
 	CUtlVector< CTextureReference > m_DepthTextureCache;
 	CUtlVector< bool > m_DepthTextureCacheLocks;
 	int	m_nMaxDepthTextureShadows;
+
+	bool m_bShadowFromWorldLights;
 
 	friend class CVisibleShadowList;
 	friend class CVisibleShadowFrustumList;
@@ -1088,7 +1130,7 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 
 	// Compute a box surrounding the shadow
 	Vector vecAbsMins, vecAbsMaxs;
-	s_ClientShadowMgr.ComputeShadowBBox( pRenderable, vecAbsCenter, flRadius, &vecAbsMins, &vecAbsMaxs );
+	s_ClientShadowMgr.ComputeShadowBBox( pRenderable, clientShadowHandle, vecAbsCenter, flRadius, &vecAbsMins, &vecAbsMaxs );
 
 	// FIXME: Add distance check here?
 
@@ -1172,6 +1214,7 @@ CClientShadowMgr::CClientShadowMgr() :
 {
 	m_nDepthTextureResolution = r_flashlightdepthres.GetInt();
 	m_bThreaded = false;
+	m_bShadowFromWorldLights = r_worldlight_castshadows.GetBool();
 }
 
 
@@ -1602,7 +1645,22 @@ void CClientShadowMgr::SetupRenderToTextureShadow( ClientShadowHandle_t h )
 	// Figure out the texture size
 	// For now, we're going to assume a fixed number of shadow texels
 	// per shadow-caster size; add in some extra space at the boundary.
-	int texelCount = TEXEL_SIZE_PER_CASTER_SIZE * maxSize;
+	int texelCount = r_shadow_texelsize.GetFloat() * maxSize;
+	
+	// Apply quality bias to prevent blurry shadows
+	texelCount = (int)(texelCount * r_shadow_qualitybias.GetFloat());
+	
+	// Enforce minimum and maximum texture size
+	int minTexelCount = r_shadow_minquality.GetInt();
+	int maxTexelCount = r_shadow_maxquality.GetInt();
+	if ( texelCount < minTexelCount )
+	{
+		texelCount = minTexelCount;
+	}
+	else if ( texelCount > maxTexelCount )
+	{
+		texelCount = maxTexelCount;
+	}
 	
 	// Pick the first power of 2 larger...
 	int textureSize = 1;
@@ -1818,6 +1876,12 @@ ClientShadowHandle_t CClientShadowMgr::CreateProjectedTexture( ClientEntityHandl
 	shadow.m_ClientLeafShadowHandle = ClientLeafSystem()->AddShadow( h, flags );
 	shadow.m_Flags = flags;
 	shadow.m_nRenderFrame = -1;
+	shadow.m_ShadowDir = GetShadowDirection();
+	shadow.m_CurrentLightPos.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_TargetLightPos.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_LightPosLerp = FLT_MAX;
+	shadow.m_LerpStartPos.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_LerpStartDistance = 0.0f;
 	shadow.m_LastOrigin.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	shadow.m_LastAngles.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	Assert( ( ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT ) == 0 ) != 
@@ -2289,7 +2353,7 @@ void CClientShadowMgr::BuildOrthoShadow( IClientRenderable* pRenderable,
 	AngleVectors( pRenderable->GetRenderAngles(), &vec[0], &vec[1], &vec[2] );
 	vec[1] *= -1.0f;
 
-	Vector vecShadowDir = GetShadowDirection( pRenderable );
+	Vector vecShadowDir = GetShadowDirection( handle );
 
 	// Project the shadow casting direction into the space of the object
 	Vector localShadowDir;
@@ -2328,12 +2392,12 @@ void CClientShadowMgr::BuildOrthoShadow( IClientRenderable* pRenderable,
 	size.x += boxSize[vecIdx[2]] * fabs( DotProduct( vec[vecIdx[2]], xvec ) );
 	size.y += boxSize[vecIdx[2]] * fabs( DotProduct( vec[vecIdx[2]], yvec ) );
 
-	// Bloat a bit, since the shadow wants to extend outside the model a bit
-	size.x += 10.0f;
-	size.y += 10.0f;
+	// Bloat a bit more, since the shadow wants to extend outside the model more to prevent edge cropping
+	size.x += 20.0f;
+	size.y += 20.0f;
 
 	// Clamp the minimum size
-	Vector2DMax( size, Vector2D(10.0f, 10.0f), size );
+	Vector2DMax( size, Vector2D(20.0f, 20.0f), size );
 
 	// Place the origin at the point with min dot product with shadow dir
 	Vector org;
@@ -2475,7 +2539,7 @@ void CClientShadowMgr::BuildRenderToTextureShadow( IClientRenderable* pRenderabl
 	AngleVectors( pRenderable->GetRenderAngles(), &vec[0], &vec[1], &vec[2] );
 	vec[1] *= -1.0f;
 
-	Vector vecShadowDir = GetShadowDirection( pRenderable );
+	Vector vecShadowDir = GetShadowDirection( handle );
 
 //	Debugging aid
 //	const model_t *pModel = pRenderable->GetModel();
@@ -2521,8 +2585,11 @@ void CClientShadowMgr::BuildRenderToTextureShadow( IClientRenderable* pRenderabl
 		boxSize.y * fabs( DotProduct( vec[1], yvec ) ) + 
 		boxSize.z * fabs( DotProduct( vec[2], yvec ) );
 
-	size.x += 2.0f * TEXEL_SIZE_PER_CASTER_SIZE;
-	size.y += 2.0f * TEXEL_SIZE_PER_CASTER_SIZE;
+	size.x += 4.0f * TEXEL_SIZE_PER_CASTER_SIZE;
+	size.y += 4.0f * TEXEL_SIZE_PER_CASTER_SIZE;
+
+	// Clamp the minimum size to match padding values
+	Vector2DMax( size, Vector2D(4.0f * TEXEL_SIZE_PER_CASTER_SIZE, 4.0f * TEXEL_SIZE_PER_CASTER_SIZE), size );
 
 	// Place the origin at the point with min dot product with shadow dir
 	Vector org;
@@ -2941,8 +3008,7 @@ void CClientShadowMgr::PreRender()
 	while ( i != m_DirtyShadows.InvalidIndex() )
 	{
 		ClientShadowHandle_t& handle = m_DirtyShadows[ i ];
-		Assert( m_Shadows.IsValidIndex( handle ) );
-		UpdateProjectedTextureInternal( handle, false );
+		UpdateDirtyShadow( handle );
 		i = m_DirtyShadows.NextInorder(i);
 	}
 	m_DirtyShadows.RemoveAll();
@@ -3132,7 +3198,7 @@ void CClientShadowMgr::UpdateShadow( ClientShadowHandle_t handle, bool force )
 	const Vector& origin = pRenderable->GetRenderOrigin();
 	const QAngle& angles = pRenderable->GetRenderAngles();
 
-	if (force || (origin != shadow.m_LastOrigin) || (angles != shadow.m_LastAngles))
+	if (force || (origin != shadow.m_LastOrigin) || (angles != shadow.m_LastAngles) || shadow.m_LightPosLerp < 1.0f)
 	{
 		// Store off the new pos/orientation
 		VectorCopy( origin, shadow.m_LastOrigin );
@@ -3251,12 +3317,12 @@ void CClientShadowMgr::ComputeBoundingSphere( IClientRenderable* pRenderable, Ve
 //-----------------------------------------------------------------------------
 // Computes a rough AABB encompassing the volume of the shadow
 //-----------------------------------------------------------------------------
-void CClientShadowMgr::ComputeShadowBBox( IClientRenderable *pRenderable, const Vector &vecAbsCenter, float flRadius, Vector *pAbsMins, Vector *pAbsMaxs )
+void CClientShadowMgr::ComputeShadowBBox( IClientRenderable *pRenderable, ClientShadowHandle_t shadowHandle, const Vector &vecAbsCenter, float flRadius, Vector *pAbsMins, Vector *pAbsMaxs )
 {
 	// This is *really* rough. Basically we simply determine the
 	// maximum shadow casting length and extrude the box by that distance
 
-	Vector vecShadowDir = GetShadowDirection( pRenderable );
+	Vector vecShadowDir = GetShadowDirection( shadowHandle );
 	for (int i = 0; i < 3; ++i)
 	{
 		float flShadowCastDistance = GetShadowDistance( pRenderable );
@@ -3354,7 +3420,7 @@ bool CClientShadowMgr::CullReceiver( ClientShadowHandle_t handle, IClientRendera
 	if (foundSeparatingPlane)
 	{
 		// Compute which side of the plane the renderable is on..
-		Vector vecShadowDir = GetShadowDirection( pSourceRenderable );
+		Vector vecShadowDir = GetShadowDirection( handle );
 		float shadowDot = DotProduct( vecShadowDir, plane.normal );
 		float receiverDot = DotProduct( plane.normal, origin );
 		float sourceDot = DotProduct( plane.normal, originSource );
@@ -4333,3 +4399,197 @@ IMaterial *CShadowModelProxy::GetMaterial()
 }
 
 EXPOSE_INTERFACE( CShadowModelProxy, IMaterialProxy, "ShadowModel" IMATERIAL_PROXY_INTERFACE_VERSION );
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+const Vector &CClientShadowMgr::GetShadowDirection( ClientShadowHandle_t shadowHandle ) const
+{
+	Assert( shadowHandle != CLIENTSHADOW_INVALID_HANDLE );
+
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( m_Shadows[shadowHandle].m_Entity );
+	Assert( pRenderable );
+
+	if ( !IsShadowingFromWorldLights() )
+	{
+		return GetShadowDirection( pRenderable );
+	}
+
+	Vector &vecResult = AllocTempVector();
+	vecResult = m_Shadows[shadowHandle].m_ShadowDir;
+
+	// Allow the renderable to override the default
+	pRenderable->GetShadowCastDirection( &vecResult, GetActualShadowCastType( pRenderable ) );
+
+	return vecResult;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CClientShadowMgr::UpdateShadowDirectionFromLocalLightSource( ClientShadowHandle_t shadowHandle )
+{
+	Assert( shadowHandle != CLIENTSHADOW_INVALID_HANDLE );
+
+	ClientShadow_t &shadow = m_Shadows[shadowHandle];
+
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+
+	// TODO: Figure out why this still gets hit
+	Assert( pRenderable );
+	if ( !pRenderable )
+	{
+		DevWarning( "%s(): Skipping shadow with invalid client renderable (shadow handle %d)\n", __FUNCTION__, shadowHandle );
+		return;
+	}
+
+	Vector bbMin, bbMax;
+	pRenderable->GetRenderBoundsWorldspace( bbMin, bbMax );
+	Vector origin( 0.5f * ( bbMin + bbMax ) );
+	origin.z = bbMin.z; // Putting origin at the bottom of the bounding box makes the shadows a little shorter
+
+	Vector lightPos;
+	Vector lightBrightness;
+
+	if ( shadow.m_LightPosLerp >= 1.0f ) // Skip finding new light source if we're in the middle of a lerp
+	{
+		// Calculate minimum brightness squared
+		float flMinBrightnessSqr = r_worldlight_mincastintensity.GetFloat();
+		flMinBrightnessSqr *= flMinBrightnessSqr;
+
+		if ( g_pWorldLights->GetBrightestLightSource( pRenderable->GetRenderOrigin(), lightPos, lightBrightness ) == false || lightBrightness.LengthSqr() < flMinBrightnessSqr )
+		{
+			// Didn't find a light source at all, use default shadow direction
+			// TODO: Could switch to using blobby shadow in this case
+			lightPos.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+		}
+	}
+
+	if ( shadow.m_LightPosLerp == FLT_MAX )	// First light pos ever, just init
+	{
+		shadow.m_CurrentLightPos = lightPos;
+		shadow.m_TargetLightPos = lightPos;
+		shadow.m_LightPosLerp = 1.0f;
+		shadow.m_LerpStartPos = origin;
+		shadow.m_LerpStartDistance = 0.0f;
+	}
+	else if ( shadow.m_LightPosLerp < 1.0f )
+	{
+		// We're in the middle of a lerp from current to target light
+		float flMovedDistance = ( origin - shadow.m_LerpStartPos ).Length();
+		if ( shadow.m_LerpStartDistance > 0.0f )
+		{
+			shadow.m_LightPosLerp = clamp( flMovedDistance / shadow.m_LerpStartDistance, 0.0f, 1.0f );
+		}
+		else
+		{
+			shadow.m_LightPosLerp = 1.0f; // Complete immediately if no distance set
+		}
+
+		Vector currLightPos( shadow.m_CurrentLightPos );
+		Vector targetLightPos( shadow.m_TargetLightPos );
+		if ( currLightPos.x == FLT_MAX )
+		{
+			currLightPos = origin - 200.0f * GetShadowDirection();
+		}
+		if ( targetLightPos.x == FLT_MAX )
+		{
+			targetLightPos = origin - 200.0f * GetShadowDirection();
+		}
+
+		// Lerp light pos
+		Vector v1 = origin - shadow.m_CurrentLightPos;
+		v1.NormalizeInPlace();
+
+		Vector v2 = origin - shadow.m_TargetLightPos;
+		v2.NormalizeInPlace();
+
+		// SAULUNDONE: Caused over top sweeping far too often
+#if 0
+		if ( v1.Dot( v2 ) < 0.0f )
+		{
+			// If change in shadow angle is more than 90 degrees, lerp over the renderable's top to avoid long sweeping shadows
+			Vector fakeOverheadLightPos( origin.x, origin.y, origin.z + 200.0f );
+			if ( shadow.m_LightPosLerp < 0.5f )
+			{
+				lightPos = Lerp( 2.0f * shadow.m_LightPosLerp, currLightPos, fakeOverheadLightPos );
+			}
+			else
+			{
+				lightPos = Lerp( 2.0f * shadow.m_LightPosLerp - 1.0f, fakeOverheadLightPos, targetLightPos );
+			}
+		}
+		else
+#endif
+		{
+			lightPos = Lerp( shadow.m_LightPosLerp, currLightPos, targetLightPos );
+		}
+
+		if ( shadow.m_LightPosLerp >= 1.0f )
+		{
+			shadow.m_CurrentLightPos = shadow.m_TargetLightPos;
+		}
+	}
+	else if ( shadow.m_LightPosLerp >= 1.0f )
+	{
+		// Check if we have a new closest light position and start a new lerp
+		float flDistSq = ( lightPos - shadow.m_CurrentLightPos ).LengthSqr();
+
+		if ( flDistSq > 1.0f )
+		{
+			// Light position has changed, which means we got a new light source. Initiate a lerp
+			shadow.m_TargetLightPos = lightPos;
+			shadow.m_LightPosLerp = 0.0f;
+			shadow.m_LerpStartPos = origin;
+			shadow.m_LerpStartDistance = r_worldlight_lerpdistance.GetFloat();
+		}
+
+		lightPos = shadow.m_CurrentLightPos;
+	}
+
+	if ( lightPos.x == FLT_MAX )
+	{
+		lightPos = origin - 200.0f * GetShadowDirection();
+	}
+
+	Vector vecResult( origin - lightPos );
+	vecResult.NormalizeInPlace();
+
+	vecResult.z *= r_worldlight_shortenfactor.GetFloat();
+	vecResult.NormalizeInPlace();
+
+	shadow.m_ShadowDir = vecResult;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CClientShadowMgr::UpdateDirtyShadow( ClientShadowHandle_t handle )
+{
+	Assert( m_Shadows.IsValidIndex( handle ) );
+ 
+	if ( IsShadowingFromWorldLights() )
+		UpdateShadowDirectionFromLocalLightSource( handle );
+ 
+	UpdateProjectedTextureInternal( handle, false );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void WorldLightCastShadowCallback( IConVar *pVar, const char *pszOldValue, float flOldValue )
+{
+	s_ClientShadowMgr.SetShadowFromWorldLightsEnabled( r_worldlight_castshadows.GetBool() );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: 
+//-----------------------------------------------------------------------------
+void CClientShadowMgr::SetShadowFromWorldLightsEnabled( bool bEnabled )
+{
+	if ( bEnabled == IsShadowingFromWorldLights() )
+		return;
+ 
+	m_bShadowFromWorldLights = bEnabled;
+	UpdateAllShadows();
+}
