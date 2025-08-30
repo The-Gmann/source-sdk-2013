@@ -219,6 +219,14 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 	VPROF_BUDGET( "CHL2MPBotGetHealth::IsPossible", "NextBot" );
 
 	float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
+	
+	// Check if bot needs armor (has suit equipped but armor is low)
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
+	bool bNeedsArmor = false;
+	if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 50 ) // Lower threshold for armor
+	{
+		bNeedsArmor = true;
+	}
 
 	float t = ( healthRatio - bot_health_critical_ratio.GetFloat() ) / ( bot_health_ok_ratio.GetFloat() - bot_health_critical_ratio.GetFloat() );
 	t = clamp( t, 0.0f, 1.0f );
@@ -231,6 +239,12 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 
 	// the more we are hurt, the farther we'll travel to get health
 	float searchRange = bot_health_search_far_range.GetFloat() + t * ( bot_health_search_near_range.GetFloat() - bot_health_search_far_range.GetFloat() );
+	
+	// If we need armor, increase search range to be more aggressive about finding suit chargers
+	if ( bNeedsArmor )
+	{
+		searchRange = MAX( searchRange, bot_health_search_far_range.GetFloat() );
+	}
 
 	CBaseEntity* healthkit = NULL;
 	CUtlVector< CHandle< CBaseEntity > > hHealthKits;
@@ -260,9 +274,12 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 
 	bool bFindChargers = true;
 	bool bLowHealth = healthRatio < bot_health_critical_ratio.GetFloat();
+	
+	// Also consider armor needs when deciding whether to use chargers
+	bool bNeedsCharging = bLowHealth || bNeedsArmor;
 
-	// don't use chargers if I'm in combat
-	if ( !bLowHealth && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
+	// don't use chargers if I'm in combat and don't need them urgently
+	if ( !bNeedsCharging && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
 		bFindChargers = false;
 
 	CHealthFilter healthFilter( me, bFindChargers );

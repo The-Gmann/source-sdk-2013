@@ -62,7 +62,7 @@ extern IGameUIFuncs *gameuifuncs; // for key binding details
 ConVar spec_scoreboard( "spec_scoreboard", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE );
 
 // Access to custom HUD color
-extern ConVar rb_hud_color;
+extern ConVar rbcl_hud_color;
 
 CSpectatorGUI *g_pSpectatorGUI = NULL;
 
@@ -180,7 +180,7 @@ void CSpectatorMenu::ApplySchemeSettings(IScheme *pScheme)
 	// Set spectator menu text color using rb_hud_color
 	Color hudColor(255, 255, 255, 255);
 	int r, g, b;
-	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+			if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		hudColor = Color(r, g, b, 255);
 	}
@@ -707,7 +707,7 @@ void CSpectatorGUI::Update()
 		{
 			// Use rb_hud_color for unassigned team players in non-teamplay mode
 			int r, g, b;
-			if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+			if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 			{
 				c = Color(r, g, b, 255);
 			}

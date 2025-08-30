@@ -6,7 +6,7 @@
 
 // Declare the ConVar
 #ifndef CLIENT_DLL
-extern ConVar rb_smooth_zoom;
+extern ConVar rbcl_smooth_zoom;
 #endif
 
 #endif // ZOOM_SHARED_H

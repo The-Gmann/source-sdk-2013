@@ -35,6 +35,10 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Forward declaration for bot naming functions
+#ifndef CLIENT_DLL
+extern const char* GetUniqueBotName();
+#endif
 
 ConVar g_Language( "g_Language", "0", FCVAR_REPLICATED );
 ConVar sk_autoaim_mode( "sk_autoaim_mode", "1", FCVAR_ARCHIVE | FCVAR_REPLICATED );
@@ -865,6 +869,55 @@ void CGameRules::ClientSettingsChanged( CBasePlayer *pPlayer )
 		
 		pPlayer->SetPlayerName( pszName );
 	}
+
+	// Check for name conflicts with bots and rename them if necessary
+#ifndef CLIENT_DLL
+	if ( pszName && pszName[0] != 0 )
+	{
+		// Look for bots with the same name and rename them
+		for ( int i = 1; i <= gpGlobals->maxClients; ++i )
+		{
+			CBasePlayer *pOtherPlayer = UTIL_PlayerByIndex( i );
+			if ( !pOtherPlayer || pOtherPlayer == pPlayer )
+				continue;
+
+			// Only check bots
+			if ( !pOtherPlayer->IsBot() )
+				continue;
+
+			const char *pszOtherName = pOtherPlayer->GetPlayerName();
+			if ( pszOtherName && Q_strcmp( pszOtherName, pszName ) == 0 )
+			{
+				// Found a bot with the same name, rename it
+				const char *pszNewBotName = GetUniqueBotName();
+				if ( pszNewBotName )
+				{
+					// Update the bot's name
+					engine->SetFakeClientConVarValue( pOtherPlayer->edict(), "name", pszNewBotName );
+					pOtherPlayer->SetPlayerName( pszNewBotName );
+					
+					// Notify everyone about the bot's name change
+					char text[256];
+					Q_snprintf( text, sizeof(text), "Bot %s renamed to %s to avoid name conflict\n", pszOtherName, pszNewBotName );
+					UTIL_ClientPrintAll( HUD_PRINTTALK, text );
+					
+					// Fire the name change event for the bot
+					IGameEvent *botEvent = gameeventmanager->CreateEvent( "player_changename" );
+					if ( botEvent )
+					{
+						botEvent->SetInt( "userid", pOtherPlayer->GetUserID() );
+						botEvent->SetString( "oldname", pszOtherName );
+						botEvent->SetString( "newname", pszNewBotName );
+						gameeventmanager->FireEvent( botEvent );
+					}
+					
+					DevMsg( "Bot renamed from '%s' to '%s' due to name conflict with player '%s'\n", 
+							pszOtherName, pszNewBotName, pszName );
+				}
+			}
+		}
+	}
+#endif
 
 	const char *pszFov = engine->GetClientConVarValue( pPlayer->entindex(), "fov_desired" );
 	if ( pszFov )

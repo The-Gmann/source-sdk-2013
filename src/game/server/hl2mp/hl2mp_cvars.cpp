@@ -35,8 +35,8 @@ ConVar mp_ready_signal(
 	"Text that each player must speak for the match to begin");
 
 // Ear ringing
-ConVar rb_ear_ringing(
-	"rb_ear_ringing",
+ConVar rbsv_ear_ringing(
+	"rbsv_ear_ringing",
 	"0",
 	FCVAR_GAMEDLL | FCVAR_REPLICATED,
 	"If non-zero, produce ringing sound caused by explosion/blast damage");

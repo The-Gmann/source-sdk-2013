@@ -12,7 +12,7 @@
 // memdbgon must be the last include file in a .cpp file!
 #include "tier0/memdbgon.h"
  
-ConVar rb_crossbow_hidecrosshair("rb_crossbow_hidecrosshair", "1", FCVAR_ARCHIVE, "Hide crosshair when using the crossbow scope.");
+ConVar rbcl_crossbow_hidecrosshair("rbcl_crossbow_hidecrosshair", "1", FCVAR_ARCHIVE, "Hide crosshair when using the crossbow scope.");
 /**
  * Simple HUD element for displaying a sniper scope on screen
  */
@@ -99,7 +99,7 @@ void CHudScope::Paint(void)
         return;
     }
 
-    static ConVarRef scopeRef("rb_crossbow_scope");
+    	static ConVarRef scopeRef("rbcl_crossbow_scope");
 
     if (m_bShow)
     {
@@ -135,7 +135,7 @@ void CHudScope::Paint(void)
                                 centerX + 1, centerY + lineLength);
 
         // Use ConVarRef instead of direct access
-        if (scopeRef.GetBool() && rb_crossbow_hidecrosshair.GetBool())
+        		if (scopeRef.GetBool() && rbcl_crossbow_hidecrosshair.GetBool())
         {
             pPlayer->m_Local.m_iHideHUD |= HIDEHUD_CROSSHAIR;
         }
