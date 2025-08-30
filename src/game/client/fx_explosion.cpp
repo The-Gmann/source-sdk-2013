@@ -36,7 +36,7 @@ CLIENTEFFECT_MATERIAL( "effects/splash3" )
 CLIENTEFFECT_MATERIAL( "effects/splashwake1" )
 CLIENTEFFECT_REGISTER_END()
 
-extern ConVar rb_dlight_explosion;
+extern ConVar rbcl_dlight_explosion;
 
 //
 // CExplosionParticle
@@ -720,7 +720,7 @@ void C_BaseExplosionEffect::CreateDynamicLight( void )
 	if ( m_fFlags & TE_EXPLFLAG_NODLIGHTS )
 		return;
 
-	if ( !rb_dlight_explosion.GetBool() )
+	if ( !rbcl_dlight_explosion.GetBool() )
 		return;
 
 	dlight_t *dl = effects->CL_AllocDlight( 0 );

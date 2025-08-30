@@ -25,7 +25,7 @@
 #define CWeapon357 C_Weapon357
 #endif
 
-ConVar rb_357_zoom("rb_357_zoom", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable 357 zoom functionality");
+ConVar rbsv_357_zoom("rbsv_357_zoom", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable 357 zoom functionality");
 //-----------------------------------------------------------------------------
 // CWeapon357
 //-----------------------------------------------------------------------------
@@ -132,7 +132,7 @@ void CWeapon357::ToggleZoom(void)
         return;
 
 #ifndef CLIENT_DLL
-    float zoomTransitionTime = rb_smooth_zoom.GetBool() ? 0.2f : 0.0f;
+    		float zoomTransitionTime = rbcl_smooth_zoom.GetBool() ? 0.2f : 0.0f;
 
     if (m_bInZoom)
     {

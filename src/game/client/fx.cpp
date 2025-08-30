@@ -52,12 +52,12 @@ CLIENTEFFECT_REGISTER_END()
 #endif
 
 // Dynamic lighting control cvars from legacy version
-ConVar rb_dlight_muzzleflash( "rb_dlight_muzzleflash", "1", FCVAR_ARCHIVE, "Enable dynamic light for muzzleflashes" );
-ConVar rb_dlight_stunstick( "rb_dlight_stunstick", "1", FCVAR_ARCHIVE, "Enable dynamic light for stunstick" );
-ConVar rb_dlight_explosion( "rb_dlight_explosion", "1", FCVAR_ARCHIVE, "Enable dynamic light for explosions" );
-ConVar rb_dlight_grenade( "rb_dlight_grenade", "1", FCVAR_ARCHIVE, "Enable dynamic light for frag grenades" );
-ConVar rb_dlight_egon( "rb_dlight_egon", "1", FCVAR_ARCHIVE, "Enable dynamic light for egon beam" );
-ConVar rb_dlight_barrel( "rb_dlight_barrel", "1", FCVAR_ARCHIVE, "Enable dynamic light for burning barrels" );
+ConVar rbcl_dlight_muzzleflash( "rbcl_dlight_muzzleflash", "1", FCVAR_ARCHIVE, "Enable dynamic light for muzzleflashes" );
+ConVar rbcl_dlight_stunstick( "rbcl_dlight_stunstick", "1", FCVAR_ARCHIVE, "Enable dynamic light for stunstick" );
+ConVar rbcl_dlight_explosion( "rbcl_dlight_explosion", "1", FCVAR_ARCHIVE, "Enable dynamic light for explosions" );
+ConVar rbcl_dlight_grenade( "rbcl_dlight_grenade", "1", FCVAR_ARCHIVE, "Enable dynamic light for frag grenades" );
+ConVar rbcl_dlight_egon( "rbcl_dlight_egon", "1", FCVAR_ARCHIVE, "Enable dynamic light for egon beam" );
+ConVar rbcl_dlight_barrel( "rbcl_dlight_barrel", "1", FCVAR_ARCHIVE, "Enable dynamic light for burning barrels" );
 
 extern void FX_TracerSound( const Vector &start, const Vector &end, int iTracerType );
 

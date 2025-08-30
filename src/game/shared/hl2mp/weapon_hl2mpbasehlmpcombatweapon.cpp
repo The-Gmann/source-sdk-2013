@@ -229,20 +229,20 @@ extern float	g_lateralBob;
 extern float	g_verticalBob;
 
 // Enhanced bobbing system with rb_ CVars - defined here for HL2MP
-ConVar rb_viewmodel_bob_enabled( "rb_viewmodel_bob_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable viewmodel bobbing" );
-ConVar rb_viewmodel_bob_scale( "rb_viewmodel_bob_scale", "1.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing intensity scale", true, 0.0f, true, 3.0f );
-ConVar rb_viewmodel_bob_air_scale( "rb_viewmodel_bob_air_scale", "1.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing scale when mid-air", true, 0.0f, true, 2.5f );
-ConVar rb_viewmodel_bob_air_enabled( "rb_viewmodel_bob_air_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable enhanced air bobbing effects" );
+ConVar rbcl_viewmodel_bob_enabled( "rbcl_viewmodel_bob_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable viewmodel bobbing" );
+ConVar rbcl_viewmodel_bob_scale( "rbcl_viewmodel_bob_scale", "1.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing intensity scale", true, 0.0f, true, 3.0f );
+ConVar rbcl_viewmodel_bob_air_scale( "rbcl_viewmodel_bob_air_scale", "1.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel bobbing scale when mid-air", true, 0.0f, true, 2.5f );
+ConVar rbcl_viewmodel_bob_air_enabled( "rbcl_viewmodel_bob_air_enabled", "1", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Enable enhanced air bobbing effects" );
 
 // Landing bump system - REMOVED
 
 // Advanced air behavior ConVars - hidden from typical users
-static ConVar rb_viewmodel_bob_air_transition_in( "rb_viewmodel_bob_air_transition_in", "2.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning to air state", true, 0.5f, true, 8.0f );
-static ConVar rb_viewmodel_bob_air_transition_out( "rb_viewmodel_bob_air_transition_out", "1.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning back to ground", true, 0.5f, true, 8.0f );
-static ConVar rb_viewmodel_bob_air_smoothing( "rb_viewmodel_bob_air_smoothing", "1.2", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Air transition smoothing curve power (higher = smoother)", true, 0.5f, true, 3.0f );
-static ConVar rb_viewmodel_bob_air_velocity_scale( "rb_viewmodel_bob_air_velocity_scale", "0.4", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "How much air velocity affects bobbing", true, 0.0f, true, 1.5f );
-static ConVar rb_viewmodel_bob_air_weight_effect( "rb_viewmodel_bob_air_weight_effect", "0.8", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Intensity of weight simulation in air", true, 0.0f, true, 2.0f );
-static ConVar rb_viewmodel_bob_air_minimum_speed( "rb_viewmodel_bob_air_minimum_speed", "50.0", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Minimum effective speed for air bobbing", true, 0.0f, true, 200.0f );
+static ConVar rbcl_viewmodel_bob_air_transition_in( "rbcl_viewmodel_bob_air_transition_in", "2.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning to air state", true, 0.5f, true, 8.0f );
+static ConVar rbcl_viewmodel_bob_air_transition_out( "rbcl_viewmodel_bob_air_transition_out", "1.5", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Speed when transitioning back to ground", true, 0.5f, true, 8.0f );
+static ConVar rbcl_viewmodel_bob_air_smoothing( "rbcl_viewmodel_bob_air_smoothing", "1.2", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Air transition smoothing curve power (higher = smoother)", true, 0.5f, true, 3.0f );
+static ConVar rbcl_viewmodel_bob_air_velocity_scale( "rbcl_viewmodel_bob_air_velocity_scale", "0.4", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "How much air velocity affects bobbing", true, 0.0f, true, 1.5f );
+static ConVar rbcl_viewmodel_bob_air_weight_effect( "rbcl_viewmodel_bob_air_weight_effect", "0.8", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Intensity of weight simulation in air", true, 0.0f, true, 2.0f );
+static ConVar rbcl_viewmodel_bob_air_minimum_speed( "rbcl_viewmodel_bob_air_minimum_speed", "50.0", FCVAR_HIDDEN | FCVAR_CLIENTDLL, "Minimum effective speed for air bobbing", true, 0.0f, true, 200.0f );
 
 // Hidden obsolete CVars - keeping them for compatibility but hiding them
 static ConVar	cl_bobcycle( "cl_bobcycle","0.8", FCVAR_HIDDEN );
@@ -285,7 +285,7 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	//Assert( player );
 
 	// Check if bobbing is disabled or player is invalid
-	if ( !rb_viewmodel_bob_enabled.GetBool() || !player )
+	if ( !rbcl_viewmodel_bob_enabled.GetBool() || !player )
 	{
 		g_verticalBob = 0.0f;
 		g_lateralBob = 0.0f;
@@ -358,18 +358,18 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	s_airState.lastVerticalVel = currentVerticalVel;
 	
 	// Smooth air-ground transition system
-	if ( rb_viewmodel_bob_air_enabled.GetBool() )
+	if ( rbcl_viewmodel_bob_air_enabled.GetBool() )
 	{
 		// Calculate transition speeds based on direction
 		float transitionSpeed = (targetGroundState < s_airState.lastGroundState) ? 
-			rb_viewmodel_bob_air_transition_in.GetFloat() : rb_viewmodel_bob_air_transition_out.GetFloat();
+			rbcl_viewmodel_bob_air_transition_in.GetFloat() : rbcl_viewmodel_bob_air_transition_out.GetFloat();
 		
 		// Smooth state transition
 		s_airState.lastGroundState = Approach( targetGroundState, s_airState.lastGroundState, gpGlobals->frametime * transitionSpeed );
 		
 		// Apply smoothing curve for natural feel
 		float rawBlend = 1.0f - s_airState.lastGroundState;
-		float smoothingPower = rb_viewmodel_bob_air_smoothing.GetFloat();
+		float smoothingPower = rbcl_viewmodel_bob_air_smoothing.GetFloat();
 		float smoothedBlend = rawBlend * rawBlend * (3.0f - 2.0f * rawBlend); // Smoothstep
 		s_airState.airTransitionBlend = pow( smoothedBlend, 1.0f / smoothingPower );
 	}
@@ -383,17 +383,17 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 	}
 
 	// Calculate bob scaling with air state considerations
-	float bob_scale = rb_viewmodel_bob_scale.GetFloat();
+	float bob_scale = rbcl_viewmodel_bob_scale.GetFloat();
 	
 	if ( s_airState.airTransitionBlend > 0.0f )
 	{
 		// Blend between ground and air bob scaling
-		float airBobScale = bob_scale * rb_viewmodel_bob_air_scale.GetFloat();
+		float airBobScale = bob_scale * rbcl_viewmodel_bob_air_scale.GetFloat();
 		bob_scale = Lerp( s_airState.airTransitionBlend, bob_scale, airBobScale );
 		
 		// Adjust speed calculation for air movement
-		float velocityInfluence = rb_viewmodel_bob_air_velocity_scale.GetFloat();
-		float baseAirSpeed = MAX( speed * 0.4f, rb_viewmodel_bob_air_minimum_speed.GetFloat() );
+		float velocityInfluence = rbcl_viewmodel_bob_air_velocity_scale.GetFloat();
+		float baseAirSpeed = MAX( speed * 0.4f, rbcl_viewmodel_bob_air_minimum_speed.GetFloat() );
 		float verticalSpeedFactor = 1.0f + (fabs(s_airState.smoothedVerticalVel) / 800.0f) * velocityInfluence;
 		verticalSpeedFactor = clamp( verticalSpeedFactor, 0.5f, 2.0f );
 		
@@ -429,7 +429,7 @@ float CBaseHL2MPCombatWeapon::CalcViewmodelBob( void )
 		float airTime = clamp( s_airState.airborneTime, 0.0f, 6.0f );
 		float velocityFactor = clamp( -s_airState.smoothedVerticalVel / 600.0f, -1.0f, 1.0f );
 		float timeFactor = 1.0f - exp( -airTime * 1.0f );
-		float weightEffect = rb_viewmodel_bob_air_weight_effect.GetFloat();
+		float weightEffect = rbcl_viewmodel_bob_air_weight_effect.GetFloat();
 		
 		// Weight simulation: falling = heavier, rising = lighter
 		float weightFactor = 1.0f + (velocityFactor * 0.2f * weightEffect);
@@ -523,15 +523,15 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 	}
 	
 	// Ensure air state is synchronized (in case CalcViewmodelBob wasn't called)
-	if ( rb_viewmodel_bob_air_enabled.GetBool() )
+			if ( rbcl_viewmodel_bob_air_enabled.GetBool() )
 	{
 		float transitionSpeed = (targetGroundState < s_airState.lastGroundState) ? 
-			rb_viewmodel_bob_air_transition_in.GetFloat() : rb_viewmodel_bob_air_transition_out.GetFloat();
+			rbcl_viewmodel_bob_air_transition_in.GetFloat() : rbcl_viewmodel_bob_air_transition_out.GetFloat();
 		
 		s_airState.lastGroundState = Approach( targetGroundState, s_airState.lastGroundState, gpGlobals->frametime * transitionSpeed );
 		
 		float rawBlend = 1.0f - s_airState.lastGroundState;
-		float smoothingPower = rb_viewmodel_bob_air_smoothing.GetFloat();
+		float smoothingPower = rbcl_viewmodel_bob_air_smoothing.GetFloat();
 		// Use smoothstep-like curve for better transition feel
 		float smoothedBlend = rawBlend * rawBlend * (3.0f - 2.0f * rawBlend);
 		s_airState.airTransitionBlend = pow( smoothedBlend, 1.0f / smoothingPower );
@@ -584,7 +584,7 @@ void CBaseHL2MPCombatWeapon::AddViewmodelBob( CBaseViewModel *viewmodel, Vector 
 		float airTime = clamp( s_airState.airborneTime, 0.0f, 6.0f );
 		float velocityFactor = clamp( -s_airState.smoothedVerticalVel / 600.0f, -0.8f, 0.8f );
 		float timeFactor = 1.0f - exp( -airTime * 0.8f );
-		float weightEffect = rb_viewmodel_bob_air_weight_effect.GetFloat();
+		float weightEffect = rbcl_viewmodel_bob_air_weight_effect.GetFloat();
 		
 		// Weight modifier for tilt intensity
 		float weightModifier = 1.0f + (velocityFactor > 0 ? velocityFactor * 0.2f * weightEffect : velocityFactor * 0.1f * weightEffect);

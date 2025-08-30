@@ -26,7 +26,7 @@ const float GRENADE_COEFFICIENT_OF_RESTITUTION = 0.2f;
 ConVar sk_plr_dmg_fraggrenade("sk_plr_dmg_fraggrenade", "0");
 ConVar sk_npc_dmg_fraggrenade("sk_npc_dmg_fraggrenade", "0");
 ConVar sk_fraggrenade_radius("sk_fraggrenade_radius", "0");
-ConVar rb_grenade_yoyo("rb_grenade_yoyo", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle Grenade timer resetting with the Gravity Gun");
+ConVar rbsv_grenade_yoyo("rbsv_grenade_yoyo", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle Grenade timer resetting with the Gravity Gun");
 
 #define GRENADE_MODEL "models/Weapons/w_grenade.mdl"
 
@@ -314,7 +314,7 @@ void CGrenadeFrag::SetTimer(float detonateDelay, float warnDelay)
 //-----------------------------------------------------------------------------
 void CGrenadeFrag::OnPhysGunPickup(CBasePlayer *pPhysGunUser, PhysGunPickup_t reason)
 {
-    if (rb_grenade_yoyo.GetBool())
+    	if (rbsv_grenade_yoyo.GetBool())
     {
         SetThrower(pPhysGunUser);
 

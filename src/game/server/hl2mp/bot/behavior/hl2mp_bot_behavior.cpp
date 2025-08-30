@@ -209,15 +209,81 @@ EventDesiredResult< CHL2MPBot > CHL2MPBotMainAction::OnStuck( CHL2MPBot *me )
 		UTIL_LogPrintf( "   path_goal ( \"NULL\" )\n" );
 	}
 
-	me->GetLocomotionInterface()->Jump();
-
-	if ( RandomInt( 0, 100 ) < 50 )
+	// Try to find the nearest walkable navigation area
+	CNavArea *nearestArea = TheNavMesh->GetNearestNavArea( me->GetAbsOrigin(), true, 500.0f, false, true, me->GetTeamNumber() );
+	
+	if ( nearestArea )
 	{
-		me->PressLeftButton();
+		// Found a walkable area - try to force-move there first
+		Vector targetPos = nearestArea->GetCenter();
+		
+		// Check if we can reach the target area with a reasonable path
+		trace_t result;
+		UTIL_TraceLine( me->GetAbsOrigin(), targetPos, MASK_PLAYERSOLID, me, COLLISION_GROUP_NONE, &result );
+		
+		if ( result.fraction > 0.8f )
+		{
+			// Path is mostly clear, try to force-move there
+			me->GetLocomotionInterface()->DriveTo( targetPos );
+			
+			if ( me->IsDebugging( NEXTBOT_ERRORS ) )
+			{
+				DevMsg( "%3.2f: %s force-moving to nearest nav area at ( %3.2f, %3.2f, %3.2f )\n", 
+						gpGlobals->curtime, me->GetDebugIdentifier(), 
+						targetPos.x, targetPos.y, targetPos.z );
+			}
+		}
+		else
+		{
+			// Path is blocked, teleport to the nearest walkable area
+			me->SetAbsOrigin( targetPos );
+			
+			if ( me->IsDebugging( NEXTBOT_ERRORS ) )
+			{
+				DevMsg( "%3.2f: %s teleported to nearest nav area at ( %3.2f, %3.2f, %3.2f ) due to blocked path\n", 
+						gpGlobals->curtime, me->GetDebugIdentifier(), 
+						targetPos.x, targetPos.y, targetPos.z );
+			}
+		}
+		
+		// Clear stuck status since we've moved to a walkable area
+		me->GetLocomotionInterface()->ClearStuckStatus( "Moved to walkable nav area" );
 	}
 	else
 	{
-		me->PressRightButton();
+		// No walkable area found within reasonable distance, try emergency teleport
+		// Search in a wider radius for any nav area
+		CNavArea *anyArea = TheNavMesh->GetNearestNavArea( me->GetAbsOrigin(), true, 1000.0f, false, false, TEAM_ANY );
+		
+		if ( anyArea )
+		{
+			Vector emergencyPos = anyArea->GetCenter();
+			me->SetAbsOrigin( emergencyPos );
+			
+			if ( me->IsDebugging( NEXTBOT_ERRORS ) )
+			{
+				DevMsg( "%3.2f: %s emergency teleported to nav area at ( %3.2f, %3.2f, %3.2f ) - no walkable areas found\n", 
+						gpGlobals->curtime, me->GetDebugIdentifier(), 
+						emergencyPos.x, emergencyPos.y, emergencyPos.z );
+			}
+			
+			// Clear stuck status
+			me->GetLocomotionInterface()->ClearStuckStatus( "Emergency teleport to nav area" );
+		}
+		else
+		{
+			// Last resort - try jumping and random movement
+			me->GetLocomotionInterface()->Jump();
+
+			if ( RandomInt( 0, 100 ) < 50 )
+			{
+				me->PressLeftButton();
+			}
+			else
+			{
+				me->PressRightButton();
+			}
+		}
 	}
 
 	return TryContinue();

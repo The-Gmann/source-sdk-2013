@@ -40,7 +40,7 @@
 #include "tier0/memdbgon.h"
 
 extern ConVar metropolice_move_and_melee;
-extern ConVar rb_dlight_stunstick;
+extern ConVar rbcl_dlight_stunstick;
 
 #define	STUNSTICK_RANGE				75.0f
 #define	STUNSTICK_REFIRE			0.8f
@@ -850,7 +850,7 @@ void C_WeaponStunStick::DrawFirstPersonEffects( void )
 	}
 
 	// Check the ConVar value before creating the dlight
-	if ( rb_dlight_stunstick.GetBool() )
+	if ( rbcl_dlight_stunstick.GetBool() )
 	{
 		if ( InSwing() )
 		{

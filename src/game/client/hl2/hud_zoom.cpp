@@ -181,10 +181,10 @@ void CHudZoom::Paint( void )
 		scale = 1.0f - ( scale * 0.5f );
 	}
 
-	// Read rb_hud_color dynamically every frame
-	extern ConVar rb_hud_color;
+	// Read rbcl_hud_color dynamically every frame
+	extern ConVar rbcl_hud_color;
 	int r = 255, g = 255, b = 255;
-	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 	Color col(r, g, b, alpha * 64);
 
 	surface()->DrawSetColor( col );

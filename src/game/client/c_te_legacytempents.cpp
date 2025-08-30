@@ -39,7 +39,7 @@
 // NOTE: Always include this last!
 #include "tier0/memdbgon.h"
 
-extern ConVar rb_dlight_muzzleflash;
+extern ConVar rbcl_dlight_muzzleflash;
 
 #define TENT_WIND_ACCEL 50
 
@@ -2806,7 +2806,7 @@ void CTempEnts::MuzzleFlash_Combine_NPC( ClientEntityHandle_t hEntity, int attac
 		return;
 	}
 
-	if ( rb_dlight_muzzleflash.GetBool() )
+	if ( rbcl_dlight_muzzleflash.GetBool() )
 	{
 		C_BaseEntity *pEnt = ClientEntityList().GetBaseEntityFromHandle( hEntity );
 		if ( pEnt )

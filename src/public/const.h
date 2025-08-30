@@ -182,10 +182,10 @@
 #define FL_WORLDBRUSH			(1<<25)	// Not moveable/removeable brush entity (really part of the world, but represented as an entity for transparency or something)
 #define FL_OBJECT				(1<<26) // Terrible name. This is an object that NPCs should see. Missiles, for example.
 #define FL_KILLME				(1<<27)	// This entity is marked for death -- will be freed by game DLL
-#define FL_ONFIRE				(1<<28)	// You know...
-#define FL_DISSOLVING			(1<<29) // We're dissolving!
-#define FL_TRANSRAGDOLL			(1<<30) // In the process of turning into a client side ragdoll.
-#define FL_UNBLOCKABLE_BY_PLAYER (1<<31) // pusher that can't be blocked by the player
+#define FL_ONFIRE				(1<<27)	// You know... (same bit as server build)
+#define FL_DISSOLVING			(1<<28) // We're dissolving!
+#define FL_TRANSRAGDOLL			(1<<29) // In the process of turning into a client side ragdoll.
+#define FL_UNBLOCKABLE_BY_PLAYER (1<<30) // pusher that can't be blocked by the player
 #endif
 
 // edict->movetype values

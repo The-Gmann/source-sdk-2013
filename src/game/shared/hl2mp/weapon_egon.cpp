@@ -31,7 +31,7 @@
     #include "dlight.h"
     #include "iefx.h"
     #include "prediction.h"
-    extern ConVar rb_dlight_egon;
+    extern ConVar rbcl_dlight_egon;
 #else
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
@@ -619,7 +619,7 @@ void CWeaponEgon::UpdateClientBeams()
 
     // Dynamic light only appears after rendering delay and follows current position
     // Don't create dynamic light if beam hit skybox
-    if (m_nBeamDelayFrames == 0 && !m_pBeamGlow && rb_dlight_egon.GetBool() && !m_bHitSkybox)
+    		if (m_nBeamDelayFrames == 0 && !m_pBeamGlow && rbcl_dlight_egon.GetBool() && !m_bHitSkybox)
     {
         m_pBeamGlow = effects->CL_AllocDlight(entindex());
         if (m_pBeamGlow)
@@ -636,7 +636,7 @@ void CWeaponEgon::UpdateClientBeams()
     }
 
     // Update dynamic light position if it exists and not hitting skybox
-    if (m_pBeamGlow && rb_dlight_egon.GetBool() && !m_bHitSkybox)
+    		if (m_pBeamGlow && rbcl_dlight_egon.GetBool() && !m_bHitSkybox)
     {
         m_pBeamGlow->origin = currentEndPos;
         m_pBeamGlow->die = gpGlobals->curtime + 0.1f;

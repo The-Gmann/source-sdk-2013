@@ -176,9 +176,9 @@ void CClientScoreBoardDialog::ApplySchemeSettings( IScheme *pScheme )
 	Panel *pServerName = FindChildByName( "ServerName" );
 	if ( pServerName )
 	{
-		extern ConVar rb_hud_color;
+		extern ConVar rbcl_hud_color;
 		int r = 255, g = 255, b = 255;
-		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 		Color hudColor(r, g, b, 255);
 		pServerName->SetFgColor( hudColor );
 	}
@@ -288,9 +288,9 @@ void CClientScoreBoardDialog::Update( void )
 	Panel *pServerName = FindChildByName( "ServerName" );
 	if ( pServerName )
 	{
-		extern ConVar rb_hud_color;
+		extern ConVar rbcl_hud_color;
 		int r = 255, g = 255, b = 255;
-		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 		Color hudColor(r, g, b, 255);
 		pServerName->SetFgColor( hudColor );
 	}
