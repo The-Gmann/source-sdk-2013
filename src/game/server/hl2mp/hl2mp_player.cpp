@@ -1426,7 +1426,7 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 		// Check for crush damage threshold
 		else if (info.GetDamageType() & DMG_CRUSH)
 		{
-			if (info.GetDamage() >= 450.0f)
+			if (info.GetDamage() >= 550.0f)
 			{
 				bShouldGib = true;
 				DevMsg("Player gibbed! Damage: %.1f, Type: DMG_CRUSH\n", info.GetDamage());
