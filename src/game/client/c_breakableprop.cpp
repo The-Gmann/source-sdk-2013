@@ -19,7 +19,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-extern ConVar rbcl_dlight_barrel;
+extern ConVar rb_dlight_barrel;
 
 IMPLEMENT_CLIENTCLASS_DT(C_BreakableProp, DT_BreakableProp, CBreakableProp)
 END_RECV_TABLE()
@@ -55,7 +55,7 @@ void C_BreakableProp::ClientThink( void )
 	BaseClass::ClientThink();
 	
 	// Early out if dynamic lights are disabled
-	if ( !rbcl_dlight_barrel.GetBool() )
+	if ( !rb_dlight_barrel.GetBool() )
 	{
 		if ( m_pBarrelDLight )
 		{
@@ -142,7 +142,7 @@ void C_BreakableProp::OnDataChanged( DataUpdateType_t type )
 	if ( type == DATA_UPDATE_CREATED )
 	{
 		// Start thinking if this barrel is already on fire when created
-		if ( IsOnFire() && rbcl_dlight_barrel.GetBool() )
+		if ( IsOnFire() && rb_dlight_barrel.GetBool() )
 		{
 			m_dlightKey = entindex();
 			m_bWasOnFireLastFrame = true;

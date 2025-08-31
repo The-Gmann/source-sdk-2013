@@ -44,7 +44,7 @@
 #endif
 
 #ifdef HL2MP
-	ConVar rbcl_lefthand( "rbcl_lefthand", "0", FCVAR_USERINFO | FCVAR_ARCHIVE | FCVAR_NOT_CONNECTED, "Flip view models." );
+	ConVar rb_lefthand( "rb_lefthand", "0", FCVAR_USERINFO | FCVAR_ARCHIVE | FCVAR_NOT_CONNECTED, "Flip view models." );
 #endif
 
 void PostToolMessage( HTOOLHANDLE hEntity, KeyValues *msg );
@@ -238,7 +238,7 @@ bool C_BaseViewModel::ShouldFlipViewModel()
 	CBaseCombatWeapon *pWeapon = m_hWeapon.Get();
 	if ( pWeapon )
 	{
-		return pWeapon->m_bFlipViewModel != rbcl_lefthand.GetBool();
+		return pWeapon->m_bFlipViewModel != rb_lefthand.GetBool();
 	}
 #endif
 

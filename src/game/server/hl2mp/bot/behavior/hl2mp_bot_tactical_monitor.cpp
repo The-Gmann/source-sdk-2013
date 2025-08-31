@@ -236,18 +236,10 @@ ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float
 			m_maintainTimer.Start( RandomFloat( 0.3f, 0.5f ) );
 
 			bool isHurt = ( me->GetFlags() & FL_ONFIRE ) || ( ( float )me->GetHealth() / ( float )me->GetMaxHealth() ) < bot_health_ok_ratio.GetFloat();
-			
-			// Also check if bot needs armor (has suit equipped but armor is low)
-			bool needsArmor = false;
-			CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
-			if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 50 )
-			{
-				needsArmor = true;
-			}
 
-			if ( ( isHurt || needsArmor ) && CHL2MPBotGetHealth::IsPossible( me ) )
+			if ( isHurt && CHL2MPBotGetHealth::IsPossible( me ) )
 			{
-				return SuspendFor( new CHL2MPBotGetHealth, "Grabbing nearby health or armor" );
+				return SuspendFor( new CHL2MPBotGetHealth, "Grabbing nearby health" );
 			}
 
 			// Prop freaks go for props instead of ammo.

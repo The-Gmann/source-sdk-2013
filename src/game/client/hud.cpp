@@ -177,7 +177,7 @@ ConVar hidehud( "hidehud", "0", FCVAR_CHEAT );
 
 // Simple HUD Color Customization System
 static void RB_HudColor_Changed( IConVar *var, const char *pOldValue, float flOldValue );
-ConVar rbcl_hud_color( "rbcl_hud_color", "90 255 145", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Custom HUD color (R G B values)", RB_HudColor_Changed );
+ConVar rb_hud_color( "rb_hud_color", "90 255 145", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Custom HUD color (R G B values)", RB_HudColor_Changed );
 
 // Forward declarations for color functions
 Color GetCustomSchemeColor( const char *colorName );
@@ -201,18 +201,18 @@ Color GetCustomSchemeColor( const char *colorName )
 		return Color( dangerColor.r(), dangerColor.g(), dangerColor.b(), 255 );
 	}
 	
-	// For all other colors, read rbcl_hud_color dynamically
+	// For all other colors, read rb_hud_color dynamically
 	int r = 255, g = 255, b = 255;
-	sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 	return Color(r, g, b, 255);
 }
 
 // Calculate danger color based on custom HUD color
 Color GetDangerColor()
 {
-	// Read rbcl_hud_color dynamically every time (like suit power does)
+	// Read rb_hud_color dynamically every time (like suit power does)
 	int r = 255, g = 255, b = 255;
-	sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 	Color customColor(r, g, b, 255);
 	
 	// Calculate color distance from red (255, 0, 0)

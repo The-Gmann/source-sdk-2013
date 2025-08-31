@@ -124,7 +124,7 @@ ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCV
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
 extern ConVar *sv_maxreplay;
-extern ConVar rbsv_ear_ringing;
+extern ConVar rb_ear_ringing;
 
 extern CServerGameDLL g_ServerGameDLL;
 
@@ -1479,7 +1479,7 @@ void CBasePlayer::OnDamagedByExplosion( const CTakeDamageInfo &info )
 		random->RandomInt( 32, 34 );
 
 	CSingleUserRecipientFilter user( this );
-	if (rbsv_ear_ringing.GetBool())
+	if (rb_ear_ringing.GetBool())
 	{
 		enginesound->SetPlayerDSP(user, effect, false);
 	}

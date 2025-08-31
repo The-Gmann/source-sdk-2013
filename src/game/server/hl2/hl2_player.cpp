@@ -99,7 +99,7 @@ ConVar player_showpredictedposition_timestep( "player_showpredictedposition_time
 ConVar player_squad_transient_commands( "player_squad_transient_commands", "1", FCVAR_REPLICATED );
 ConVar player_squad_double_tap_time( "player_squad_double_tap_time", "0.25" );
 
-ConVar rbsv_infinite_aux_power("rbsv_infinite_aux_power", "0", FCVAR_NOTIFY);
+ConVar rb_infinite_aux_power("rb_infinite_aux_power", "0", FCVAR_NOTIFY);
 
 ConVar autoaim_unlock_target( "autoaim_unlock_target", "0.8666" );
 
@@ -1902,7 +1902,7 @@ void CHL2_Player::SuitPower_Initialize( void )
 bool CHL2_Player::SuitPower_Drain( float flPower )
 {
 	// Suitpower cheat on?
-	if ( rbsv_infinite_aux_power.GetBool() )
+	if ( rb_infinite_aux_power.GetBool() )
 		return true;
 
 	m_HL2Local.m_flSuitPower -= flPower;
@@ -3305,7 +3305,7 @@ void CHL2_Player::UpdateClientData( void )
 #ifdef HL2_EPISODIC
 	if ( Flashlight_UseLegacyVersion() == false )
 	{
-		if ( FlashlightIsOn() && rbsv_infinite_aux_power.GetBool() == false )
+		if ( FlashlightIsOn() && rb_infinite_aux_power.GetBool() == false )
 		{
 			m_HL2Local.m_flFlashBattery -= FLASH_DRAIN_TIME * gpGlobals->frametime;
 			if ( m_HL2Local.m_flFlashBattery < 0.0f )

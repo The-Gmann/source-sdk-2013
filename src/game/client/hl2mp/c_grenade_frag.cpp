@@ -9,7 +9,7 @@
 #define FRAG_GRENADE_BLIP_FREQUENCY         1.0f
 #define FRAG_GRENADE_BLIP_FAST_FREQUENCY    0.2f
 
-extern ConVar rbcl_dlight_grenade;
+extern ConVar rb_dlight_grenade;
 
 class C_GrenadeFragLight : public CBaseGrenade
 {
@@ -69,8 +69,8 @@ void C_GrenadeFragLight::OnDataChanged(DataUpdateType_t updateType)
 void C_GrenadeFragLight::UpdateDLight()
 {
 	// Early out if dynamic lights are disabled
-	extern ConVar rbcl_dlight_grenade;
-	if (!rbcl_dlight_grenade.GetBool())
+	extern ConVar rb_dlight_grenade;
+	if (!rb_dlight_grenade.GetBool())
 	{
 		if (m_pDLight)
 		{
@@ -116,8 +116,8 @@ void C_GrenadeFragLight::UpdateDLight()
 void C_GrenadeFragLight::ClientThink()
 {
 	// Only update dlight if the cvar is enabled
-	extern ConVar rbcl_dlight_grenade;
-	if (rbcl_dlight_grenade.GetBool())
+	extern ConVar rb_dlight_grenade;
+	if (rb_dlight_grenade.GetBool())
 	{
 		UpdateDLight();
 	}

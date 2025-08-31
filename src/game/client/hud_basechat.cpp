@@ -262,11 +262,11 @@ void CBaseHudChatLine::PerformFadeout( void )
 	// Flash + Extra bright when new
 	float curtime = gpGlobals->curtime;
 
-	// Read rbcl_hud_color dynamically for real-time updates
-	extern ConVar rbcl_hud_color;
+	// Read rb_hud_color dynamically for real-time updates
+	extern ConVar rb_hud_color;
 	Color currentTextColor(255, 255, 255, 255);
 	int r = 255, g = 255, b = 255;
-	if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		currentTextColor = Color(r, g, b, 255);
 	}
@@ -1237,9 +1237,9 @@ void CBaseHudChat::StartMessageMode( int iMessageModeType )
 	m_pChatInput->SetVisible( true );
 	
 	// Update chat input colors dynamically when it becomes visible
-	extern ConVar rbcl_hud_color;
+	extern ConVar rb_hud_color;
 	int r = 255, g = 255, b = 255;
-	sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 	Color hudColor(r, g, b, 255);
 	
 	// Cast to TextEntry to access selection color methods
@@ -1411,10 +1411,10 @@ void CBaseHudChat::SetCustomColor( const char *pszColorName )
 //-----------------------------------------------------------------------------
 Color CBaseHudChat::GetDefaultTextColor( void )
 {
-	extern ConVar rbcl_hud_color;
+	extern ConVar rb_hud_color;
 	Color hudColor(255, 255, 255, 255);
 	int r, g, b;
-	if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		hudColor = Color(r, g, b, 255);
 	}
@@ -1426,10 +1426,10 @@ Color CBaseHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		extern ConVar rbcl_hud_color;
+		extern ConVar rb_hud_color;
 		Color hudColor(255, 255, 255, 255);
 		int r, g, b;
-		if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 		{
 			hudColor = Color(r, g, b, 255);
 		}
@@ -1440,10 +1440,10 @@ Color CBaseHudChat::GetClientColor( int clientIndex )
 		return g_ColorGrey;
 	}
 
-	extern ConVar rbcl_hud_color;
+	extern ConVar rb_hud_color;
 	Color hudColor(255, 255, 255, 255);
 	int r, g, b;
-	if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		hudColor = Color(r, g, b, 255);
 	}

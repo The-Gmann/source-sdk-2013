@@ -425,14 +425,14 @@ void GaussImpactCallback(const CEffectData &data)
 
 DECLARE_CLIENT_EFFECT("GaussImpact", GaussImpactCallback);
 
-extern ConVar rbcl_dlight_muzzleflash;
+extern ConVar rb_dlight_muzzleflash;
 
 //-----------------------------------------------------------------------------
 // Creates a muzzleflash elight
 //-----------------------------------------------------------------------------
 void CreateMuzzleflashELight( const Vector &origin, int exponent, int nMinRadius, int nMaxRadius, ClientEntityHandle_t hEntity )
 {
-	if ( rbcl_dlight_muzzleflash.GetInt() )
+	if ( rb_dlight_muzzleflash.GetInt() )
 	{
 		int entityIndex = ClientEntityList().HandleToEntIndex( hEntity );
 		if ( entityIndex >= 0 )
@@ -528,7 +528,7 @@ void MuzzleFlash_Airboat( ClientEntityHandle_t hEntity, int attachmentIndex )
 	
 #ifndef _XBOX
 	// Grab the origin out of the transform for the attachment
-	if ( rbcl_dlight_muzzleflash.GetInt() )
+	if ( rb_dlight_muzzleflash.GetInt() )
 	{
 		// If the client hasn't seen this entity yet, bail.
 		matrix3x4_t	matAttachment;

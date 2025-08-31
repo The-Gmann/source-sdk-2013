@@ -28,11 +28,11 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-ConVar rbsv_crossbow_sniperbolt("rbsv_crossbow_sniperbolt", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle sniper bolt.");
-ConVar rbsv_crossbow_explosivebolt("rbsv_crossbow_explosivebolt", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle explosive bolt.");
+ConVar rb_crossbow_sniperbolt("rb_crossbow_sniperbolt", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle sniper bolt.");
+ConVar rb_crossbow_explosivebolt("rb_crossbow_explosivebolt", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Toggle explosive bolt.");
 #ifndef CLIENT_DLL
-ConVar rbcl_smooth_zoom("rbcl_smooth_zoom", "1", FCVAR_ARCHIVE, "Enable or disable zoom transition smoothing");
-ConVar rbcl_crossbow_scope("rbcl_crossbow_scope", "0", FCVAR_ARCHIVE, "Enable or disable crossbow scope");
+ConVar rb_smooth_zoom("rb_smooth_zoom", "1", FCVAR_ARCHIVE, "Enable or disable zoom transition smoothing");
+ConVar rb_crossbow_scope("rb_crossbow_scope", "0", FCVAR_ARCHIVE, "Enable or disable crossbow scope");
 #endif
 
 #define BOLT_MODEL        "models/crossbow_bolt.mdl"
@@ -144,7 +144,7 @@ CCrossbowBolt *CCrossbowBolt::BoltCreate(const Vector &vecOrigin, const QAngle &
     // Set flags before spawning so CreateSprites can check them
     pBolt->m_iDamage = iDamage;
     pBolt->SetSniperBolt(bIsSniperBolt);
-    		pBolt->SetExplosive(!bIsSniperBolt && rbsv_crossbow_explosivebolt.GetBool());
+    pBolt->SetExplosive(!bIsSniperBolt && rb_crossbow_explosivebolt.GetBool());
     
     pBolt->Spawn();
     pBolt->SetOwnerEntity(pentOwner);
@@ -289,7 +289,7 @@ void CCrossbowBolt::Precache( void )
 //-----------------------------------------------------------------------------
 void CCrossbowBolt::BoltTouch(CBaseEntity *pOther)
 {
-    		if (!m_bIsSniperBolt && rbsv_crossbow_explosivebolt.GetBool())
+    if (!m_bIsSniperBolt && rb_crossbow_explosivebolt.GetBool())
     {
         trace_t tr;
         tr = BaseClass::GetTouchTrace();
@@ -663,7 +663,7 @@ void CWeaponCrossbow::Precache( void )
 //-----------------------------------------------------------------------------
 void CWeaponCrossbow::PrimaryAttack(void)
 {
-    		if (rbsv_crossbow_sniperbolt.GetBool() && m_bInZoom && g_pGameRules->IsMultiplayer())
+    if (rb_crossbow_sniperbolt.GetBool() && m_bInZoom && g_pGameRules->IsMultiplayer())
     {
         FireSniperBolt();
     }
@@ -1004,7 +1004,7 @@ void CWeaponCrossbow::ToggleZoom(void)
         return;
 
 #ifndef CLIENT_DLL
-    		float zoomTransitionTime = rbcl_smooth_zoom.GetBool() ? 0.2f : 0.0f;
+    float zoomTransitionTime = rb_smooth_zoom.GetBool() ? 0.2f : 0.0f;
 
     if (m_bInZoom)
     {
@@ -1016,8 +1016,8 @@ void CWeaponCrossbow::ToggleZoom(void)
             }
             m_bInZoom = false;
 
-            		// Send a message to hide the scope only if rbcl_crossbow_scope is 1
-		if (rbcl_crossbow_scope.GetInt() == 1)
+            // Send a message to hide the scope only if rb_crossbow_scope is 1
+            if (rb_crossbow_scope.GetInt() == 1)
             {
                 CSingleUserRecipientFilter filter(pPlayer);
                 UserMessageBegin(filter, "ShowScope");
@@ -1036,8 +1036,8 @@ void CWeaponCrossbow::ToggleZoom(void)
         {
             m_bInZoom = true;
 
-            		// Send a message to show the scope only if rbcl_crossbow_scope is 1
-		if (rbcl_crossbow_scope.GetInt() == 1)
+            // Send a message to show the scope only if rb_crossbow_scope is 1
+            if (rb_crossbow_scope.GetInt() == 1)
             {
                 CSingleUserRecipientFilter filter(pPlayer);
                 UserMessageBegin(filter, "ShowScope");

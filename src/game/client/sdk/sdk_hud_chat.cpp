@@ -133,10 +133,10 @@ void CHudChatLine::PerformFadeout( void )
 
 			wcsncpy( wText, wbuf + ( m_iNameLength ), wcslen( wbuf + m_iNameLength ) );
 			wText[ wcslen( wbuf + m_iNameLength ) ] = '\0';
-			extern ConVar rbcl_hud_color;
+			extern ConVar rb_hud_color;
 			Color hudColor(255, 255, 255, 255);
 			int r, g, b;
-			if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+			if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 			{
 				hudColor = Color(r, g, b, 255);
 			}
@@ -169,10 +169,10 @@ void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 	m_pPrompt->SetFont( hFont );
 	m_pInput->SetFont( hFont );
 
-	extern ConVar rbcl_hud_color;
+	extern ConVar rb_hud_color;
 	Color hudColor(255, 255, 255, 255);
 	int r, g, b;
-	if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		hudColor = Color(r, g, b, 255);
 	}
@@ -449,10 +449,10 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 	}
 	else
 	{
-		extern ConVar rbcl_hud_color;
+		extern ConVar rb_hud_color;
 		Color hudColor(255, 255, 255, 255);
 		int r, g, b;
-		if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 		{
 			hudColor = Color(r, g, b, 255);
 		}
@@ -474,10 +474,10 @@ void CHudChat::ChatPrintf( int iPlayerIndex, const char *fmt, ... )
 		line->InsertString( buf );
 		Q_strncpy( buf, pmsg + iNameLength, strlen( pmsg ));
 		buf[ strlen( pmsg + iNameLength ) ] = '\0';
-		extern ConVar rbcl_hud_color;
+		extern ConVar rb_hud_color;
 		Color hudColor(255, 255, 255, 255);
 		int r, g, b;
-		if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 		{
 			hudColor = Color(r, g, b, 255);
 		}

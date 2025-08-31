@@ -25,7 +25,6 @@
     #include "hl2mp_player.h"
     #include "te_effect_dispatch.h"
     #include "ilagcompensationmanager.h"
-    #include "effects.h"
 #endif
 
 // Client-side class definition
@@ -37,7 +36,6 @@
 // Definitions
 //-----------------------------------------------------------------------------
 #define GAUSS_BEAM_SPRITE              "sprites/laserbeam.vmt"
-#define GAUSS_BEAM_SPRITE_NODEPTH      "sprites/laserbeam_nodepth.vmt"
 #define GAUSS_CHARGE_TIME              0.3f          // Time between ammo consumption during charging
 #define MAX_GAUSS_CHARGE               16.0f         // Maximum ammo that can be consumed
 #define MAX_GAUSS_CHARGE_TIME          3.0f          // Time to reach maximum charge
@@ -124,7 +122,7 @@ ConVar sk_plr_dmg_gauss("sk_plr_dmg_gauss", "20", FCVAR_REPLICATED);
 ConVar sk_plr_max_dmg_gauss("sk_plr_max_dmg_gauss", "200", FCVAR_REPLICATED);
 
 // Gameplay settings
-ConVar rbsv_selfgauss("rbsv_selfgauss", "1", FCVAR_REPLICATED, "Enable self damage from gauss gun reflections and explosions (1=enabled, 0=disabled)");
+ConVar rb_selfgauss("rb_selfgauss", "1", FCVAR_REPLICATED, "Enable self damage from gauss gun reflections and explosions (1=enabled, 0=disabled)");
 
 //=============================================================================
 // Network Implementation
@@ -236,7 +234,6 @@ CWeaponGauss::CWeaponGauss(void)
 void CWeaponGauss::Precache(void)
 {
     PrecacheModel(GAUSS_BEAM_SPRITE);
-    PrecacheModel(GAUSS_BEAM_SPRITE_NODEPTH);
 
     #ifndef CLIENT_DLL
         PrecacheScriptSound("Weapon_Gauss.ChargeLoop");
@@ -298,15 +295,6 @@ void CWeaponGauss::PrimaryAttack(void)
     // Play fire sound - NO aftershock for primary fire
     WeaponSound(SINGLE);
     pOwner->DoMuzzleFlash();
-
-    // Generate sparks from muzzle when firing (like crossbow during reload)
-#ifndef CLIENT_DLL
-    Vector muzzlePos = pOwner->Weapon_ShootPosition();
-    if (UTIL_PointContents(muzzlePos) != CONTENTS_WATER)
-    {
-        g_pEffects->Sparks(muzzlePos);
-    }
-#endif
 
     SendWeaponAnim(ACT_VM_PRIMARYATTACK);
     pOwner->SetAnimation(PLAYER_ATTACK1);
@@ -403,7 +391,7 @@ void CWeaponGauss::IncreaseCharge(void)
             EmitSound("Weapon_Gauss.Electro2");
             
             // Deal damage to player only if self damage is enabled
-            if (rbsv_selfgauss.GetBool())
+            if (rb_selfgauss.GetBool())
             {
                 // Create damage info with proper attacker (use the player as both inflictor and attacker)
                 CTakeDamageInfo dmgInfo(pOwner, pOwner, 50, DMG_SHOCK);
@@ -588,7 +576,7 @@ void CWeaponGauss::Fire(void)
                     CTakeDamageInfo radiusDmgInfo(this, pOwner, flDamage * hitAngle, DMG_SHOCK);
                     
                     // If self damage is disabled, exclude the owner from radius damage
-                    CBaseEntity *pIgnoreEntity = rbsv_selfgauss.GetBool() ? NULL : pOwner;
+                    CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
                     
                     RadiusDamage(radiusDmgInfo, tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                 #endif
@@ -653,15 +641,6 @@ void CWeaponGauss::ChargedFire(void)
     m_flPlayAftershock = gpGlobals->curtime + random->RandomFloat(0.3f, 0.8f);
     pOwner->DoMuzzleFlash();
 
-    // Generate sparks from muzzle when firing charged shot (like crossbow during reload)
-#ifndef CLIENT_DLL
-    Vector muzzlePos = pOwner->Weapon_ShootPosition();
-    if (UTIL_PointContents(muzzlePos) != CONTENTS_WATER)
-    {
-        g_pEffects->Sparks(muzzlePos);
-    }
-#endif
-
     SendWeaponAnim(ACT_VM_SECONDARYATTACK);
     pOwner->SetAnimation(PLAYER_ATTACK1);
 
@@ -705,7 +684,7 @@ void CWeaponGauss::ChargedFire(void)
         pOwner->SetAbsVelocity(vecVelocity);
         
         // Determine if we should ignore the owner for explosion damage
-        CBaseEntity *pIgnoreEntity = rbsv_selfgauss.GetBool() ? NULL : pOwner;
+        CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
         
         // Move other players back to history positions based on local player's lag
         CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(pOwner);
@@ -1066,17 +1045,8 @@ void CWeaponGauss::DrawBeam(const Vector &startPos, const Vector &endPos, float 
         if (distance < 1.0f || distance > MAX_TRACE_LENGTH)
             return;
 
-        // Choose beam sprite based on view mode
-        // Use nodepth sprite for first-person (owner), regular sprite for third-person (others)
-        const char* beamSprite = GAUSS_BEAM_SPRITE;
-        CBasePlayer *pOwner = ToBasePlayer(GetOwner());
-        if (pOwner && pOwner->IsLocalPlayer())
-        {
-            beamSprite = GAUSS_BEAM_SPRITE_NODEPTH;
-        }
-
         // Create main beam
-        CBeam *pMainBeam = CBeam::BeamCreate(beamSprite, width);
+        CBeam *pMainBeam = CBeam::BeamCreate(GAUSS_BEAM_SPRITE, width);
         if (!pMainBeam)
             return;
 
@@ -1115,7 +1085,7 @@ void CWeaponGauss::DrawBeam(const Vector &startPos, const Vector &endPos, float 
         // Create electric bolt effects along beam
         for (int i = 0; i < 3; i++)
         {
-            CBeam *pBoltBeam = CBeam::BeamCreate(beamSprite, (width/2.0f) + i);
+            CBeam *pBoltBeam = CBeam::BeamCreate(GAUSS_BEAM_SPRITE, (width/2.0f) + i);
             if (!pBoltBeam)
                 continue;
 

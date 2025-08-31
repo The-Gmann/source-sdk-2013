@@ -3516,12 +3516,12 @@ int C_BaseAnimating::InternalDrawModel( int flags )
 	return bMarkAsDrawn;
 }
 
-extern ConVar rbcl_dlight_muzzleflash;
+extern ConVar rb_dlight_muzzleflash;
 
 void C_BaseAnimating::ProcessMuzzleFlashEvent()
 {
 	// If we have an attachment, then stick a light on it.
-	if ( rbcl_dlight_muzzleflash.GetBool() )
+	if ( rb_dlight_muzzleflash.GetBool() )
 	{
 		//FIXME: We should really use a named attachment for this
 		if ( m_Attachments.Count() > 0 )

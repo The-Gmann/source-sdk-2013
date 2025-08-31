@@ -53,7 +53,7 @@ static ConVar sk_apc_missile_damage("sk_apc_missile_damage", "15");
 #define CLaserDot C_LaserDot
 #endif
 
-ConVar rbsv_rpg_toggleable_laser("rbsv_rpg_toggleable_laser", "1", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Enable/Disable the ability to toggle RPG laser guidance with secondary attack.");
+ConVar rb_rpg_toggleable_laser("rb_rpg_toggleable_laser", "1", FCVAR_REPLICATED | FCVAR_ARCHIVE, "Enable/Disable the ability to toggle RPG laser guidance with secondary attack.");
 //-----------------------------------------------------------------------------
 // Laser Dot
 //-----------------------------------------------------------------------------
@@ -1615,11 +1615,11 @@ void CWeaponRPG::ItemPostFrame(void)
     }
 
     // Check the cvar before allowing the laser guidance to be toggled
-    		if (rbsv_rpg_toggleable_laser.GetBool() && (pPlayer->m_afButtonPressed & IN_ATTACK2))
+    if (rb_rpg_toggleable_laser.GetBool() && (pPlayer->m_afButtonPressed & IN_ATTACK2))
     {
         ToggleGuiding();
     }
-    		else if (!rbsv_rpg_toggleable_laser.GetBool())
+    else if (!rb_rpg_toggleable_laser.GetBool())
     {
         // Ensure the laser is always on when the cvar is 0
         if (!IsGuiding())
@@ -1774,7 +1774,7 @@ void CWeaponRPG::StartGuiding(void)
 //-----------------------------------------------------------------------------
 void CWeaponRPG::StopGuiding(void)
 {
-    	if (!rbsv_rpg_toggleable_laser.GetBool())
+    if (!rb_rpg_toggleable_laser.GetBool())
     {
         // Do not allow turning off the laser if the cvar is 0
         return;
@@ -1811,7 +1811,7 @@ void CWeaponRPG::StopGuiding(void)
 //-----------------------------------------------------------------------------
 void CWeaponRPG::ToggleGuiding(void)
 {
-    	if (rbsv_rpg_toggleable_laser.GetBool())
+    if (rb_rpg_toggleable_laser.GetBool())
     {
         if (IsGuiding())
         {

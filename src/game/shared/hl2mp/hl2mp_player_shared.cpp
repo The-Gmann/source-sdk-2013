@@ -20,7 +20,7 @@
 #include "in_buttons.h"
 
 // Stealth movement cvar - server-side control for silent walking/ducking
-ConVar rbsv_stealth_movement( "rbsv_stealth_movement", "1", FCVAR_REPLICATED, "Enable stealth movement (silent walking and ducking). 0 = disabled, 1 = enabled" );
+ConVar rb_stealth_movement( "rb_stealth_movement", "1", FCVAR_REPLICATED, "Enable stealth movement (silent walking and ducking). 0 = disabled, 1 = enabled" );
 
 extern ConVar sv_footsteps;
 
@@ -81,8 +81,8 @@ void CHL2MP_Player::PlayStepSound(Vector& vecOrigin, surfacedata_t* psurface, fl
 #endif
 
     // Check for stealth movement like Counter-Strike Source - both walking and ducking
-    	// Only if rbsv_stealth_movement is enabled
-	if (rbsv_stealth_movement.GetBool())
+    // Only if rb_stealth_movement is enabled
+    if (rb_stealth_movement.GetBool())
     {
         // Walking stealth: Must check walk button, ground state, movement speed, and NOT shifting
         if (m_nButtons & IN_WALK)

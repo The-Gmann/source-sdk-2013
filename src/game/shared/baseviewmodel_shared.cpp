@@ -460,13 +460,13 @@ float g_fMaxViewModelLag = 1.5f;
 
 // CVars for customizable viewmodel sway - client-only definitions
 #ifdef CLIENT_DLL
-	ConVar rbcl_viewmodel_sway_scale( "rbcl_viewmodel_sway_scale", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway power scale (lower = less sway)", true, 0.0f, true, 5.0f );
-ConVar rbcl_viewmodel_sway_speed( "rbcl_viewmodel_sway_speed", "10.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway recovery speed (higher = faster recovery)", true, 1.0f, true, 50.0f );
-ConVar rbcl_viewmodel_zoffset( "rbcl_viewmodel_zoffset", "0.3", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Scale for viewmodel position shift when looking up/down (0.0 = disabled)", true, 0.0f, true, 5.0f );
+	ConVar rb_viewmodel_sway_scale( "rb_viewmodel_sway_scale", "0.5", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway power scale (lower = less sway)", true, 0.0f, true, 5.0f );
+	ConVar rb_viewmodel_sway_speed( "rb_viewmodel_sway_speed", "10.0", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Viewmodel sway recovery speed (higher = faster recovery)", true, 1.0f, true, 50.0f );
+	ConVar rb_viewmodel_zoffset( "rb_viewmodel_zoffset", "0.3", FCVAR_ARCHIVE | FCVAR_CLIENTDLL, "Scale for viewmodel position shift when looking up/down (0.0 = disabled)", true, 0.0f, true, 5.0f );
 #else
-	extern ConVar rbcl_viewmodel_sway_scale;
-extern ConVar rbcl_viewmodel_sway_speed;
-extern ConVar rbcl_viewmodel_zoffset;
+	extern ConVar rb_viewmodel_sway_scale;
+	extern ConVar rb_viewmodel_sway_speed;
+	extern ConVar rb_viewmodel_zoffset;
 #endif
 
 // Define the missing ConVar that's only extern'd elsewhere - REMOVED: replaced with rb_viewmodel_zoffset
@@ -487,7 +487,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		VectorSubtract( forward, m_vecLastFacing, vDifference );
 
 #ifdef CLIENT_DLL
-		float flSpeed = rbcl_viewmodel_sway_speed.GetFloat();
+		float flSpeed = rb_viewmodel_sway_speed.GetFloat();
 
 		// If we start to lag too far behind, we'll increase the "catch up" speed.  Solves the problem with fast cl_yawspeed, m_yaw or joysticks
 		//  rotating quickly.  The old code would slam lastfacing with origin causing the viewmodel to pop to a new position
@@ -503,7 +503,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		// Make sure it doesn't grow out of control!!!
 		VectorNormalize( m_vecLastFacing );
 		// Apply viewmodel sway using original VectorMA approach with configurable scale
-		VectorMA( origin, rbcl_viewmodel_sway_scale.GetFloat() * 5.0f, vDifference * -1.0f, origin );
+		VectorMA( origin, rb_viewmodel_sway_scale.GetFloat() * 5.0f, vDifference * -1.0f, origin );
 
 		Assert( m_vecLastFacing.IsValid() );
 #else
@@ -523,7 +523,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 
 	// Apply pitch-based viewmodel shift only on client
 #ifdef CLIENT_DLL
-	if ( rbcl_viewmodel_zoffset.GetFloat() > 0.0f )
+	if ( rb_viewmodel_zoffset.GetFloat() > 0.0f )
 	{
 		Vector right, up;
 		AngleVectors( original_angles, &forward, &right, &up );
@@ -541,7 +541,7 @@ void CBaseViewModel::CalcViewModelLag( Vector& origin, QAngle& angles, QAngle& o
 		}
 
 		//FIXME: These are the old settings that caused too many exposed polys on some models
-		float zOffsetScale = rbcl_viewmodel_zoffset.GetFloat();
+		float zOffsetScale = rb_viewmodel_zoffset.GetFloat();
 		VectorMA( origin, -pitch * 0.035f * zOffsetScale,	forward,	origin );
 		VectorMA( origin, -pitch * 0.03f * zOffsetScale,		right,	origin );
 		VectorMA( origin, -pitch * 0.02f * zOffsetScale,		up,		origin);

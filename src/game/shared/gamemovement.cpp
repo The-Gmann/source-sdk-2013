@@ -77,8 +77,8 @@ ConVar debug_latch_reset_onduck("debug_latch_reset_onduck", "1", FCVAR_CHEAT);
 #endif
 
 
-ConVar rbsv_longjump_sound("rbsv_longjump_sound", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable or disable longjump sound");
-ConVar rbsv_longjump_auxpower("rbsv_longjump_auxpower", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable aux power consumption for longjump (2 bars per jump)");
+ConVar rb_longjump_sound("rb_longjump_sound", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable or disable longjump sound");
+ConVar rb_longjump_auxpower("rb_longjump_auxpower", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enable aux power consumption for longjump (2 bars per jump)");
 
 // Jump buffering
 
@@ -87,14 +87,14 @@ ConVar rbsv_longjump_auxpower("rbsv_longjump_auxpower", "1", FCVAR_REPLICATED | 
 bool g_bMovementOptimizations = true;
 
 //Cvars
-ConVar rbsv_enable_bunnyhop("rbsv_enable_bunnyhop", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable bunny hopping speed boost");
-ConVar rbsv_autobunnyhopping("rbsv_autobunnyhopping", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable automatic bunny hopping");
-ConVar rbsv_walljump_enabled("rbsv_walljump_enabled", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable wall-jump mechanic");
-ConVar rbsv_walljump_abuse_threshold("rbsv_walljump_abuse_threshold", "0.5", FCVAR_REPLICATED | FCVAR_NOTIFY, "Time threshold to detect wall jump abuse in seconds");
-ConVar rbsv_viewbob_enabled	( "rbsv_viewbob_enabled", "0", 0, "Oscillation Toggle" );
-ConVar rbsv_viewbob_timer		( "rbsv_viewbob_timer", "10", 0, "Speed of Oscillation" );
-ConVar rbsv_viewbob_scale		( "rbsv_viewbob_scale", "0.002", 0, "Magnitude of Oscillation" );
-ConVar rbsv_jump_buffer("rbsv_jump_buffer", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enables/disables jump buffering");
+ConVar rb_enable_bunnyhop("rb_enable_bunnyhop", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable bunny hopping speed boost");
+ConVar rb_autobunnyhopping("rb_autobunnyhopping", "0", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable automatic bunny hopping");
+ConVar rb_walljump_enabled("rb_walljump_enabled", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable wall-jump mechanic");
+ConVar rb_walljump_abuse_threshold("rb_walljump_abuse_threshold", "0.5", FCVAR_REPLICATED | FCVAR_NOTIFY, "Time threshold to detect wall jump abuse in seconds");
+ConVar rb_viewbob_enabled	( "rb_viewbob_enabled", "0", 0, "Oscillation Toggle" );
+ConVar rb_viewbob_timer		( "rb_viewbob_timer", "10", 0, "Speed of Oscillation" );
+ConVar rb_viewbob_scale		( "rb_viewbob_scale", "0.002", 0, "Magnitude of Oscillation" );
+ConVar rb_jump_buffer("rb_jump_buffer", "1", FCVAR_REPLICATED | FCVAR_NOTIFY | FCVAR_ARCHIVE, "Enables/disables jump buffering");
 
 // Roughly how often we want to update the info about the ground surface we're on.
 // We don't need to do this very often.
@@ -1768,7 +1768,7 @@ void CGameMovement::AirAccelerate( Vector& wishdir, float wishspeed, float accel
 	accelspeed = accel * wishspeed * gpGlobals->frametime * player->m_surfaceFriction;
 
 	// Make strafing easier when bunny hopping is enabled
-			if (rbsv_enable_bunnyhop.GetBool() && mv->m_flSideMove != 0.0f)
+	if (rb_enable_bunnyhop.GetBool() && mv->m_flSideMove != 0.0f)
 	{
 		// Increase the effective acceleration for strafing, but still respect the addspeed cap
 		// This makes it easier to reach the available speed gain, not exceed it
@@ -1955,10 +1955,10 @@ void CGameMovement::WalkMove( void )
 	fmove = mv->m_flForwardMove;
 	smove = mv->m_flSideMove;
 
-	if ( rbsv_viewbob_enabled.GetBool() && !engine->IsPaused() )
+	if ( rb_viewbob_enabled.GetBool() && !engine->IsPaused() )
 	{
-			float xoffset = sin( gpGlobals->curtime * rbsv_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rbsv_viewbob_scale.GetFloat() / 100;
-	float yoffset = sin( 2 * gpGlobals->curtime * rbsv_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rbsv_viewbob_scale.GetFloat() / 400;
+	float xoffset = sin( gpGlobals->curtime * rb_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rb_viewbob_scale.GetFloat() / 100;
+	float yoffset = sin( 2 * gpGlobals->curtime * rb_viewbob_timer.GetFloat() ) * player->GetAbsVelocity().Length() * rb_viewbob_scale.GetFloat() / 400;
 	player->ViewPunch( QAngle( xoffset, yoffset, 0 ) );
 	}
 
@@ -2442,7 +2442,7 @@ bool CGameMovement::CheckJumpButton(void)
 
     // ✅ Jump buffer logic - now using per-player variables
     bool bWantsToJump = (mv->m_nButtons & IN_JUMP) != 0;
-    	bool bJumpBufferEnabled = rbsv_jump_buffer.GetBool();
+    bool bJumpBufferEnabled = rb_jump_buffer.GetBool();
 
     if (bJumpBufferEnabled)
     {
@@ -2473,7 +2473,7 @@ bool CGameMovement::CheckJumpButton(void)
 #endif
 
     // Check for auto bunnyhopping first
-    		if (!rbsv_autobunnyhopping.GetBool())
+    if (!rb_autobunnyhopping.GetBool())
     {
         // If not auto bunnyhopping, check jump buffer if enabled
         if (bJumpBufferEnabled && gpGlobals->curtime < player->m_flJumpBufferTime)
@@ -4969,7 +4969,7 @@ void CGameMovement::TracePlayerBBox( const Vector& start, const Vector& end, uns
 //-----------------------------------------------------------------------------
 bool CGameMovement::WallJump()
 {
-    	if (!rbsv_walljump_enabled.GetBool())
+    if (!rb_walljump_enabled.GetBool())
         return false;
 
     // don't pogo stick
@@ -5033,7 +5033,7 @@ bool CGameMovement::WallJump()
 
             // ✅ Check if the player is abusing wall jumping in corners
             float timeElapsed = gpGlobals->curtime - player->m_flLastWallJumpCheckTime;
-            		if (timeElapsed >= rbsv_walljump_abuse_threshold.GetFloat())
+            if (timeElapsed >= rb_walljump_abuse_threshold.GetFloat())
             {
                 Vector currentPosition = mv->GetAbsOrigin();
                 float xDiff = fabs(currentPosition.x - player->m_vecLastWallJumpPosition.x);
@@ -5143,7 +5143,7 @@ bool CGameMovement::LongJump()
         return false;
         
     // Check aux power requirement if enabled
-    if (rbsv_longjump_auxpower.GetBool())
+    if (rb_longjump_auxpower.GetBool())
     {
         // Each longjump costs 2 bars of aux power (2 * 10 = 20 aux power out of 100 total)
         // Cast to HL2MP player to access suit power
@@ -5181,14 +5181,13 @@ bool CGameMovement::LongJump()
     SetGroundEntity( NULL );
     
     // Consume aux power if enabled (2 bars = 20 aux power out of 100 total)
-    if (rbsv_longjump_auxpower.GetBool())
+    if (rb_longjump_auxpower.GetBool())
     {
         // Use the appropriate player class method to drain suit power
 #ifdef CLIENT_DLL
         C_HL2MP_Player *pHL2Player = dynamic_cast<C_HL2MP_Player*>(player);
         if (pHL2Player)
             pHL2Player->SuitPower_Drain(20.0f);
-#endif
 #else
         CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(player);
         if (pHL2Player)
@@ -5197,7 +5196,7 @@ bool CGameMovement::LongJump()
     }
     
     // Play longjump sound only if ConVar is enabled
-    if (rbsv_longjump_sound.GetBool())
+    if (rb_longjump_sound.GetBool())
     {
         // Play longjump sound on CHAN_ITEM to avoid interference with footstep sounds (CHAN_BODY)
         // Use EmitSound instead of StartSound for better sound management

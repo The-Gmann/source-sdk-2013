@@ -116,7 +116,7 @@ ConVar	spec_freeze_distance_max( "spec_freeze_distance_max", "200", FCVAR_CHEAT,
 #endif
 
 static ConVar	cl_first_person_uses_world_model ( "cl_first_person_uses_world_model", "0", FCVAR_ARCHIVE, "Causes the third person model to be drawn instead of the view model" );
-static ConVar rbcl_playershadow( "rbcl_playershadow", "0", FCVAR_ARCHIVE, "Enable player shadow rendering" );
+static ConVar rb_playershadow( "rb_playershadow", "0", FCVAR_ARCHIVE, "Enable player shadow rendering" );
 
 // Audio feedback ConVars are now defined in hl2mp_audiofeedback.cpp
 ConVar demo_fov_override( "demo_fov_override", "0", FCVAR_CLIENTDLL | FCVAR_DONTRECORD, "If nonzero, this value will be used to override FOV during demo playback." );
@@ -1474,7 +1474,7 @@ int C_BasePlayer::DrawModel( int flags )
 	}
 #endif
 
-	if(IsLocalPlayer() && rbcl_playershadow.GetBool())
+	if(IsLocalPlayer() && rb_playershadow.GetBool())
 	{
 		if (input->CAM_IsThirdPerson())
 			return BaseClass::DrawModel(flags);
@@ -2046,7 +2046,7 @@ bool C_BasePlayer::ShouldDrawThisPlayer()
 		return false;
 	}
 	
-	return rbcl_playershadow.GetBool();
+	return rb_playershadow.GetBool();
 }
 
 
