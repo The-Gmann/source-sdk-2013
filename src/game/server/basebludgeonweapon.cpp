@@ -174,6 +174,9 @@ void CBaseHLBludgeonWeapon::Hit( trace_t &traceHit, Activity nHitActivity, bool 
 		{
 			gamestats->Event_WeaponHit( pPlayer, !bIsSecondary, GetClassname(), info );
 		}
+
+		// Play hit sound
+		WeaponSound( MELEE_HIT );
 	}
 
 	// Apply an impact effect
@@ -361,6 +364,9 @@ void CBaseHLBludgeonWeapon::Swing( int bIsSecondary )
 	{
 		nHitActivity = bIsSecondary ? ACT_VM_MISSCENTER2 : ACT_VM_MISSCENTER;
 
+		// Play swing sound
+		WeaponSound( SINGLE );
+
 		// We want to test the first swing again
 		Vector testEnd = swingStart + forward * GetRange();
 		
@@ -379,6 +385,4 @@ void CBaseHLBludgeonWeapon::Swing( int bIsSecondary )
 	m_flNextPrimaryAttack = gpGlobals->curtime + GetFireRate();
 	m_flNextSecondaryAttack = gpGlobals->curtime + SequenceDuration();
 
-	//Play swing sound
-	WeaponSound( SINGLE );
 }
