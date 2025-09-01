@@ -1205,15 +1205,6 @@ void C_HL2MPRagdoll::CreateHL2MPRagdoll( void )
 
 	if ( pPlayer && !pPlayer->IsDormant() )
 	{
-		// For local player, force bone setup regardless of rb_playershadow setting
-		bool bIsLocalPlayer = (pPlayer == C_BasePlayer::GetLocalPlayer());
-		if ( bIsLocalPlayer )
-		{
-			// Temporarily force the player model to be drawable to ensure proper bone setup
-			pPlayer->RemoveEffects( EF_NODRAW );
-			pPlayer->SetupBones( NULL, -1, BONE_USED_BY_ANYTHING, gpGlobals->curtime );
-		}
-		
 		pPlayer->GetRagdollInitBoneArrays( boneDelta0, boneDelta1, currentBones, boneDt );
 	}
 	else
