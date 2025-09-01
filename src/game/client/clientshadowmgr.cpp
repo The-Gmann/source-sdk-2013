@@ -118,6 +118,8 @@ static ConVar r_shadow_static_cache( "r_shadow_static_cache", "1", FCVAR_ARCHIVE
 static ConVar r_shadow_cache_maxage( "r_shadow_cache_maxage", "15", FCVAR_ARCHIVE, "Maximum age in frames before static shadow cache expires", true, 1, true, 60 );
 static ConVar r_shadow_texture_size_multiplier( "r_shadow_texture_size_multiplier", "1.5", FCVAR_ARCHIVE, "Multiplier for shadow texture size calculation", true, 0.5f, true, 3.0f );
 static ConVar r_shadow_prevent_thrashing( "r_shadow_prevent_thrashing", "1", FCVAR_ARCHIVE, "Prevent shadow texture thrashing by being more conservative with downgrades" );
+static ConVar r_shadow_smooth_transitions( "r_shadow_smooth_transitions", "1", FCVAR_ARCHIVE, "Enable smooth shadow quality transitions based on distance" );
+static ConVar r_shadow_adaptive_resolution( "r_shadow_adaptive_resolution", "1", FCVAR_ARCHIVE, "Enable adaptive shadow resolution scaling" );
 
 #ifdef _WIN32
 #pragma warning( disable: 4701 )
@@ -125,6 +127,48 @@ static ConVar r_shadow_prevent_thrashing( "r_shadow_prevent_thrashing", "1", FCV
 
 // forward declarations
 void ToolFramework_RecordMaterialParams( IMaterial *pMaterial );
+
+//-----------------------------------------------------------------------------
+// Smooth transition helper function
+//-----------------------------------------------------------------------------
+static inline float SmoothStep( float edge0, float edge1, float x )
+{
+	float t = clamp( (x - edge0) / (edge1 - edge0), 0.0f, 1.0f );
+	return t * t * (3.0f - 2.0f * t);
+}
+
+//-----------------------------------------------------------------------------
+// Calculate adaptive screen area based on distance for smooth quality scaling
+//-----------------------------------------------------------------------------
+static float CalculateAdaptiveScreenArea( float flOriginalArea, float flDistance, const Vector &vecCenter )
+{
+	if ( !r_shadow_adaptive_resolution.GetBool() )
+		return flOriginalArea;
+	
+	// Get distance ranges for smooth transitions
+	float flLODStartDist = r_shadow_lod_distance_start.GetFloat();
+	float flLODEndDist = r_shadow_lod_distance_end.GetFloat();
+	
+	// No scaling for close shadows
+	if ( flDistance <= flLODStartDist )
+		return flOriginalArea;
+	
+	// Smooth scaling for distant shadows
+	if ( r_shadow_smooth_transitions.GetBool() )
+	{
+		// Use smooth step function for gradual quality reduction
+		float flDistanceFactor = 1.0f - SmoothStep( flLODStartDist, flLODEndDist, flDistance );
+		flDistanceFactor = clamp( flDistanceFactor, 0.3f, 1.0f ); // Never go below 30% quality
+		return flOriginalArea * flDistanceFactor;
+	}
+	else
+	{
+		// Linear falloff for compatibility
+		float flDistanceFactor = 1.0f - ((flDistance - flLODStartDist) / (flLODEndDist - flLODStartDist));
+		flDistanceFactor = clamp( flDistanceFactor, 0.3f, 1.0f );
+		return flOriginalArea * flDistanceFactor;
+	}
+}
 
 
 //-----------------------------------------------------------------------------
@@ -532,7 +576,7 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 {
 	TextureInfo_t& info = m_Textures[h];
 
-	// Apply shadow texture size multiplier to reduce thrashing
+	// Apply shadow texture size multiplier and smooth distance scaling
 	float flAdjustedArea = flArea * r_shadow_texture_size_multiplier.GetFloat();
 
 	// spin up to the best fragment size
@@ -559,14 +603,16 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 		nCurrentPower = GetFragmentPower(info.m_Fragment);
 		Assert( nCurrentPower <= info.m_Power );
 		
-		// Enhanced logic to prevent thrashing
+		// Enhanced logic to prevent thrashing with smooth transitions
 		int nPowerDiff = nDesiredPower - nCurrentPower;
 		bool bShouldKeepTexture = false;
 		
 		if ( r_shadow_prevent_thrashing.GetBool() )
 		{
 			// More conservative about downgrading - allow up to 2 levels difference
-			bShouldKeepTexture = (!bWillRedraw) && (nPowerDiff <= 2) && (nDesiredPower < 8);
+			// For smooth transitions, be even more conservative to prevent oscillation
+			int nMaxDiff = r_shadow_smooth_transitions.GetBool() ? 3 : 2;
+			bShouldKeepTexture = (!bWillRedraw) && (nPowerDiff <= nMaxDiff) && (nDesiredPower < 8);
 		}
 		else
 		{
@@ -4205,29 +4251,31 @@ void CClientShadowMgr::ComputeShadowTextures( const CViewSetup &viewShadow, int 
 		const VisibleShadowInfo_t &info = s_VisibleShadowList.GetVisibleShadow(i);
 		if ( nModelsRendered < nMaxShadows )
 		{
-			// Calculate distance from camera for LOD decision
+			// Calculate distance from camera for smooth LOD transitions
 			Vector vecCameraPos = CurrentViewOrigin();
 			float flDistance = ( info.m_vecAbsCenter - vecCameraPos ).Length();
 			
-			// Apply shadow quality LOD based on distance
-			float flLODStartDist = r_shadow_lod_distance_start.GetFloat();
-			float flLODEndDist = r_shadow_lod_distance_end.GetFloat();
+			// Apply smooth adaptive area scaling based on distance
+			float flAdaptiveArea = CalculateAdaptiveScreenArea( info.m_flArea, flDistance, info.m_vecAbsCenter );
 			
-			// Use full quality for close shadows, LOD for distant ones
-			if ( flDistance > flLODEndDist )
+			// Check if shadow should be completely culled due to distance
+			float flMaxDist = r_shadow_max_distance.GetFloat();
+			if ( flDistance > flMaxDist )
 			{
-				// Very distant - use LOD shadow
+				// Beyond maximum distance - skip rendering entirely
+				continue;
+			}
+			
+			// Check minimum screen area threshold
+			float flMinArea = r_shadow_min_screen_area.GetFloat();
+			if ( flAdaptiveArea < flMinArea )
+			{
+				// Too small on screen - use LOD shadow
 				DrawRenderToTextureShadowLOD( info.m_hShadow );
 			}
-			else if ( flDistance > flLODStartDist )
+			else if ( DrawRenderToTextureShadow( info.m_hShadow, flAdaptiveArea ) )
 			{
-				// Transition zone - blend between full quality and LOD
-				// For now, use LOD in transition zone too (can be enhanced later)
-				DrawRenderToTextureShadowLOD( info.m_hShadow );
-			}
-			else if ( DrawRenderToTextureShadow( info.m_hShadow, info.m_flArea ) )
-			{
-				// Close distance - full quality shadow
+				// Render with adaptive quality based on distance
 				++nModelsRendered;
 			}
 		}
