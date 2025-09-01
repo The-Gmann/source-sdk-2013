@@ -111,11 +111,13 @@ ConVar r_threaded_client_shadow_manager( "r_threaded_client_shadow_manager", "0"
 
 // Shadow optimization console variables
 static ConVar r_shadow_max_distance( "r_shadow_max_distance", "1200", FCVAR_ARCHIVE, "Maximum distance for shadow casting", true, 200.0f, true, 3000.0f );
-static ConVar r_shadow_lod_distance_start( "r_shadow_lod_distance_start", "600", FCVAR_ARCHIVE, "Distance where shadow quality LOD begins", true, 100.0f, true, 2000.0f );
-static ConVar r_shadow_lod_distance_end( "r_shadow_lod_distance_end", "1000", FCVAR_ARCHIVE, "Distance where shadow quality reaches minimum", true, 200.0f, true, 2500.0f );
+static ConVar r_shadow_lod_distance_start( "r_shadow_lod_distance_start", "1000", FCVAR_ARCHIVE, "Distance where shadow quality LOD begins", true, 100.0f, true, 2000.0f );
+static ConVar r_shadow_lod_distance_end( "r_shadow_lod_distance_end", "2000", FCVAR_ARCHIVE, "Distance where shadow quality reaches minimum", true, 200.0f, true, 2500.0f );
 static ConVar r_shadow_min_screen_area( "r_shadow_min_screen_area", "8.0", FCVAR_ARCHIVE, "Minimum screen area (pixels squared) for shadow rendering", true, 1.0f, true, 100.0f );
-static ConVar r_shadow_static_cache( "r_shadow_static_cache", "0", FCVAR_ARCHIVE, "Enable static shadow caching for performance (0=off, 1=conservative)", true, 0, true, 1 );
-static ConVar r_shadow_cache_maxage( "r_shadow_cache_maxage", "10", FCVAR_ARCHIVE, "Maximum age in frames before static shadow cache expires", true, 1, true, 60 );
+static ConVar r_shadow_static_cache( "r_shadow_static_cache", "1", FCVAR_ARCHIVE, "Enable static shadow caching for performance (0=off, 1=conservative)", true, 0, true, 1 );
+static ConVar r_shadow_cache_maxage( "r_shadow_cache_maxage", "15", FCVAR_ARCHIVE, "Maximum age in frames before static shadow cache expires", true, 1, true, 60 );
+static ConVar r_shadow_texture_size_multiplier( "r_shadow_texture_size_multiplier", "1.5", FCVAR_ARCHIVE, "Multiplier for shadow texture size calculation", true, 0.5f, true, 3.0f );
+static ConVar r_shadow_prevent_thrashing( "r_shadow_prevent_thrashing", "1", FCVAR_ARCHIVE, "Prevent shadow texture thrashing by being more conservative with downgrades" );
 
 #ifdef _WIN32
 #pragma warning( disable: 4701 )
@@ -291,18 +293,23 @@ void CTextureAllocator::Reset()
 	m_Textures.EnsureCapacity(256);
 	m_Fragments.EnsureCapacity(256);
 
-	// Set up the block sizes....
-	// FIXME: Improve heuristic?!?
+	// Set up the block sizes for better shadow texture distribution
+	// Allocate more blocks for smaller textures to reduce fragmentation
 #if !defined( _X360 )
-	m_Blocks[0].m_FragmentPower  = MAX_TEXTURE_POWER-4;	// 128 cells at ExE resolution
+	m_Blocks[0].m_FragmentPower  = MAX_TEXTURE_POWER-5;	// 256 cells at 16x16 resolution - many small shadows
+	m_Blocks[1].m_FragmentPower  = MAX_TEXTURE_POWER-4;	// 128 cells at 32x32 resolution
+	m_Blocks[2].m_FragmentPower  = MAX_TEXTURE_POWER-4;	// 128 cells at 32x32 resolution  
+	m_Blocks[3].m_FragmentPower  = MAX_TEXTURE_POWER-3;	// 64 cells at 64x64 resolution
+	m_Blocks[4].m_FragmentPower  = MAX_TEXTURE_POWER-2;	// 32 cells at 128x128 resolution
+	m_Blocks[5].m_FragmentPower  = MAX_TEXTURE_POWER-1;	// 8 cells at 256x256 resolution - large/close shadows
 #else
-	m_Blocks[0].m_FragmentPower  = MAX_TEXTURE_POWER-3;	// 64 cells at DxD resolution
+	m_Blocks[0].m_FragmentPower  = MAX_TEXTURE_POWER-4;	// 64 cells at 32x32 resolution
+	m_Blocks[1].m_FragmentPower  = MAX_TEXTURE_POWER-3;	// 64 cells at 64x64 resolution
+	m_Blocks[2].m_FragmentPower  = MAX_TEXTURE_POWER-3;	// 64 cells at 64x64 resolution
+	m_Blocks[3].m_FragmentPower  = MAX_TEXTURE_POWER-2;	// 32 cells at 128x128 resolution
+	m_Blocks[4].m_FragmentPower  = MAX_TEXTURE_POWER-1;	// 8 cells at 256x256 resolution
+	m_Blocks[5].m_FragmentPower  = MAX_TEXTURE_POWER-1;	// 8 cells at 256x256 resolution
 #endif
-	m_Blocks[1].m_FragmentPower  = MAX_TEXTURE_POWER-3;	// 64 cells at DxD resolution
-	m_Blocks[2].m_FragmentPower  = MAX_TEXTURE_POWER-2;	// 32 cells at CxC resolution
-	m_Blocks[3].m_FragmentPower  = MAX_TEXTURE_POWER-2;		 
-	m_Blocks[4].m_FragmentPower  = MAX_TEXTURE_POWER-1;	// 24 cells at BxB resolution
-	m_Blocks[5].m_FragmentPower  = MAX_TEXTURE_POWER-1;
 	m_Blocks[6].m_FragmentPower  = MAX_TEXTURE_POWER-1;
 	m_Blocks[7].m_FragmentPower  = MAX_TEXTURE_POWER-1;
 	m_Blocks[8].m_FragmentPower  = MAX_TEXTURE_POWER-1;
@@ -523,15 +530,15 @@ bool CTextureAllocator::HasValidTexture( TextureHandle_t h )
 //-----------------------------------------------------------------------------
 bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float flArea )
 {
-//	Warning( "Top of UseTexture\n" );
-//	DebugPrintCache();
-
 	TextureInfo_t& info = m_Textures[h];
+
+	// Apply shadow texture size multiplier to reduce thrashing
+	float flAdjustedArea = flArea * r_shadow_texture_size_multiplier.GetFloat();
 
 	// spin up to the best fragment size
 	int nDesiredPower = MIN_TEXTURE_POWER;
 	int nDesiredWidth = MIN_TEXTURE_SIZE;
-	while ( (nDesiredWidth * nDesiredWidth) < flArea )
+	while ( (nDesiredWidth * nDesiredWidth) < flAdjustedArea )
 	{
 		if ( nDesiredPower >= info.m_Power )
 		{
@@ -551,7 +558,22 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 		// If the current fragment is at or near the desired power, we're done
 		nCurrentPower = GetFragmentPower(info.m_Fragment);
 		Assert( nCurrentPower <= info.m_Power );
-		bool bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nDesiredPower - nCurrentPower <= 1);
+		
+		// Enhanced logic to prevent thrashing
+		int nPowerDiff = nDesiredPower - nCurrentPower;
+		bool bShouldKeepTexture = false;
+		
+		if ( r_shadow_prevent_thrashing.GetBool() )
+		{
+			// More conservative about downgrading - allow up to 2 levels difference
+			bShouldKeepTexture = (!bWillRedraw) && (nPowerDiff <= 2) && (nDesiredPower < 8);
+		}
+		else
+		{
+			// Original logic
+			bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nPowerDiff <= 1);
+		}
+		
 		if ((nCurrentPower == nDesiredPower) || bShouldKeepTexture)
 		{
 			// Move to the back of the LRU
@@ -559,9 +581,6 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 			return false;
 		}
 	}
-
-//	Warning( "\n\nUseTexture B\n" );
-//	DebugPrintCache();
 
 	// Grab the LRU fragment from the appropriate cache
 	// If that fragment is connected to a texture, disconnect it.
@@ -585,10 +604,6 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 			--power;
 		}
 	}
-
-
-//	Warning( "\n\nUseTexture C\n" );
-//	DebugPrintCache();
 
 	// Ok, lets see if we're better off than we were...
 	if (currentFragment != INVALID_FRAGMENT_HANDLE)
@@ -698,7 +713,7 @@ void CTextureAllocator::GetTextureRect(TextureHandle_t handle, int& x, int& y, i
 #define SHADOW_CULL_TOLERANCE 0.5f
 
 static ConVar r_shadows( "r_shadows", "1" ); // hook into engine's cvars..
-static ConVar r_shadowmaxrendered("r_shadowmaxrendered", "32");
+static ConVar r_shadowmaxrendered("r_shadowmaxrendered", "24");
 static ConVar r_shadows_gamecontrol( "r_shadows_gamecontrol", "-1", FCVAR_CHEAT );	 // hook into engine's cvars..
 
 //-----------------------------------------------------------------------------
