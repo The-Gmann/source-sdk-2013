@@ -90,6 +90,9 @@
 static ConVar r_flashlightdrawfrustum( "r_flashlightdrawfrustum", "0" );
 static ConVar r_flashlightmodels( "r_flashlightmodels", "1" );
 static ConVar r_shadowrendertotexture( "r_shadowrendertotexture", "0" );
+static ConVar r_shadow_quality_hysteresis( "r_shadow_quality_hysteresis", "0.2", FCVAR_NONE, "Hysteresis factor for shadow quality transitions to prevent rapid switching" );
+static ConVar r_shadow_smooth_transitions( "r_shadow_smooth_transitions", "1", FCVAR_NONE, "Enable smooth shadow quality transitions" );
+static ConVar r_shadow_area_bias( "r_shadow_area_bias", "0.15", FCVAR_NONE, "Bias factor for shadow screen area calculations" );
 static ConVar r_flashlight_version2( "r_flashlight_version2", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
 
 void WorldLightCastShadowCallback( IConVar *pVar, const char *pszOldValue, float flOldValue );
@@ -834,6 +837,10 @@ private:
 		CTextureReference		m_ShadowDepthTexture;
 		int						m_nRenderFrame;
 		EHANDLE					m_hTargetEntity;
+		// Shadow quality optimization fields
+		float					m_flLastScreenArea;
+		float					m_flQualityTransition;
+		bool					m_bWasUsingLODShadow;
 	};
 
 private:
@@ -1066,13 +1073,19 @@ const VisibleShadowInfo_t &CVisibleShadowList::GetVisibleShadow( int i ) const
 
 
 //-----------------------------------------------------------------------------
-// CVisibleShadowList - Computes approximate screen area of the shadow
+// CVisibleShadowList - Computes approximate screen area of the shadow with smoothing
 //-----------------------------------------------------------------------------
 float CVisibleShadowList::ComputeScreenArea( const Vector &vecCenter, float r ) const
 {
 	CMatRenderContextPtr pRenderContext( materials );
 	float flScreenDiameter = pRenderContext->ComputePixelDiameterOfSphere( vecCenter, r );
-	return flScreenDiameter * flScreenDiameter;
+	float flRawArea = flScreenDiameter * flScreenDiameter;
+	
+	// Apply bias to create smoother transitions
+	float flBias = r_shadow_area_bias.GetFloat();
+	flRawArea = flRawArea * (1.0f + flBias * sinf(gpGlobals->curtime * 0.1f));
+	
+	return flRawArea;
 }
 
 
@@ -1122,7 +1135,26 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 	int i = m_ShadowsInView.AddToTail( );
 	VisibleShadowInfo_t &info = m_ShadowsInView[i];
 	info.m_hShadow = clientShadowHandle;
-	m_ShadowsInView[i].m_flArea = ComputeScreenArea( vecAbsCenter, flRadius );
+	
+	// Compute area with hysteresis to prevent rapid quality switching
+	float flNewArea = ComputeScreenArea( vecAbsCenter, flRadius );
+	float flHysteresis = r_shadow_quality_hysteresis.GetFloat();
+	
+	if ( shadow.m_flLastScreenArea > 0.0f && flHysteresis > 0.0f )
+	{
+		float flAreaDiff = fabsf( flNewArea - shadow.m_flLastScreenArea );
+		float flMaxChange = shadow.m_flLastScreenArea * flHysteresis;
+		
+		if ( flAreaDiff < flMaxChange )
+		{
+			// Smooth transition using exponential smoothing
+			float flAlpha = 0.3f; // Smoothing factor
+			flNewArea = flAlpha * flNewArea + (1.0f - flAlpha) * shadow.m_flLastScreenArea;
+		}
+	}
+	
+	shadow.m_flLastScreenArea = flNewArea;
+	m_ShadowsInView[i].m_flArea = flNewArea;
 
 	// Har, har. When water is rendering (or any multipass technique), 
 	// we may well initially render from a viewpoint which doesn't include this shadow. 
@@ -1850,6 +1882,10 @@ ClientShadowHandle_t CClientShadowMgr::CreateProjectedTexture( ClientEntityHandl
 	shadow.m_LerpStartDistance = 0.0f;
 	shadow.m_LastOrigin.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	shadow.m_LastAngles.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	// Initialize shadow quality tracking fields
+	shadow.m_flLastScreenArea = 0.0f;
+	shadow.m_flQualityTransition = 1.0f;
+	shadow.m_bWasUsingLODShadow = false;
 	Assert( ( ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT ) == 0 ) != 
 			( ( shadow.m_Flags & SHADOW_FLAGS_SHADOW ) == 0 ) );
 
@@ -3758,6 +3794,7 @@ bool CClientShadowMgr::BuildSetupListForRenderToTextureShadow( unsigned short cl
 
 //-----------------------------------------------------------------------------
 // This gets called with every shadow that potentially will need to re-render
+// Now with improved quality transitions and hysteresis
 //-----------------------------------------------------------------------------
 bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHandle, float flArea )
 {
@@ -3766,6 +3803,16 @@ bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHan
 	// If we were previously using the LOD shadow, set the material
 	bool bPreviouslyUsingLODShadow = ( shadow.m_Flags & SHADOW_FLAGS_USING_LOD_SHADOW ) != 0; 
 	shadow.m_Flags &= ~SHADOW_FLAGS_USING_LOD_SHADOW;
+	
+	// Apply smooth transition control
+	if ( r_shadow_smooth_transitions.GetBool() && bPreviouslyUsingLODShadow )
+	{
+		// Smoothly transition away from LOD shadow
+		float flTransitionSpeed = 3.0f;
+		shadow.m_flQualityTransition = Approach( 1.0f, shadow.m_flQualityTransition, gpGlobals->frametime * flTransitionSpeed );
+		shadow.m_bWasUsingLODShadow = false;
+	}
+	
 	if ( bPreviouslyUsingLODShadow )
 	{
 		shadowmgr->SetShadowMaterial( shadow.m_ShadowHandle, m_RenderShadow, m_RenderModelShadow, (void*)(uintp)clientShadowHandle );
@@ -3841,16 +3888,37 @@ bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHan
 
 //-----------------------------------------------------------------------------
 // "Draws" the shadow LOD, which really means just set up the blobby shadow
+// with smooth transitions to prevent quality jumps
 //-----------------------------------------------------------------------------
 void CClientShadowMgr::DrawRenderToTextureShadowLOD( unsigned short clientShadowHandle )
 {
 	ClientShadow_t &shadow = m_Shadows[clientShadowHandle];
-	if ( (shadow.m_Flags & SHADOW_FLAGS_USING_LOD_SHADOW) == 0 )
+	bool bCurrentlyUsingLOD = ( shadow.m_Flags & SHADOW_FLAGS_USING_LOD_SHADOW ) != 0;
+	
+	// Apply smooth transition if enabled
+	if ( r_shadow_smooth_transitions.GetBool() )
+	{
+		if ( !bCurrentlyUsingLOD )
+		{
+			// Transitioning to LOD shadow - start the transition
+			shadow.m_flQualityTransition = 1.0f;
+			shadow.m_bWasUsingLODShadow = false;
+		}
+		else if ( shadow.m_bWasUsingLODShadow )
+		{
+			// Continue smooth transition
+			float flTransitionSpeed = 2.0f; // Transition speed factor
+			shadow.m_flQualityTransition = Approach( 0.0f, shadow.m_flQualityTransition, gpGlobals->frametime * flTransitionSpeed );
+		}
+	}
+	
+	if ( !bCurrentlyUsingLOD )
 	{
 		shadowmgr->SetShadowMaterial( shadow.m_ShadowHandle, m_SimpleShadow, m_SimpleShadow, (void*)CLIENTSHADOW_INVALID_HANDLE );
 		shadowmgr->SetShadowTexCoord( shadow.m_ShadowHandle, 0, 0, 1, 1 );
-		ClearExtraClipPlanes( clientShadowHandle ); // this was ClearExtraClipPlanes( shadow.m_ShadowHandle ), fix is from Joe Demers
+		ClearExtraClipPlanes( clientShadowHandle );
 		shadow.m_Flags |= SHADOW_FLAGS_USING_LOD_SHADOW;
+		shadow.m_bWasUsingLODShadow = true;
 	}
 }
 
@@ -4106,15 +4174,38 @@ void CClientShadowMgr::ComputeShadowTextures( const CViewSetup &viewShadow, int 
 	for (i = 0; i < nCount; ++i)
 	{
 		const VisibleShadowInfo_t &info = s_VisibleShadowList.GetVisibleShadow(i);
-		if ( nModelsRendered < nMaxShadows )
+		
+		// Enhanced distance-based quality management
+		ClientShadow_t &shadow = m_Shadows[info.m_hShadow];
+		bool bShouldUseLOD = false;
+		
+		// Check if we should use LOD based on screen area and transition state
+		if ( nModelsRendered >= nMaxShadows )
 		{
-			if ( DrawRenderToTextureShadow( info.m_hShadow, info.m_flArea ) )
+			bShouldUseLOD = true;
+		}
+		else if ( r_shadow_smooth_transitions.GetBool() )
+		{
+			// Consider shadow transition state for smoother quality management
+			float flQualityThreshold = 0.5f;
+			if ( shadow.m_bWasUsingLODShadow && shadow.m_flQualityTransition < flQualityThreshold )
 			{
-				++nModelsRendered;
+				// Continue using LOD if we're mid-transition
+				bShouldUseLOD = true;
 			}
+		}
+		
+		if ( bShouldUseLOD )
+		{
+			DrawRenderToTextureShadowLOD( info.m_hShadow );
+		}
+		else if ( DrawRenderToTextureShadow( info.m_hShadow, info.m_flArea ) )
+		{
+			++nModelsRendered;
 		}
 		else
 		{
+			// Fallback to LOD if render failed
 			DrawRenderToTextureShadowLOD( info.m_hShadow );
 		}
 	}
