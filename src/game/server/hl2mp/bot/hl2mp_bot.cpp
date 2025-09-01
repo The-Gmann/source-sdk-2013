@@ -3,6 +3,7 @@
 #include "cbase.h"
 #include "hl2mp_player.h"
 #include "hl2mp_gamerules.h"
+#include "convar.h"
 #include "team_control_point_master.h"
 #include "team_train_watcher.h"
 #include "hl2mp_bot.h"
@@ -40,7 +41,19 @@ extern ConVar bot_difficulty;
 extern ConVar bot_farthest_visible_theater_sample_count;
 extern ConVar bot_path_lookahead_range;
 extern ConVar bot_grenade_throw_chance;
+extern ConVar bot_grenade_cooldown_time;
+extern ConVar bot_grenade_draw_time;
 extern ConVar bot_debug_superweapons;
+
+// Altfire-specific ConVars
+extern ConVar bot_ar2_altfire_chance;
+extern ConVar bot_ar2_altfire_range;
+extern ConVar bot_shotgun_altfire_chance;
+extern ConVar bot_shotgun_altfire_range;
+extern ConVar bot_smg1_grenade_chance;
+extern ConVar bot_smg1_grenade_range;
+extern ConVar bot_crossbow_zoom_range;
+extern ConVar bot_357_zoom_range;
 
 extern const char* GetUniqueBotName();
 
@@ -673,6 +686,13 @@ void CHL2MPBot::Spawn()
 	ClearTags();
 
 	m_requiredWeaponStack.Clear();
+
+	// Reset grenade timers on respawn
+	m_grenadeThrowCooldown.Invalidate();
+	m_grenadeCommitTimer.Invalidate();
+	m_grenadeForceThrowTimer.Invalidate();
+	m_grenadeDrawTimer.Invalidate();
+	m_grenadeCommitStartTime = 0.0f;
 
 	SetSquadFormationError( 0.0f );
 	SetBrokenFormation( false );
@@ -1513,14 +1533,22 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	if ( !pSuperWeapon ) pSuperWeapon = Weapon_OwnsThisType( "weapon_gauss" );
 	if ( !pSuperWeapon ) pSuperWeapon = Weapon_OwnsThisType( "weapon_egon" );
 
+	// Prioritize high-damage precision weapons first
+	CBaseCombatWeapon* pPrecisionWeapon = NULL;
+	if ( !pPrecisionWeapon ) pPrecisionWeapon = Weapon_OwnsThisType( "weapon_357" );     // High damage, accurate
+	if ( !pPrecisionWeapon ) pPrecisionWeapon = Weapon_OwnsThisType( "weapon_crossbow" ); // Very high damage, penetrates
+	
+	// Long range explosive weapons
 	CBaseCombatWeapon* pLongRange = NULL;
 	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_rpg" );
-	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_crossbow" );
-	if ( !pLongRange ) pLongRange = Weapon_OwnsThisType( "weapon_357" );
 
+	// Assault rifles - AR2 is significantly better than SMG1
+	CBaseCombatWeapon* pAssaultWeapon = NULL;
+	if ( !pAssaultWeapon ) pAssaultWeapon = Weapon_OwnsThisType( "weapon_ar2" ); // Better damage, accuracy than SMG1
+	
+	// SMG as fallback only
 	CBaseCombatWeapon* pMachineGun = NULL;
-	if ( !pMachineGun ) pMachineGun = Weapon_OwnsThisType( "weapon_ar2" );
-	if ( !pMachineGun ) pMachineGun = Weapon_OwnsThisType( "weapon_smg1" );
+	if ( !pMachineGun ) pMachineGun = Weapon_OwnsThisType( "weapon_smg1" ); // Last resort automatic
 
 	CBaseCombatWeapon* pSMG1Fallback = NULL;
 	if ( !pSMG1Fallback ) pSMG1Fallback = Weapon_OwnsThisType( "weapon_smg1" );
@@ -1531,6 +1559,10 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	CBaseCombatWeapon* pFallbackWeapon = NULL;
 	if ( !pFallbackWeapon ) pFallbackWeapon = Weapon_OwnsThisType( "weapon_357" );
 	if ( !pFallbackWeapon ) pFallbackWeapon = Weapon_OwnsThisType( "weapon_pistol" );
+
+	// Grenades - for tactical explosive attacks
+	CBaseCombatWeapon* pGrenade = NULL;
+	if ( !pGrenade ) pGrenade = Weapon_OwnsThisType( "weapon_frag" );
 
 	CWeaponPhysCannon* pPhyscannon = NULL;
 	if ( !pPhyscannon ) pPhyscannon = dynamic_cast<CWeaponPhysCannon *>( Weapon_OwnsThisType( "weapon_physcannon" ) );
@@ -1560,8 +1592,14 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 	}
 	
 	// Don't consider weapons that we have no ammo for.
+	if ( pPrecisionWeapon && ( pPrecisionWeapon->Clip1() + GetAmmoCount( pPrecisionWeapon->GetPrimaryAmmoType() ) <= 0 ) )
+		pPrecisionWeapon = NULL;
+	
 	if ( pLongRange && ( pLongRange->Clip1() + GetAmmoCount( pLongRange->GetPrimaryAmmoType() ) <= 0 ) )
 		pLongRange = NULL;
+
+	if ( pAssaultWeapon && ( pAssaultWeapon->Clip1() + GetAmmoCount( pAssaultWeapon->GetPrimaryAmmoType() ) <= 0 ) )
+		pAssaultWeapon = NULL;
 
 	if ( pMachineGun && ( pMachineGun->Clip1() + GetAmmoCount( pMachineGun->GetPrimaryAmmoType() ) <= 0 ) )
 		pMachineGun = NULL;
@@ -1594,7 +1632,13 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 		if ( !pChosen && pSuperWeapon )
 			pChosen = pSuperWeapon;
 
-		// Pull out weapons we want to reload.
+		// Pull out weapons we want to reload - prioritize better weapons
+		if ( !pChosen && pPrecisionWeapon && !pPrecisionWeapon->Clip1() )
+			pChosen = pPrecisionWeapon;
+
+		if ( !pChosen && pAssaultWeapon && !pAssaultWeapon->Clip1() )
+			pChosen = pAssaultWeapon;
+
 		if ( !pChosen && pMachineGun && !pMachineGun->Clip1() )
 			pChosen = pMachineGun;
 
@@ -1604,15 +1648,23 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 		if ( !pChosen && pLongRange && !pLongRange->Clip1() )
 			pChosen = pLongRange;
 
-		// Go back to something neutral if they all have a clip.
+		// Go back to loaded weapons in priority order
+		// Precision weapons (357, crossbow) take top priority
+		if ( !pChosen && pPrecisionWeapon )
+			pChosen = pPrecisionWeapon;
+
+		// Assault weapons (AR2) are preferred over SMG1
+		if ( !pChosen && pAssaultWeapon )
+			pChosen = pAssaultWeapon;
 
 		if ( m_difficulty >= CHL2MPBot::HARD )
 		{
-			// But prefer close range... just in case on Hard
+			// Hard difficulty prefers close range for aggressive play
 			if ( !pChosen && pCloseRangeGun )
 				pChosen = pCloseRangeGun;
 		}
 
+		// SMG1 as backup
 		if ( !pChosen && pMachineGun )
 			pChosen = pMachineGun;
 
@@ -1659,68 +1711,117 @@ void CHL2MPBot::EquipBestWeaponForThreat( const CKnownEntity *threat )
 		// Don't stay in melee if they are far away, or we don't know where they are right now.
 		bool bInMeleeRange = !IsRangeGreaterThan( threat->GetLastKnownPosition(), 127.0f ) && bCanSeeTarget;
 
-		// If difficulty is higher, add some extra flair to reload logic.
+		// PRIORITY: If committed to grenade, stick with it!
+		if ( IsCommittedToGrenade() && pGrenade )
+		{
+			pChosen = pGrenade;
+			if ( bot_debug_superweapons.GetBool() )
+			{
+				DevMsg( "Bot %s: Staying committed to grenade throw\n", 
+					const_cast<CHL2MPBot*>(this)->GetPlayerName() );
+			}
+		}
+
+		// Smart weapon switching for higher difficulty
 		if ( m_difficulty >= CHL2MPBot::NORMAL )
 		{
-			// If we are using an AR2, and out of ammo, instead of reloading, switch to SMG
-			if ( bCanSeeTarget && pMachineGun && !pMachineGun->Clip1() )
-				pMachineGun = pSMG1Fallback;
+			// If we are using AR2 and out of ammo, fall back to SMG instead of reloading
+			if ( bCanSeeTarget && pAssaultWeapon && !pAssaultWeapon->Clip1() )
+				pAssaultWeapon = pSMG1Fallback;
 		}
 
-		if ( pCloseRangeGun )
-		{
-			pChosen = pCloseRangeGun;
-		}
-
-		if ( pMachineGun )
-		{
-			if ( pChosen )
-			{
-				if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), 384.0f ) )
-					pChosen = pMachineGun;
-			}
-			else
-			{
-				pChosen = pMachineGun;
-			}
-		}
-
-		if ( pLongRange )
-		{
-			if ( pChosen )
-			{
-				// Prefer long range weapons more heavily if we don't have an SMG/AR2.
-				const float flLongRangeRange = pMachineGun ? 576.0f : 450.0f;
-				if ( IsRangeGreaterThan( threat->GetLastKnownPosition(), flLongRangeRange ) )
-					pChosen = pLongRange;
-			}
-			else
-			{
-				pChosen = pLongRange;
-			}
-		}
-
-		if ( pFallbackWeapon )
-		{
-			if ( !pChosen )
-			{
-				pChosen = pFallbackWeapon;
-			}
-		}
-
-		// Easy bots never melee.
-		if ( m_difficulty > CHL2MPBot::EASY )
-		{
-			// Don't pick our melee if we have something awesome like a shotgun
-			if ( pMelee && !pCloseRangeGun && bInMeleeRange )
-			{
-				pChosen = pMelee;
-			}
-		}
-
+		// Smart weapon selection based on range and situation
 		if ( !pChosen )
 		{
-			pChosen = GetWeapon( 0 );
+			float threatRange = (threat->GetLastKnownPosition() - GetAbsOrigin()).Length();
+			
+			// Close range: Prioritize shotgun, then precision weapons for stopping power
+			if ( threatRange <= 200.0f )
+			{
+				if ( pCloseRangeGun )
+					pChosen = pCloseRangeGun;
+				else if ( pPrecisionWeapon ) // 357/crossbow work great at close range too
+					pChosen = pPrecisionWeapon;
+				else if ( pAssaultWeapon )
+					pChosen = pAssaultWeapon;
+			}
+			// Medium range: AR2 and precision weapons excel
+			else if ( threatRange <= 600.0f )
+			{
+				if ( pAssaultWeapon )
+					pChosen = pAssaultWeapon;
+				else if ( pPrecisionWeapon )
+					pChosen = pPrecisionWeapon;
+				else if ( pCloseRangeGun ) // Shotgun still viable at medium range
+					pChosen = pCloseRangeGun;
+			}
+			// Long range: Precision weapons dominate
+			else
+			{
+				if ( pPrecisionWeapon )
+					pChosen = pPrecisionWeapon;
+				else if ( pLongRange )
+					pChosen = pLongRange;
+				else if ( pAssaultWeapon ) // AR2 still good at long range
+					pChosen = pAssaultWeapon;
+			}
+			
+			// Fallback to any available weapon
+			if ( !pChosen && pMachineGun )
+				pChosen = pMachineGun;
+			if ( !pChosen && pCloseRangeGun )
+				pChosen = pCloseRangeGun;
+			if ( !pChosen && pLongRange )
+				pChosen = pLongRange;
+
+			// TACTICAL GRENADE: Check for grenade usage opportunity when we have a weapon but could improve tactics
+			if ( pGrenade && ShouldThrowGrenade( threat ) && !IsGrenadeCooldownActive() )
+			{
+				// Check if we have grenade ammo
+				if ( pGrenade->Clip1() > 0 || GetAmmoCount( pGrenade->GetPrimaryAmmoType() ) > 0 )
+				{
+					// Only override current weapon choice if it's not a superweapon or if we haven't chosen yet
+					CBaseHL2MPCombatWeapon* pChosenHL2MP = dynamic_cast< CBaseHL2MPCombatWeapon* >( pChosen );
+					if ( !pChosen || (!pChosenHL2MP || (!IsGaussWeapon( pChosenHL2MP ) && !IsEgonWeapon( pChosenHL2MP ))) )
+					{
+						pChosen = pGrenade;
+						CommitToGrenadeThrow(); // Commit to prevent weapon switching
+						if ( bot_debug_superweapons.GetBool() )
+						{
+							DevMsg( "Bot %s: Selected grenade tactically and COMMITTED (Clip: %d, Ammo: %d)\n", 
+								const_cast<CHL2MPBot*>(this)->GetPlayerName(), pGrenade->Clip1(), GetAmmoCount( pGrenade->GetPrimaryAmmoType() ) );
+						}
+					}
+				}
+				else if ( bot_debug_superweapons.GetBool() )
+				{
+					DevMsg( "Bot %s: Grenade cooldown active (%.1fs remaining), skipping grenade selection\n", 
+						const_cast<CHL2MPBot*>(this)->GetPlayerName(), m_grenadeThrowCooldown.GetRemainingTime() );
+				}
+			}
+
+			if ( pFallbackWeapon )
+			{
+				if ( !pChosen )
+				{
+					pChosen = pFallbackWeapon;
+				}
+			}
+
+			// Easy bots never melee.
+			if ( m_difficulty > CHL2MPBot::EASY )
+			{
+				// Don't pick our melee if we have something awesome like a shotgun
+				if ( pMelee && !pCloseRangeGun && bInMeleeRange )
+				{
+					pChosen = pMelee;
+				}
+			}
+
+			if ( !pChosen )
+			{
+				pChosen = GetWeapon( 0 );
+			}
 		}
 	}
 
@@ -1919,19 +2020,74 @@ bool CHL2MPBot::ShouldUseSecondaryFire( CBaseHL2MPCombatWeapon *weapon, float th
 	if ( IsGaussWeapon( weapon ) )
 	{
 		// Use charged shot for medium-long range (optimal damage)
-		if ( threatRange > 250.0f && threatRange < 1000.0f )
+		if ( threatRange > 250.0f && threatRange < 1200.0f )
 		{
-			return true;
+			// Check ammo availability for charging
+			return (weapon->Clip1() > 2 || GetAmmoCount( weapon->GetPrimaryAmmoType() ) > 2);
 		}
-		// Don't use secondary for very close range (too dangerous) or very long range (waste of time)
 		return false;
 	}
 
-	// For other weapons, check if they have useful secondary fire
-	if ( FClassnameIs( weapon, "weapon_ar2" ) && threatRange > 800.0f )
+	// AR2 - altfire combine balls for long range devastation  
+	if ( FClassnameIs( weapon, "weapon_ar2" ) )
 	{
-		// AR2 alt-fire for long range
-		return true;
+		// Use combine balls occasionally at long range for huge payoff
+		if ( threatRange > bot_ar2_altfire_range.GetFloat() && GetAmmoCount( weapon->GetSecondaryAmmoType() ) > 0 )
+		{
+			return (RandomInt(0, 100) < bot_ar2_altfire_chance.GetInt());
+		}
+		return false;
+	}
+
+	// SMG1 - grenades for tactical advantage
+	if ( FClassnameIs( weapon, "weapon_smg1" ) )
+	{
+		// Use grenades at medium range when available
+		if ( threatRange > 300.0f && threatRange < bot_smg1_grenade_range.GetFloat() )
+		{
+			// Check if we have grenades
+			int grenadeAmmo = GetAmmoCount( GetAmmoDef()->Index("SMG1_Grenade") );
+			if ( grenadeAmmo > 0 )
+			{
+				return (RandomInt(0, 100) < bot_smg1_grenade_chance.GetInt());
+			}
+		}
+		return false;
+	}
+
+	// Shotgun - double barrel for close range devastation
+	if ( FClassnameIs( weapon, "weapon_shotgun" ) )
+	{
+		// Use double barrel at close range occasionally (but not always)
+		if ( threatRange <= bot_shotgun_altfire_range.GetFloat() && weapon->Clip1() >= 2 )
+		{
+			return (RandomInt(0, 100) < bot_shotgun_altfire_chance.GetInt());
+		}
+		return false;
+	}
+
+	// Crossbow - zoom for precision (deadly with rbsv_crossbow_sniperbolt)
+	if ( FClassnameIs( weapon, "weapon_crossbow" ) )
+	{
+		// Only zoom at longer ranges, not close-close-medium
+		if ( threatRange > bot_crossbow_zoom_range.GetFloat() )
+		{
+			// Check if sniper bolt is enabled (makes it hitscan and deadly)
+			ConVarRef sniperBolt( "rbsv_crossbow_sniperbolt" );
+			return (sniperBolt.IsValid() && sniperBolt.GetBool());
+		}
+		return false;
+	}
+
+	// 357 - zoom for precision (minor benefit for bots, mainly aiming)
+	if ( FClassnameIs( weapon, "weapon_357" ) )
+	{
+		// Use zoom sparingly and only for long range
+		if ( threatRange > bot_357_zoom_range.GetFloat() && GetDifficulty() >= HARD )
+		{
+			return (RandomInt(0, 100) < 25); // Use rarely
+		}
+		return false;
 	}
 
 	return false;
@@ -1948,22 +2104,242 @@ bool CHL2MPBot::ShouldThrowGrenade( const CKnownEntity *threat ) const
 	if ( !pGrenade )
 		return false;
 
+	// CRITICAL FIX: Respect cooldown to prevent excessive grenade usage
+	if ( IsGrenadeCooldownActive() )
+	{
+		if ( bot_debug_superweapons.GetBool() )
+		{
+			DevMsg( "Bot %s: Grenade cooldown active, not throwing (%.1fs remaining)\n", 
+				const_cast<CHL2MPBot*>(this)->GetPlayerName(), m_grenadeThrowCooldown.GetRemainingTime() );
+		}
+		return false;
+	}
+
+	// Don't throw grenades if already committed to one
+	if ( IsCommittedToGrenade() )
+	{
+		if ( bot_debug_superweapons.GetBool() )
+		{
+			DevMsg( "Bot %s: Already committed to grenade throw\n", const_cast<CHL2MPBot*>(this)->GetPlayerName() );
+		}
+		return false;
+	}
+
+	// Calculate threat range early - needed for multiple checks
 	float threatRange = ( threat->GetEntity()->GetAbsOrigin() - GetAbsOrigin() ).Length();
 
-	// Ideal grenade range - not too close, not too far
-	if ( threatRange < 150.0f || threatRange > 800.0f )
+	// Safety check: Don't throw when very low on health (too risky)
+	if ( GetHealth() < GetMaxHealth() * 0.35f ) // Increased threshold
 		return false;
 
-	// Only throw if enemy is visible and we have a clear line of sight
-	if ( !threat->IsVisibleRecently() || !IsLineOfFireClear( threat->GetEntity() ) )
+	// Don't throw if under attack from close range (very dangerous)
+	if ( IsUnderAttack() && threatRange < 500.0f )
 		return false;
 
-	// Random chance based on difficulty and ConVar
-	int throwChance = bot_grenade_throw_chance.GetInt();
+	// Don't throw if we have a superior weapon with ammo
+	CBaseHL2MPCombatWeapon *myWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( GetActiveWeapon() );
+	if ( myWeapon && (IsGaussWeapon( myWeapon ) || IsEgonWeapon( myWeapon )) )
+	{
+		if ( myWeapon->Clip1() > 0 || GetAmmoCount( myWeapon->GetPrimaryAmmoType() ) > 0 )
+			return false; // Stick with superweapons when we have ammo
+	}
+
+	// CRITICAL: Prevent close-quarter grenade usage - much safer minimum distance
+	const float MIN_SAFE_GRENADE_RANGE = 450.0f; // Increased for safety
+	const float MAX_EFFECTIVE_RANGE = 800.0f; // Reduced max range for reliability
+	if ( threatRange < MIN_SAFE_GRENADE_RANGE || threatRange > MAX_EFFECTIVE_RANGE )
+		return false;
+
+	// Don't throw grenades if we're the only one with grenades (preserve them)
+	if ( RandomInt( 0, 100 ) < 70 ) // 70% chance to preserve grenades
+		return false;
+
+	// Only throw grenades in very specific tactical situations
+	Vector enemyVel;
+	threat->GetEntity()->GetVelocity( &enemyVel, NULL );
+	bool enemyIsCamping = enemyVel.Length() < 30.0f; // Enemy must be nearly stationary
+	bool hasDirectLineOfFire = IsLineOfFireClear( threat->GetLastKnownPosition() );
+	bool enemyBehindCover = !hasDirectLineOfFire;
+	
+	// Drastically reduce grenade usage - only for camping enemies behind cover
+	if ( !enemyIsCamping || !enemyBehindCover )
+		return false;
+	
+	// Additional safety: Don't throw if multiple enemies nearby
+	int nearbyEnemies = 0;
+	CUtlVector< CHL2MP_Player * > enemyVector;
+	CollectPlayers( &enemyVector, GetEnemyTeam( GetTeamNumber() ), COLLECT_ONLY_LIVING_PLAYERS );
+	for( int i = 0; i < enemyVector.Count(); ++i )
+	{
+		if ( GetRangeTo( enemyVector[i] ) < 600.0f )
+			nearbyEnemies++;
+	}
+	if ( nearbyEnemies > 1 )
+		return false;
+
+	// Very conservative chance - only 15% base chance, reduced from 25%
+	int throwChance = bot_grenade_throw_chance.GetInt() * 0.6f; // 60% of configured value
 	if ( GetDifficulty() >= HARD )
-		throwChance += 20; // Higher chance for harder bots
+		throwChance += 5; // Small bonus for harder bots only
+
+	// Cap at very low maximum to prevent spam
+	throwChance = MIN( throwChance, 20 );
+
+	if ( bot_debug_superweapons.GetBool() )
+	{
+		DevMsg( "Bot %s: Grenade check - Range: %.1f (min: %.1f), Camping: %s, LineOfFire: %s, Chance: %d%%\n", 
+			const_cast<CHL2MPBot*>(this)->GetPlayerName(), threatRange, MIN_SAFE_GRENADE_RANGE,
+			enemyIsCamping ? "YES" : "NO", hasDirectLineOfFire ? "YES" : "NO", throwChance );
+	}
 
 	return RandomInt( 0, 100 ) < throwChance;
+}
+
+// start grenade throw cooldown
+void CHL2MPBot::StartGrenadeCooldown( void )
+{
+	m_grenadeThrowCooldown.Start( bot_grenade_cooldown_time.GetFloat() );
+	
+	if ( bot_debug_superweapons.GetBool() )
+	{
+		DevMsg( "Bot %s: Grenade cooldown started for %.1f seconds\n", 
+			GetPlayerName(), bot_grenade_cooldown_time.GetFloat() );
+	}
+}
+
+// return true if grenade cooldown is active
+bool CHL2MPBot::IsGrenadeCooldownActive( void ) const
+{
+	return !m_grenadeThrowCooldown.IsElapsed();
+}
+
+// commit to throwing grenade (prevents weapon switching)
+void CHL2MPBot::CommitToGrenadeThrow( void )
+{
+	m_grenadeCommitTimer.Start( 2.0f ); // 2 seconds to throw grenade
+	m_grenadeForceThrowTimer.Start( 5.0f ); // force throw after 5 seconds
+	m_grenadeCommitStartTime = gpGlobals->curtime; // track commit start time
+	StartGrenadeDrawTimer(); // start draw animation timer
+	SetGrenadeTarget( NULL ); // Clear previous target
+	SetLastKnownEnemyPosition( vec3_origin ); // Clear previous position
+	
+	if ( bot_debug_superweapons.GetBool() )
+	{
+		DevMsg( "Bot %s: COMMITTED to grenade throw\n", GetPlayerName() );
+	}
+}
+
+// return true if committed to grenade throw
+bool CHL2MPBot::IsCommittedToGrenade( void ) const
+{
+	return !m_grenadeCommitTimer.IsElapsed();
+}
+
+// clear grenade commitment
+void CHL2MPBot::ClearGrenadeCommitment( void )
+{
+	m_grenadeCommitTimer.Invalidate();
+	m_grenadeForceThrowTimer.Invalidate();
+	m_grenadeDrawTimer.Invalidate();
+	m_grenadeCommitStartTime = 0.0f;
+}
+
+// return true if grenade should be force thrown
+bool CHL2MPBot::ShouldForceGrenadeThrow( void ) const
+{
+	return !m_grenadeForceThrowTimer.IsElapsed();
+}
+
+// start grenade draw animation timer
+void CHL2MPBot::StartGrenadeDrawTimer( void )
+{
+	m_grenadeDrawTimer.Start( bot_grenade_draw_time.GetFloat() ); // Use configurable draw time
+}
+
+// return true if grenade draw animation is complete
+bool CHL2MPBot::IsGrenadeDrawComplete( void ) const
+{
+	return m_grenadeDrawTimer.IsElapsed();
+}
+
+// return true if grenade can be primed (draw complete, committed)
+bool CHL2MPBot::CanPrimeGrenade( void ) const
+{
+	// Must be committed to grenade and draw animation must be complete
+	return IsCommittedToGrenade() && IsGrenadeDrawComplete();
+}
+
+// return time when grenade commitment started
+float CHL2MPBot::GetCommitTime( void ) const
+{
+	return m_grenadeCommitStartTime;
+}
+
+// return true if bot is currently taking damage
+bool CHL2MPBot::IsUnderAttack( void ) const
+{
+	// Return true if we've taken damage very recently (within last 0.5 seconds)
+	return !m_lastDamageTimer.IsElapsed();
+}
+
+// return true if enemy is holding a grenade
+bool CHL2MPBot::IsEnemyHoldingGrenade( CBaseEntity *enemy ) const
+{
+	if ( !enemy )
+		return false;
+		
+	CHL2MP_Player *player = dynamic_cast< CHL2MP_Player * >( enemy );
+	if ( !player )
+		return false;
+		
+	CBaseCombatWeapon *weapon = player->GetActiveWeapon();
+	if ( !weapon )
+		return false;
+		
+	return FClassnameIs( weapon, "weapon_frag" );
+}
+
+// force throw grenade at last known enemy position
+void CHL2MPBot::ForceGrenadeThrowAtLastPosition( void )
+{
+	// Set a flag to force throw at the last known position
+	m_grenadeForceThrowTimer.Start( 0.1f ); // Force throw very soon
+}
+
+// return current grenade target
+CBaseEntity *CHL2MPBot::GetGrenadeTarget( void ) const
+{
+	return m_grenadeTarget.Get();
+}
+
+// return last known enemy position
+const Vector &CHL2MPBot::GetLastKnownEnemyPosition( void ) const
+{
+	return m_lastKnownEnemyPosition;
+}
+
+// set current grenade target
+void CHL2MPBot::SetGrenadeTarget( CBaseEntity *target )
+{
+	m_grenadeTarget = target;
+}
+
+// set last known enemy position
+void CHL2MPBot::SetLastKnownEnemyPosition( const Vector &position )
+{
+	m_lastKnownEnemyPosition = position;
+}
+
+//-----------------------------------------------------------------------------------------------------
+/**
+ * Invoked when taking damage while alive
+ */
+int CHL2MPBot::OnTakeDamage_Alive( const CTakeDamageInfo &info )
+{
+	// Update our damage timer - we've been hit recently
+	m_lastDamageTimer.Start( 0.5f ); // Considered under attack for 0.5 seconds
+	
+	return BaseClass::OnTakeDamage_Alive( info );
 }
 
 // return true if bot should look for better weapons

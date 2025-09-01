@@ -61,6 +61,7 @@ public:
 	virtual void		Spawn();
 	virtual void		FireGameEvent( IGameEvent *event );
 	virtual void		Event_Killed( const CTakeDamageInfo &info );
+	virtual int			OnTakeDamage_Alive( const CTakeDamageInfo &info );
 	virtual void		Update( void );  // Override NextBot Update to handle bot_stop
 	virtual void		PhysicsSimulate( void );
 	virtual void		Touch( CBaseEntity *pOther );
@@ -151,6 +152,27 @@ public:
 	bool ShouldUseSecondaryFire( CBaseHL2MPCombatWeapon *weapon, float threatRange ) const;	// determine if secondary fire should be used
 	bool ShouldThrowGrenade( const CKnownEntity *threat ) const;			// determine if grenade should be thrown
 	bool NeedsWeaponUpgrade( void ) const;								// return true if bot should look for better weapons
+
+	// Grenade management methods
+	void StartGrenadeCooldown( void );									// start grenade throw cooldown
+	bool IsGrenadeCooldownActive( void ) const;							// return true if grenade cooldown is active
+	void CommitToGrenadeThrow( void );									// commit to throwing grenade (prevents weapon switching)
+	bool IsCommittedToGrenade( void ) const;							// return true if committed to grenade throw
+	void ClearGrenadeCommitment( void );								// clear grenade commitment
+	bool ShouldForceGrenadeThrow( void ) const;							// return true if grenade should be force thrown
+	void StartGrenadeDrawTimer( void );									// start grenade draw animation timer
+	bool IsGrenadeDrawComplete( void ) const;								// return true if grenade draw animation is complete
+	bool CanPrimeGrenade( void ) const;									// return true if grenade can be primed (draw complete, committed)
+	float GetCommitTime( void ) const;									// return time when grenade commitment started
+	bool IsUnderAttack( void ) const;									// return true if bot is currently taking damage
+	bool IsEnemyHoldingGrenade( CBaseEntity *enemy ) const;				// return true if enemy is holding a grenade
+	void ForceGrenadeThrowAtLastPosition( void );						// force throw grenade at last known enemy position
+	
+	// Accessors for private grenade target tracking
+	CBaseEntity *GetGrenadeTarget( void ) const;							// return current grenade target
+	const Vector &GetLastKnownEnemyPosition( void ) const;					// return last known enemy position
+	void SetGrenadeTarget( CBaseEntity *target );							// set current grenade target
+	void SetLastKnownEnemyPosition( const Vector &position );				// set last known enemy position
 
 	bool IsEnvironmentNoisy( void ) const;							// return true if there are/have been loud noises (ie: non-quiet weapons) nearby very recently
 
@@ -462,6 +484,16 @@ private:
 	CountdownTimer m_autoJumpTimer;
 
 	float m_flPhyscannonPickupTime = 0.0f;
+
+	// Grenade cooldown tracking
+	CountdownTimer m_grenadeThrowCooldown;		// prevents excessive grenade usage
+	CountdownTimer m_grenadeCommitTimer;		// prevents weapon switching when committed to grenade
+	CountdownTimer m_grenadeForceThrowTimer;	// forces grenade throw after 5 seconds
+	CountdownTimer m_grenadeDrawTimer;			// tracks grenade weapon draw animation time
+	float m_grenadeCommitStartTime;				// time when grenade commitment started
+	Vector m_lastKnownEnemyPosition;				// last known position of enemy we're throwing at
+	CHandle< CBaseEntity > m_grenadeTarget;		// enemy we're targeting with grenade
+	CountdownTimer m_lastDamageTimer;			// tracks when we last took damage
 
 	CUtlVector< const EventChangeAttributes_t* > m_eventChangeAttributes;
 };

@@ -17,14 +17,17 @@
 #include "bot/behavior/hl2mp_bot_retreat_to_cover.h"
 #include "bot/behavior/hl2mp_bot_get_health.h"
 #include "bot/behavior/hl2mp_bot_get_ammo.h"
+#include "bot/behavior/hl2mp_bot_get_prop.h"
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_destroy_entity.h"
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_move_to.h"
 #include "bot/behavior/nav_entities/hl2mp_bot_nav_ent_wait.h"
 
 extern ConVar bot_health_ok_ratio;
 extern ConVar bot_health_critical_ratio;
+extern ConVar bot_debug_superweapons;
 
 ConVar bot_force_jump( "bot_force_jump", "0", FCVAR_CHEAT, "Force bots to continuously jump" );
+ConVar bot_debug_scavenging_priority( "bot_debug_scavenging_priority", "0", FCVAR_CHEAT, "Debug scavenging priority decisions" );
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -185,7 +188,57 @@ ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float
 	}
 
 	const CKnownEntity* threat = me->GetVisionInterface()->GetPrimaryKnownThreat();
-	me->EquipBestWeaponForThreat( threat );
+	
+	// Enhanced grenade commitment management
+	CBaseHL2MPCombatWeapon* activeWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( me->GetActiveWeapon() );
+	bool isHoldingGrenade = activeWeapon && me->IsGrenadeWeapon( activeWeapon );
+	
+	// CRITICAL: Force completion of grenade throws to prevent switching away
+	if ( me->IsCommittedToGrenade() )
+	{
+		// If not holding grenade weapon but committed, force switch back to grenade
+		if ( !isHoldingGrenade )
+		{
+			CBaseCombatWeapon *pGrenade = me->Weapon_OwnsThisType( "weapon_frag" );
+			if ( pGrenade )
+			{
+				me->Weapon_Switch( pGrenade );
+				if ( bot_debug_superweapons.GetBool() )
+				{
+					DevMsg( "Bot %s: Forcing switch back to grenade - commitment active\n", me->GetPlayerName() );
+				}
+				return Continue(); // Don't do anything else while committed
+			}
+			else
+			{
+				// No grenade available, clear commitment
+				if ( bot_debug_superweapons.GetBool() )
+				{
+					DevMsg( "Bot %s: Clearing grenade commitment - no grenade available\n", me->GetPlayerName() );
+				}
+				me->ClearGrenadeCommitment();
+			}
+		}
+		// Don't allow weapon switching while committed to grenade
+		return Continue();
+	}
+	
+	// Only call weapon selection if not committed to grenade throw
+	if ( !me->IsCommittedToGrenade() )
+	{
+		me->EquipBestWeaponForThreat( threat );
+	}
+
+	// Force switch away from grenades after throwing (cooldown active)
+	if ( isHoldingGrenade && me->IsGrenadeCooldownActive() )
+	{
+		// Bot just threw a grenade, switch back to primary weapon immediately
+		me->EquipBestWeaponForThreat( threat );
+		if ( bot_debug_superweapons.GetBool() )
+		{
+			DevMsg( "Bot %s: Switching away from grenade - cooldown active\n", me->GetPlayerName() );
+		}
+	}
 
 	Action< CHL2MPBot > *result = me->OpportunisticallyUseWeaponAbilities();
 	if ( result )
@@ -221,33 +274,66 @@ ActionResult< CHL2MPBot >	CHL2MPBotTacticalMonitor::Update( CHL2MPBot *me, float
 
 	bool isAvailable = ( me->GetIntentionInterface()->ShouldHurry( me ) != ANSWER_YES );
 
-	// Check if we need a weapon upgrade and prioritize weapon collection
-	if ( isAvailable && me->NeedsWeaponUpgrade() )
-	{
-		// Force seek and destroy behavior to prioritize weapon collection
-		return SuspendFor( new CHL2MPBotSeekAndDestroy, "Seeking weapons for upgrade" );
-	}
-
-	// collect ammo and health kits, unless we're in a big hurry
+	// SIMPLIFIED SCAVENGING PRIORITY SYSTEM
+	// Prioritizes based on immediate survival needs first, then tactical advantage
 	if ( isAvailable )
 	{
 		if ( m_maintainTimer.IsElapsed() )
 		{
 			m_maintainTimer.Start( RandomFloat( 0.3f, 0.5f ) );
 
-			bool isHurt = ( me->GetFlags() & FL_ONFIRE ) || ( ( float )me->GetHealth() / ( float )me->GetMaxHealth() ) < bot_health_ok_ratio.GetFloat();
-
-			if ( isHurt && CHL2MPBotGetHealth::IsPossible( me ) )
+			// Calculate current resource status
+			float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
+			CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
+			int currentArmor = pPlayer && pPlayer->IsSuitEquipped() ? pPlayer->ArmorValue() : 100;
+			bool isOnFire = ( me->GetFlags() & FL_ONFIRE );
+			bool needsWeaponUpgrade = me->NeedsWeaponUpgrade();
+			bool isAmmoLow = me->IsAmmoLow();
+			const CKnownEntity* threat = me->GetVisionInterface()->GetPrimaryKnownThreat();
+			bool inCombat = threat && threat->GetTimeSinceLastSeen() < 3.0f;
+			
+			// CRITICAL SURVIVAL - life threatening situations
+			if ( healthRatio < 0.25f || isOnFire )
 			{
-				return SuspendFor( new CHL2MPBotGetHealth, "Grabbing nearby health" );
+				if ( CHL2MPBotGetHealth::IsPossible( me ) )
+					return SuspendFor( new CHL2MPBotGetHealth, "Emergency health needed" );
 			}
-
-			// Prop freaks go for props instead of ammo.
-			if ( !me->IsPropFreak() )
+			
+			// CRITICAL WEAPON UPGRADE - only melee weapons available
+			if ( needsWeaponUpgrade && me->IsBludgeon( me->GetActiveWeapon() ) )
+				return SuspendFor( new CHL2MPBotSeekAndDestroy, "Only melee weapon available" );
+			
+			// SEVERE HEALTH COMPROMISE - significant health loss
+			if ( healthRatio < 0.5f && CHL2MPBotGetHealth::IsPossible( me ) )
+				return SuspendFor( new CHL2MPBotGetHealth, "Low health affecting combat" );
+			
+			// COMBAT EFFECTIVENESS - weapon upgrades in combat
+			if ( (inCombat || needsWeaponUpgrade) && needsWeaponUpgrade )
+				return SuspendFor( new CHL2MPBotSeekAndDestroy, "Weapon upgrade for combat" );
+			
+			// CRITICAL ARMOR - armor below 25 with suit equipped
+			if ( pPlayer && pPlayer->IsSuitEquipped() && currentArmor < 25 && CHL2MPBotGetHealth::IsPossible( me ) )
+				return SuspendFor( new CHL2MPBotGetHealth, "Armor critically low" );
+			
+			// AMMO SHORTAGE - low ammo affecting combat capability
+			if ( isAmmoLow && CHL2MPBotGetAmmo::IsPossible( me ) )
+				return SuspendFor( new CHL2MPBotGetAmmo, "Low ammo affecting combat" );
+			
+			// TACTICAL MAINTENANCE - when not in immediate danger
+			if ( !inCombat )
 			{
-				if ( me->IsAmmoLow() && CHL2MPBotGetAmmo::IsPossible( me ) )
+				if ( healthRatio < 0.7f && CHL2MPBotGetHealth::IsPossible( me ) )
+					return SuspendFor( new CHL2MPBotGetHealth, "Health below tactical threshold" );
+				
+				if ( pPlayer && pPlayer->IsSuitEquipped() && currentArmor < 60 && healthRatio > 0.8f && CHL2MPBotGetHealth::IsPossible( me ) )
+					return SuspendFor( new CHL2MPBotGetHealth, "Armor below optimal level" );
+				
+				// Props for tactical advantage
+				if ( !me->IsPropHater() && me->Physcannon_GetHeldProp() == NULL && CHL2MPBotGetProp::IsPossible( me ) )
 				{
-					return SuspendFor( new CHL2MPBotGetAmmo, "Grabbing nearby ammo" );
+					float propPriority = me->IsPropFreak() ? 0.9f : 0.6f;
+					if ( RandomFloat( 0.0f, 1.0f ) < propPriority )
+						return SuspendFor( new CHL2MPBotGetProp, "Acquiring prop for combat advantage" );
 				}
 			}
 		}

@@ -52,38 +52,24 @@ public:
 		if ( !pItem )
 			return false;
 
-		// PRIORITY 1: GaussEnergy ammo is ALWAYS valuable if we have gauss/egon weapons
-		if ( FClassnameIs( candidate, "item_ammo_gaussenergy" ) )
-		{
-			// Check if we have gauss or egon weapons
-			CBaseCombatWeapon* pGauss = m_me->Weapon_OwnsThisType( "weapon_gauss" );
-			CBaseCombatWeapon* pEgon = m_me->Weapon_OwnsThisType( "weapon_egon" );
-			
-			if ( pGauss || pEgon )
-			{
-				// Check if we need more GaussEnergy ammo
-				int gaussAmmoType = GetAmmoDef()->Index("GaussEnergy");
-				if ( gaussAmmoType != -1 && m_me->GetAmmoCount( gaussAmmoType ) < m_me->GetMaxAmmo( gaussAmmoType ) )
-				{
-					return true; // Always prioritize superweapon ammo!
-				}
-			}
-		}
-
+		// Check if we own the weapon type for this ammo
 		const char* pszWeaponClass = pItem->GetWeaponClassForAmmo();
 		if ( !pszWeaponClass || !*pszWeaponClass )
 			return false;
 
-		// Check if we own this weapon type (not just active weapon)
 		CBaseCombatWeapon* pWeapon = m_me->Weapon_OwnsThisType( pszWeaponClass );
-		if ( !pWeapon )
+		if ( !pWeapon || m_me->IsBludgeon( pWeapon ) || pWeapon->GetPrimaryAmmoType() == -1 )
 			return false;
 
-		if ( m_me->IsBludgeon( pWeapon ) || pWeapon->GetPrimaryAmmoType() == -1 )
-			return false;
+		// Always consider ammo for active weapon if not at max
+		CBaseCombatWeapon* activeWeapon = m_me->GetActiveWeapon();
+		if ( activeWeapon && pWeapon == activeWeapon )
+			return m_me->GetAmmoCount( pWeapon->GetPrimaryAmmoType() ) < m_me->GetMaxAmmo( pWeapon->GetPrimaryAmmoType() );
 
-		// Check if we need ammo for this weapon type
-		return m_me->GetAmmoCount( pWeapon->GetPrimaryAmmoType() ) < m_me->GetMaxAmmo( pWeapon->GetPrimaryAmmoType() );
+		// For non-active weapons, only consider if we're quite low (< 30%)
+		float currentAmmo = (float)m_me->GetAmmoCount( pWeapon->GetPrimaryAmmoType() );
+		float maxAmmo = (float)m_me->GetMaxAmmo( pWeapon->GetPrimaryAmmoType() );
+		return (currentAmmo / maxAmmo) < 0.3f;
 	}
 
 	CHL2MPBot *m_me;
@@ -109,20 +95,15 @@ bool CHL2MPBotGetAmmo::IsPossible( CHL2MPBot *me )
 	CBaseEntity* ammo = NULL;
 	CUtlVector< CHandle< CBaseEntity > > hAmmos;
 	
-	// Search for all ammo items (not just health)
+	// Search for all ammo items only
 	while ( ( ammo = gEntList.FindEntityByClassname( ammo, "item_ammo_*" ) ) != NULL )
 	{
 		hAmmos.AddToTail( ammo );
 	}
-	// Also search for health items
-	while ( ( ammo = gEntList.FindEntityByClassname( ammo, "*_health*" ) ) != NULL )
-	{
-		hAmmos.AddToTail( ammo );
-	}
 
-	CAmmoFilter healthFilter( me );
+	CAmmoFilter ammoFilter( me );
 	CUtlVector< CHandle< CBaseEntity > > hReachableAmmo;
-	me->SelectReachableObjects( hAmmos, &hReachableAmmo, healthFilter, me->GetLastKnownArea(), searchRange );
+	me->SelectReachableObjects( hAmmos, &hReachableAmmo, ammoFilter, me->GetLastKnownArea(), searchRange );
 
 	CBaseEntity* closestAmmo = hReachableAmmo.Size() > 0 ? hReachableAmmo[0] : NULL;
 

@@ -6,6 +6,7 @@
 #include "item_healthkit.h"
 #include "bot/behavior/hl2mp_bot_get_health.h"
 #include "hl2/func_recharge.h"
+#include "hl2/item_healthkit.h"
 
 extern ConVar bot_path_lookahead_range;
 
@@ -16,6 +17,59 @@ ConVar bot_health_search_far_range( "bot_health_search_far_range", "2000", FCVAR
 ConVar bot_health_charger_weave( "bot_health_charger_weave", "1", FCVAR_CHEAT );
 
 ConVar bot_debug_health_scavenging( "bot_debug_health_scavenging", "0", FCVAR_CHEAT );
+ConVar bot_debug_armor_scavenging( "bot_debug_armor_scavenging", "0", FCVAR_CHEAT );
+
+//---------------------------------------------------------------------------------------------
+// Helper function to check if an entity is a special megacharger
+//---------------------------------------------------------------------------------------------
+bool IsMegacharger( CBaseEntity *pEntity )
+{
+	return ( pEntity && FStrEq( STRING( pEntity->GetEntityName() ), "megacharger" ) );
+}
+
+//---------------------------------------------------------------------------------------------
+// Helper function to get the maximum armor value for a given charger type
+//---------------------------------------------------------------------------------------------
+int GetMaxArmorForCharger( CBaseEntity *pCharger )
+{
+	if ( IsMegacharger( pCharger ) )
+	{
+		return 200; // Megachargers allow overcharge to 200
+	}
+	return 100; // Standard chargers max at 100
+}
+
+//---------------------------------------------------------------------------------------------
+// Helper function to check if a charger can provide health
+//---------------------------------------------------------------------------------------------
+bool CanChargerProvideHealth( CBaseEntity *pCharger )
+{
+	// Megachargers can provide both health and armor
+	if ( IsMegacharger( pCharger ) )
+		return true;
+	
+	// Health chargers provide health
+	if ( pCharger->ClassMatches( "item_healthcharger" ) || pCharger->ClassMatches( "func_healthcharger" ) )
+		return true;
+	
+	return false;
+}
+
+//---------------------------------------------------------------------------------------------
+// Helper function to check if a charger can provide armor
+//---------------------------------------------------------------------------------------------
+bool CanChargerProvideArmor( CBaseEntity *pCharger )
+{
+	// Megachargers can provide both health and armor
+	if ( IsMegacharger( pCharger ) )
+		return true;
+	
+	// Suit chargers and recharge stations provide armor
+	if ( pCharger->ClassMatches( "*suitcharger" ) || pCharger->ClassMatches( "*recharge" ) )
+		return true;
+	
+	return false;
+}
 
 //---------------------------------------------------------------------------------------------
 class CHealthFilter : public INextBotFilter
@@ -46,13 +100,53 @@ public:
 			return false;
 
 		if ( candidate->ClassMatches( "item_healthkit" ) )
-			return true;
+		{
+			// Only return healthkits if we actually need health
+			return m_me->GetHealth() < m_me->GetMaxHealth();
+		}
 
 		if ( candidate->ClassMatches( "item_healthvial" ) )
-			return true;
+		{
+			// Only return healthvials if we actually need health
+			return m_me->GetHealth() < m_me->GetMaxHealth();
+		}
+
+		// Add support for item_battery (suit batteries)
+		if ( candidate->ClassMatches( "item_battery" ) )
+		{
+			// Check if bot needs armor (prioritize when under 50)
+			CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
+			if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 100 )
+			{
+				return true;
+			}
+			return false;
+		}
 
 		if ( m_bFindChargers )
 		{
+			// Check for megachargers first (special case)
+			if ( IsMegacharger( candidate ) )
+			{
+				CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
+				if ( !pPlayer )
+					return false;
+				
+				bool needsHealth = pPlayer->GetHealth() < pPlayer->GetMaxHealth();
+				bool needsArmor = pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < GetMaxArmorForCharger( candidate );
+				
+				// Megachargers are useful if bot needs either health or armor
+				if ( needsHealth || needsArmor )
+				{
+					// Check if it has juice (assuming it's an item_suitcharger with special name)
+					CNewRecharge* pMegaCharger = dynamic_cast< CNewRecharge* >( candidate );
+					if ( pMegaCharger && pMegaCharger->GetJuice() > 0 )
+					{
+						return true;
+					}
+				}
+				return false;
+			}
 			if ( candidate->ClassMatches( "item_healthcharger" ) )
 			{
 				// needs to have juice
@@ -78,7 +172,8 @@ public:
 			{
 				// Check if bot needs armor and suit charger has juice
 				CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
-				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 100 )
+				int maxArmor = GetMaxArmorForCharger( candidate );
+				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < maxArmor )
 				{
 					CNewRecharge* pSuitCharger = dynamic_cast< CNewRecharge* >( candidate );
 					if ( pSuitCharger && pSuitCharger->GetJuice() > 0 )
@@ -93,7 +188,8 @@ public:
 			{
 				// Check if bot needs armor and suit charger has juice
 				CHL2MP_Player *pPlayer = ToHL2MPPlayer( m_me );
-				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 100 )
+				int maxArmor = GetMaxArmorForCharger( candidate );
+				if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < maxArmor )
 				{
 					CRecharge* pSuitCharger = dynamic_cast< CRecharge* >( candidate );
 					if ( pSuitCharger && pSuitCharger->GetJuice() > 0 )
@@ -168,7 +264,7 @@ public:
 		{
 			CBaseEntity *obj = m_potentialVector[ it ];
 
-			if ( obj && area->Contains( CHL2MPBotGetHealth::GetHealthKitPathOrigin( obj, V_strstr( obj->GetClassname(), "charger" ) ) ) )
+			if ( obj && area->Contains( CHL2MPBotGetHealth::GetHealthKitPathOrigin( obj, V_strstr( obj->GetClassname(), "charger" ) || IsMegacharger( obj ) ) ) )
 			{
 				// reachable - keep it
 				if ( !m_collectionVector->HasElement( obj ) )
@@ -219,53 +315,45 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 	VPROF_BUDGET( "CHL2MPBotGetHealth::IsPossible", "NextBot" );
 
 	float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
+	
+	// Simple armor check
+	int currentArmor = (pPlayer && pPlayer->IsSuitEquipped()) ? pPlayer->ArmorValue() : 100;
+	bool needsHealth = healthRatio < bot_health_ok_ratio.GetFloat() || (me->GetFlags() & FL_ONFIRE);
+	bool needsArmor = currentArmor < 75;
+	
+	if ( !needsHealth && !needsArmor )
+		return false;
 
-	float t = ( healthRatio - bot_health_critical_ratio.GetFloat() ) / ( bot_health_ok_ratio.GetFloat() - bot_health_critical_ratio.GetFloat() );
-	t = clamp( t, 0.0f, 1.0f );
-
+	// Calculate search range based on urgency
+	float urgency = MIN( healthRatio, currentArmor / 100.0f );
 	if ( me->GetFlags() & FL_ONFIRE )
-	{
-		// on fire - get health now
-		t = 0.0f;
-	}
+		urgency = 0.0f;
 
+	
 	// the more we are hurt, the farther we'll travel to get health
+	float t = clamp( 1.0f - urgency, 0.0f, 1.0f );
 	float searchRange = bot_health_search_far_range.GetFloat() + t * ( bot_health_search_near_range.GetFloat() - bot_health_search_far_range.GetFloat() );
 
-	CBaseEntity* healthkit = NULL;
+	// Collect all health/armor items
 	CUtlVector< CHandle< CBaseEntity > > hHealthKits;
-	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "item_health*" ) ) != NULL )
-	{
-		hHealthKits.AddToTail( healthkit );
-	}
-	
-	healthkit = NULL;
-	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "func_health*" ) ) != NULL )
-	{
-		hHealthKits.AddToTail( healthkit );
-	}
-	
-	// Add suit chargers to the search
-	healthkit = NULL;
-	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "item_suitcharger" ) ) != NULL )
-	{
-		hHealthKits.AddToTail( healthkit );
-	}
-	
-	healthkit = NULL;
-	while ( ( healthkit = gEntList.FindEntityByClassname( healthkit, "func_recharge" ) ) != NULL )
-	{
-		hHealthKits.AddToTail( healthkit );
-	}
+	CBaseEntity* item = NULL;
+	while ( ( item = gEntList.FindEntityByClassname( item, "item_health*" ) ) != NULL )
+		hHealthKits.AddToTail( item );
+	while ( ( item = gEntList.FindEntityByClassname( item, "func_health*" ) ) != NULL )
+		hHealthKits.AddToTail( item );
+	while ( ( item = gEntList.FindEntityByClassname( item, "item_battery" ) ) != NULL )
+		hHealthKits.AddToTail( item );
+	while ( ( item = gEntList.FindEntityByClassname( item, "item_suitcharger" ) ) != NULL )
+		hHealthKits.AddToTail( item );
+	while ( ( item = gEntList.FindEntityByClassname( item, "func_recharge" ) ) != NULL )
+		hHealthKits.AddToTail( item );
 
-	bool bFindChargers = true;
-	bool bLowHealth = healthRatio < bot_health_critical_ratio.GetFloat();
+	bool findChargers = true;
+	if ( !needsHealth && !needsArmor && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
+		findChargers = false;
 
-	// don't use chargers if I'm in combat
-	if ( !bLowHealth && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
-		bFindChargers = false;
-
-	CHealthFilter healthFilter( me, bFindChargers );
+	CHealthFilter healthFilter( me, findChargers );
 	CUtlVector< CHandle< CBaseEntity > > hReachableHealthKits;
 
 	// can't call CHL2MPBot::SelectReachableObjects() because chargers don't use their worldspace center in pathfinding
@@ -276,9 +364,7 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 		for( int i=0; i<hHealthKits.Count(); ++i )
 		{
 			if ( healthFilter.IsSelected( hHealthKits[i] ) )
-			{
 				filteredObjectVector.AddToTail( hHealthKits[i] );
-			}
 		}
 
 		// only keep those that are reachable by us
@@ -286,27 +372,46 @@ bool CHL2MPBotGetHealth::IsPossible( CHL2MPBot *me )
 		SearchSurroundingAreas( me->GetLastKnownArea(), collector );
 	}
 
-	CBaseEntity* closestHealth = hReachableHealthKits.Size() > 0 ? hReachableHealthKits[0] : NULL;
+	// Simple priority selection: megachargers > health chargers > suit chargers > health kits > batteries
+	CBaseEntity* closestHealth = NULL;
+	for( int i = 0; i < hReachableHealthKits.Count(); ++i )
+	{
+		CBaseEntity* item = hReachableHealthKits[i];
+		if ( !item ) continue;
+		
+		// Priority order based on immediate utility
+		if ( IsMegacharger( item ) ) {
+			closestHealth = item;
+			break; // Highest priority
+		}
+		
+		if ( !closestHealth ) {
+			if ( needsHealth && item->ClassMatches( "*healthcharger" ) )
+				closestHealth = item;
+			else if ( needsArmor && (item->ClassMatches( "*suitcharger" ) || item->ClassMatches( "*recharge" )) )
+				closestHealth = item;
+			else if ( needsHealth && (item->ClassMatches( "item_healthkit" ) || item->ClassMatches( "item_healthvial" )) )
+				closestHealth = item;
+			else if ( needsArmor && item->ClassMatches( "item_battery" ) )
+				closestHealth = item;
+		}
+	}
 
 	if ( !closestHealth )
 	{
 		if ( me->IsDebugging( NEXTBOT_BEHAVIOR ) )
-		{
-			Warning( "%3.2f: No health nearby\n", gpGlobals->curtime );
-		}
+			Warning( "%3.2f: No health/armor items nearby\n", gpGlobals->curtime );
 		return false;
 	}
 
-	s_possibleIsCharger = V_strstr( closestHealth->GetClassname(), "charger" );
+	s_possibleIsCharger = V_strstr( closestHealth->GetClassname(), "charger" ) || IsMegacharger( closestHealth );
 
 	CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
 	PathFollower path;
 	if ( !path.Compute( me, GetHealthKitPathOrigin( closestHealth, s_possibleIsCharger ), cost ) || !path.IsValid() || path.GetResult() != Path::COMPLETE_PATH )
 	{
 		if ( me->IsDebugging( NEXTBOT_BEHAVIOR ) )
-		{
 			Warning( "%3.2f: No path to health!\n", gpGlobals->curtime );
-		}
 		return false;
 	}
 
@@ -354,9 +459,37 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 		return Done( "Health kit I was going for has been taken" );
 	}
 
+	// Declare pPlayer once at the beginning to avoid redefinition
+	CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
+
 	if ( me->GetHealth() >= me->GetMaxHealth() )
 	{
-		return Done( "I've been healed" );
+		// Check if we also need armor - don't finish if we still need armor and current item provides it
+		int maxArmor = GetMaxArmorForCharger( m_healthKit );
+		if ( pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < maxArmor )
+		{
+			// Still need armor - only continue if current item can provide armor
+			if ( m_healthKit && (m_healthKit->ClassMatches( "item_battery" ) || 
+								  CanChargerProvideArmor( m_healthKit )) )
+			{
+				// Continue to get armor
+			}
+			else
+			{
+				return Done( "Health full but still need armor from different item" );
+			}
+		}
+		else
+		{
+			return Done( "I've been healed" );
+		}
+	}
+
+	// If going for a health item (not charger/battery) and health is full, stop
+	if ( !m_isGoalCharger && !m_healthKit->ClassMatches( "item_battery" ) )
+	{
+		if ( me->GetHealth() >= me->GetMaxHealth() )
+			return Done( "Health is full, no need for health items" );
 	}
 
 	if ( HL2MPRules()->IsTeamplay() )
@@ -378,68 +511,52 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 		{
 			// if we're carrying a prop, drop it
 			if ( me->Physcannon_GetHeldProp() )
-			{
 				me->PressAltFireButton( 0.1f );
-			}
 
 			if ( me->GetVisionInterface()->IsLineOfSightClearToEntity( m_healthKit ) )
 			{
-				// Check if we're done with health chargers
-				if ( me->GetHealth() == me->GetMaxHealth() )
-				{
-					return Done( "Health refilled by the Charger" );
-				}
+				int maxArmor = GetMaxArmorForCharger( m_healthKit );
+				bool healthFull = (me->GetHealth() >= me->GetMaxHealth());
+				bool armorFull = !pPlayer || !pPlayer->IsSuitEquipped() || (pPlayer->ArmorValue() >= maxArmor);
 				
-				// Check if we're done with suit chargers (armor full)
-				CHL2MP_Player *pPlayer = ToHL2MPPlayer( me );
-				if ( pPlayer && pPlayer->ArmorValue() >= 100 )
-				{
-					return Done( "Armor refilled by the Suit Charger" );
-				}
+				// Check if we're done
+				if ( healthFull && armorFull )
+					return Done( "Health and armor are full" );
+				
+				// Check if this charger can't provide what we need
+				if ( !healthFull && !CanChargerProvideHealth( m_healthKit ) && armorFull )
+					return Done( "Need health but this charger only provides armor" );
+				if ( !armorFull && !CanChargerProvideArmor( m_healthKit ) && healthFull )
+					return Done( "Need armor but this charger only provides health" );
 
-				// Check health charger juice
+				// Check if charger is empty
 				CNewWallHealth* pNewWallHealth = dynamic_cast< CNewWallHealth* >( m_healthKit.Get() );
-				if ( pNewWallHealth )
-				{
-					if ( pNewWallHealth->GetJuice() == 0 )
-						return Done( "Charger is out of juice!" );
-				}
+				if ( pNewWallHealth && pNewWallHealth->GetJuice() == 0 )
+					return Done( "Charger is out of juice!" );
 
 				CWallHealth* pWallHealth = dynamic_cast< CWallHealth* >( m_healthKit.Get() );
-				if ( pWallHealth )
-				{
-					if ( pWallHealth->GetJuice() == 0 )
-						return Done( "Charger is out of juice!" );
-				}
+				if ( pWallHealth && pWallHealth->GetJuice() == 0 )
+					return Done( "Charger is out of juice!" );
 				
-				// Check suit charger juice
 				CNewRecharge* pNewRecharge = dynamic_cast< CNewRecharge* >( m_healthKit.Get() );
-				if ( pNewRecharge )
-				{
-					if ( pNewRecharge->GetJuice() == 0 )
-						return Done( "Suit Charger is out of juice!" );
-				}
+				if ( pNewRecharge && pNewRecharge->GetJuice() == 0 )
+					return Done( "Suit Charger is out of juice!" );
 				
 				CRecharge* pRecharge = dynamic_cast< CRecharge* >( m_healthKit.Get() );
-				if ( pRecharge )
-				{
-					if ( pRecharge->GetJuice() == 0 )
-						return Done( "Suit Charger is out of juice!" );
-				}
+				if ( pRecharge && pRecharge->GetJuice() == 0 )
+					return Done( "Suit Charger is out of juice!" );
 
-				float healthRatio = ( float )me->GetHealth() / ( float )me->GetMaxHealth();
-				bool bLowHealth = healthRatio < bot_health_critical_ratio.GetFloat();
-
-				// don't wait if I'm in combat
+				// Don't wait in combat unless critically low
+				float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
+				bool criticalHealth = healthRatio < 0.3f;
+				bool criticalArmor = pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 50;
+				
 				const CKnownEntity *threat = me->GetVisionInterface()->GetPrimaryKnownThreat();
-				if ( !bLowHealth && threat && me->IsLineOfSightClear( threat->GetEntity(), CHL2MPBot::IGNORE_ACTORS ) )
-				{
-					return Done( "No time to wait for more health, I must fight" );
-				}
+				if ( !criticalHealth && !criticalArmor && threat && me->IsLineOfSightClear( threat->GetEntity(), CHL2MPBot::IGNORE_ACTORS ) )
+					return Done( "No time to wait for more health/armor, I must fight" );
 				
 				if ( !m_usingCharger )
 				{
-					// make sure we're not already using anything
 					m_usingCharger = true;
 					me->ReleaseUseButton();
 					return Continue();
@@ -457,27 +574,28 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 					// go towards the center
 					float dot = right.AsVector2D().Dot( toMe );
 					if ( dot < 0 )
-					{
 						me->PressLeftButton( 0.1f );
-					}
 					else
-					{
 						me->PressRightButton( 0.1f );
-					}
 				}
 
 				// begin looking at the charger, then +USE it
 				me->GetBodyInterface()->AimHeadTowards( m_healthKit, IBody::CRITICAL, 0.5f, NULL, "Using health charger" );
 				if ( me->GetBodyInterface()->IsHeadAimingOnTarget() )
 				{
+					// Stop when limits are reached
+					if ( (me->GetHealth() >= me->GetMaxHealth()) && 
+						 (!pPlayer || !pPlayer->IsSuitEquipped() || (pPlayer->ArmorValue() >= maxArmor)) )
+					{
+						me->ReleaseUseButton();
+						return Done( "Charging complete" );
+					}
+					
 					me->PressUseButton( 0.5f );
 				}
 				else
-				{
 					me->ReleaseUseButton();
-				}
 
-				// wait until the charger refills us
 				return Continue();
 			}
 		}
@@ -489,14 +607,13 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 			me->ReleaseUseButton();
 		}
 
-		float healthRatio = ( float )me->GetHealth() / ( float )me->GetMaxHealth();
-		bool bLowHealth = healthRatio < bot_health_critical_ratio.GetFloat();
+		// Don't keep going if in combat unless critically low
+		float healthRatio = (float)me->GetHealth() / (float)me->GetMaxHealth();
+		bool criticalHealth = healthRatio < 0.3f;
+		bool criticalArmor = pPlayer && pPlayer->IsSuitEquipped() && pPlayer->ArmorValue() < 50;
 
-		// don't keep going if I'm in combat
-		if ( !bLowHealth && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
-		{
+		if ( !criticalHealth && !criticalArmor && me->GetVisionInterface()->GetPrimaryKnownThreat( true ) )
 			return Done( "No time to reach charger, I must fight" );
-		}
 	}
 
 	if ( !m_path.IsValid() )

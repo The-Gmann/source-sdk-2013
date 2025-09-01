@@ -2,6 +2,8 @@
 
 #include "cbase.h"
 #include "fmtstr.h"
+#include "convar.h"
+#include "ammodef.h"
 
 #include "nav_mesh.h"
 #include "hl2mp_player.h"
@@ -21,41 +23,34 @@
 extern ConVar bot_health_ok_ratio;
 
 ConVar bot_path_lookahead_range( "bot_path_lookahead_range", "300" );
-// Unused ConVars - commented out to reduce clutter
-// ConVar bot_sniper_aim_error( "bot_sniper_aim_error", "0.01", FCVAR_CHEAT );
-// ConVar bot_sniper_aim_steady_rate( "bot_sniper_aim_steady_rate", "10", FCVAR_CHEAT );
-// ConVar bot_debug_sniper( "bot_debug_sniper", "0", FCVAR_CHEAT );
-ConVar bot_fire_weapon_min_time( "bot_fire_weapon_min_time", "0.1", FCVAR_CHEAT ); // Reduced for faster firing
-ConVar bot_taunt_victim_chance( "bot_taunt_victim_chance", "20" );		// community requested this not be a cheat cvar
-
-// Unused ConVars - commented out to reduce clutter
-// ConVar hl2mp_bot_notice_backstab_chance( "hl2mp_bot_notice_backstab_chance", "25", FCVAR_CHEAT );
-// ConVar hl2mp_bot_notice_backstab_min_range( "hl2mp_bot_notice_backstab_min_range", "100", FCVAR_CHEAT );
-// ConVar hl2mp_bot_notice_backstab_max_range( "hl2mp_bot_notice_backstab_max_range", "750", FCVAR_CHEAT );
-
+ConVar bot_fire_weapon_min_time( "bot_fire_weapon_min_time", "0.1", FCVAR_CHEAT );
+ConVar bot_taunt_victim_chance( "bot_taunt_victim_chance", "20" );
 ConVar bot_ballistic_elevation_rate( "bot_ballistic_elevation_rate", "0.01", FCVAR_CHEAT, "When lobbing grenades at far away targets, this is the degree/range slope to raise our aim" );
-
 ConVar bot_hitscan_range_limit( "bot_hitscan_range_limit", "1800", FCVAR_CHEAT );
-
-// Unused ConVar - commented out
-// ConVar hl2mp_bot_always_full_reload( "hl2mp_bot_always_full_reload", "0", FCVAR_CHEAT );
-
 ConVar bot_fire_weapon_allowed( "bot_fire_weapon_allowed", "1", FCVAR_CHEAT, "If zero, bots will not pull the trigger of their weapons (but will act like they did)" );
-
 ConVar bot_allow_retreat( "bot_allow_retreat", "1", FCVAR_CHEAT, "If zero, bots will not attempt to retreat if they are are in a bad situation." );
 ConVar bot_physcannon_wait_fire_time( "bot_physcannon_wait_fire_time", "1", FCVAR_CHEAT, "Time to wait after picking up a prop to firing." );
 ConVar bot_stop( "bot_stop", "0", FCVAR_CHEAT, "If nonzero, stops bot AI but keeps them vulnerable to damage and physics" );
-
-// New ConVars for enhanced weapon handling
 ConVar bot_pistol_fire_rate( "bot_pistol_fire_rate", "0.15", FCVAR_CHEAT, "Fire rate for pistol spam firing" );
 ConVar bot_gauss_charge_time( "bot_gauss_charge_time", "1.2", FCVAR_CHEAT, "Time to charge gauss gun secondary fire" );
 ConVar bot_egon_max_range( "bot_egon_max_range", "1024", FCVAR_CHEAT, "Maximum effective range for egon gun" );
-ConVar bot_grenade_throw_chance( "bot_grenade_throw_chance", "30", FCVAR_CHEAT, "Chance to throw grenade when tactical" );
-ConVar bot_debug_superweapons( "bot_debug_superweapons", "0", FCVAR_CHEAT, "Debug superweapon behavior" );
+ConVar bot_grenade_hold_time( "bot_grenade_hold_time", "1.5", FCVAR_CHEAT, "Time to hold grenade before throwing" );
 ConVar bot_weapon_collection_range( "bot_weapon_collection_range", "800", FCVAR_CHEAT, "Range to search for weapons" );
+ConVar bot_debug_superweapons( "bot_debug_superweapons", "0", FCVAR_CHEAT, "Debug output for special weapons like gauss/grenade" );
+ConVar bot_grenade_throw_chance( "bot_grenade_throw_chance", "10", FCVAR_CHEAT, "Base percentage chance for bots to throw grenades" );
+ConVar bot_grenade_cooldown_time( "bot_grenade_cooldown_time", "15.0", FCVAR_CHEAT, "Cooldown time between grenade throws" );
 
-// External reference for cross-file usage
-extern ConVar bot_debug_superweapons;
+// Altfire-specific ConVars
+ConVar bot_ar2_altfire_chance( "bot_ar2_altfire_chance", "15", FCVAR_CHEAT, "Percentage chance for bots to use AR2 altfire (combine balls)" );
+ConVar bot_ar2_altfire_range( "bot_ar2_altfire_range", "600", FCVAR_CHEAT, "Minimum range for AR2 altfire usage" );
+ConVar bot_shotgun_altfire_chance( "bot_shotgun_altfire_chance", "35", FCVAR_CHEAT, "Percentage chance for bots to use shotgun altfire at close range" );
+ConVar bot_shotgun_altfire_range( "bot_shotgun_altfire_range", "300", FCVAR_CHEAT, "Maximum range for shotgun double-barrel usage" );
+ConVar bot_smg1_grenade_chance( "bot_smg1_grenade_chance", "20", FCVAR_CHEAT, "Percentage chance for bots to use SMG1 grenades" );
+ConVar bot_smg1_grenade_range( "bot_smg1_grenade_range", "800", FCVAR_CHEAT, "Optimal range for SMG1 grenade usage" );
+ConVar bot_crossbow_zoom_range( "bot_crossbow_zoom_range", "400", FCVAR_CHEAT, "Minimum range before crossbow zoom is used" );
+ConVar bot_357_zoom_range( "bot_357_zoom_range", "600", FCVAR_CHEAT, "Minimum range before 357 zoom is used" );
+ConVar bot_altfire_debug( "bot_altfire_debug", "0", FCVAR_CHEAT, "Debug output for altfire usage" );
+ConVar bot_grenade_draw_time( "bot_grenade_draw_time", "0.7", FCVAR_CHEAT, "Time for grenade weapon draw animation" );
 
 //---------------------------------------------------------------------------------------------
 Action< CHL2MPBot > *CHL2MPBotMainAction::InitialContainedAction( CHL2MPBot *me )
@@ -123,24 +118,14 @@ ActionResult< CHL2MPBot >	CHL2MPBotMainAction::Update( CHL2MPBot *me, float inte
 	m_yawRate = fabs( deltaYaw / ( interval + 0.0001f ) );
 	m_priorYaw = me->EyeAngles().y;
 
-	if ( m_yawRate < 10.0f ) // Hardcoded value since we commented out hl2mp_bot_sniper_aim_steady_rate
+	if ( m_yawRate < 10.0f )
 	{
 		if ( !m_steadyTimer.HasStarted() )
 			m_steadyTimer.Start();
-
-// 		if ( hl2mp_bot_debug_sniper.GetBool() )
-// 		{
-// 			DevMsg( "%3.2f: STEADY\n", gpGlobals->curtime );
-// 		}
 	}
 	else
 	{
 		m_steadyTimer.Invalidate();
-
-// 		if ( hl2mp_bot_debug_sniper.GetBool() )
-// 		{
-// 			DevMsg( "%3.2f: Yaw rate = %3.2f\n", gpGlobals->curtime, m_yawRate );
-// 		}
 	}
 
 	me->EquipRequiredWeapon();
@@ -397,8 +382,13 @@ Vector CHL2MPBotMainAction::SelectTargetPoint( const INextBot *meBot, const CBas
 			return subject->EyePosition();
 		}
 
-		// aim for the center of the object (ie: sentry gun)
-		return subject->WorldSpaceCenter();
+		// Aim higher than center mass - between torso and head for better damage
+		Vector centerMass = subject->WorldSpaceCenter();
+		Vector headPos = subject->EyePosition();
+		
+		// Interpolate 60% of the way from center mass to head position
+		Vector aimPoint = centerMass + 0.6f * (headPos - centerMass);
+		return aimPoint;
 	}
 
 	return vec3_origin;
@@ -664,13 +654,26 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 
 	float threatRange = ( threat->GetEntity()->GetAbsOrigin() - me->GetAbsOrigin() ).Length();
 
+	// Check if we're committed to throwing a grenade - bypass normal aiming requirements
+	CBaseHL2MPCombatWeapon* activeWeapon = dynamic_cast< CBaseHL2MPCombatWeapon* >( me->GetActiveWeapon() );
+	bool isGrenadeCommitted = activeWeapon && me->IsGrenadeWeapon( activeWeapon ) && 
+							  (me->IsCommittedToGrenade() || me->ShouldForceGrenadeThrow());
+
+	// For committed grenades, force bot to look at target
+	if ( isGrenadeCommitted )
+	{
+		me->GetBodyInterface()->AimHeadTowards( threat->GetEntity(), IBody::CRITICAL, 0.1f, NULL, "Grenade targeting" );
+	}
+
 	// actual head aiming is handled elsewhere, just check if we're on target
 	//
 	// misyl: make sure we are actually looking at the target...
 	// tf2 doesn't do this check... i think its right to do this here...
-	if ( me->GetBodyInterface()->GetLookAtSubject() == threat->GetEntity() &&
-		 me->GetBodyInterface()->IsHeadAimingOnTarget() &&
-		 threatRange < me->GetMaxAttackRange() )
+	// Skip aim requirements for committed grenades
+	if ( isGrenadeCommitted || 
+		 (me->GetBodyInterface()->GetLookAtSubject() == threat->GetEntity() &&
+		  me->GetBodyInterface()->IsHeadAimingOnTarget() &&
+		  threatRange < me->GetMaxAttackRange()) )
 	{
 		if ( me->IsCombatWeapon( MY_CURRENT_GUN ) )
 		{
@@ -682,92 +685,186 @@ void CHL2MPBotMainAction::FireWeaponAtEnemy( CHL2MPBot *me )
 					me->PressFireButton();
 				}
 			}
-			// Handle special weapon types
+			// Handle special weapon types with enhanced altfire
 			else if ( me->IsGaussWeapon( myWeapon ) )
 			{
-				// Gauss gun handling - enhanced with charge state tracking
+				// Gauss gun handling - enhanced logic
 				bool isLowHealth = me->GetHealth() < 30;
-				bool isVeryLowHealth = me->GetHealth() < 15;
-				bool isCharging = (me->m_nButtons & IN_ATTACK2) != 0;
+				bool hasAmmo = myWeapon->Clip1() > 2 || me->GetAmmoCount( myWeapon->GetPrimaryAmmoType() ) > 2;
 				
-				// Track charge start time to prevent infinite charging
-				static float chargeStartTime = 0.0f;
-				if ( isCharging && chargeStartTime == 0.0f )
+				// Use charged shots for medium/long range when healthy and have ammo
+				if ( threatRange > 250.0f && threatRange < 1200.0f && !isLowHealth && hasAmmo )
 				{
-					chargeStartTime = gpGlobals->curtime;
-				}
-				else if ( !isCharging )
-				{
-					chargeStartTime = 0.0f;
-				}
-				
-				// Force fire if we've been charging too long (prevent infinite charge)
-				bool hasChargedTooLong = isCharging && (gpGlobals->curtime - chargeStartTime) > bot_gauss_charge_time.GetFloat();
-				
-				// Emergency firing - immediate threat or very low health
-				if ( (isVeryLowHealth && threatRange < 400.0f) || hasChargedTooLong )
-				{
-					if ( bot_debug_superweapons.GetBool() )
+					me->PressAltFireButton( bot_gauss_charge_time.GetFloat() );
+					if ( bot_altfire_debug.GetBool() )
 					{
-						DevMsg( "Bot %s: Emergency gauss fire! LowHP: %s, ChargedTooLong: %s\n", 
-							me->GetPlayerName(), isVeryLowHealth ? "Yes" : "No", hasChargedTooLong ? "Yes" : "No" );
-					}
-					if ( isCharging )
-					{
-						// Release charge to fire now
-						me->ReleaseAltFireButton();
-					}
-					else
-					{
-						// Quick primary fire for immediate response
-						me->PressFireButton( 0.15f );
+						DevMsg( "Bot %s: Using gauss charged shot at range %.1f\n", me->GetPlayerName(), threatRange );
 					}
 				}
-				// Use charged secondary fire for optimal range (best damage)
-				else if ( threatRange > 200.0f && threatRange < 1200.0f && !isLowHealth )
-				{
-					if ( !isCharging )
-					{
-						me->PressAltFireButton( bot_gauss_charge_time.GetFloat() );
-					}
-				}
-				// Use primary fire for close range (faster, safer)
-				else if ( threatRange <= 200.0f || isLowHealth )
-				{
-					if ( isCharging )
-					{
-						// Stop charging for close range
-						me->ReleaseAltFireButton();
-					}
-					// Quick primary fire
-					me->PressFireButton( 0.2f );
-				}
-				// Long range - also use charged shots
 				else
 				{
-					if ( !isCharging )
-					{
-						me->PressAltFireButton( bot_gauss_charge_time.GetFloat() );
-					}
+					// Use primary fire for close range or low health
+					me->PressFireButton( 0.2f );
 				}
 			}
 			else if ( me->IsEgonWeapon( myWeapon ) )
 			{
-				// Egon gun - continuous beam at medium-short range
+				// Egon gun - continuous beam at medium range
 				if ( threatRange <= bot_egon_max_range.GetFloat() )
+					me->PressFireButton( 2.0f );
+			}
+			// AR2 altfire - combine balls for long range devastation
+			else if ( FClassnameIs( myWeapon, "weapon_ar2" ) )
+			{
+				// Check for altfire usage - occasional use at long range for huge payoff
+				bool hasAltAmmo = me->GetAmmoCount( myWeapon->GetSecondaryAmmoType() ) > 0;
+				bool longRange = threatRange > bot_ar2_altfire_range.GetFloat();
+				bool shouldUseAltfire = longRange && hasAltAmmo && (RandomInt(0, 100) < bot_ar2_altfire_chance.GetInt());
+				
+				if ( shouldUseAltfire )
 				{
-					me->PressFireButton( 2.0f ); // Hold fire for continuous beam
+					me->PressAltFireButton( 0.5f ); // Combine ball
+					if ( bot_altfire_debug.GetBool() )
+					{
+						DevMsg( "Bot %s: Using AR2 combine ball at range %.1f\n", me->GetPlayerName(), threatRange );
+					}
 				}
+				else
+				{
+					me->PressFireButton( 0.15f ); // Standard fire
+				}
+			}
+			// SMG1 - grenades for tactical advantage
+			else if ( FClassnameIs( myWeapon, "weapon_smg1" ) )
+			{
+				bool hasGrenades = me->GetAmmoCount( GetAmmoDef()->Index("SMG1_Grenade") ) > 0;
+				bool goodRange = threatRange > 300.0f && threatRange < bot_smg1_grenade_range.GetFloat();
+				bool shouldUseGrenade = goodRange && hasGrenades && (RandomInt(0, 100) < bot_smg1_grenade_chance.GetInt());
+				
+				if ( shouldUseGrenade )
+				{
+					me->PressAltFireButton( 0.2f ); // Grenade launcher
+					if ( bot_altfire_debug.GetBool() )
+					{
+						DevMsg( "Bot %s: Using SMG1 grenade at range %.1f\n", me->GetPlayerName(), threatRange );
+					}
+				}
+				else
+				{
+					me->PressFireButton( 0.1f ); // Standard rapid fire
+				}
+			}
+			// Shotgun - double barrel for close range devastation
+			else if ( FClassnameIs( myWeapon, "weapon_shotgun" ) )
+			{
+				bool closeRange = threatRange <= bot_shotgun_altfire_range.GetFloat();
+				bool hasAmmo = myWeapon->Clip1() >= 2; // Need 2 shells for double barrel
+				bool shouldUseDouble = closeRange && hasAmmo && (RandomInt(0, 100) < bot_shotgun_altfire_chance.GetInt());
+				
+				if ( shouldUseDouble )
+				{
+					me->PressAltFireButton( 0.1f ); // Double barrel
+					if ( bot_altfire_debug.GetBool() )
+					{
+						DevMsg( "Bot %s: Using shotgun double barrel at close range %.1f\n", me->GetPlayerName(), threatRange );
+					}
+				}
+				else
+				{
+					me->PressFireButton( 0.8f ); // Standard single shot
+				}
+			}
+			// Crossbow - zoom for precision at long range (hitscan with rbsv_crossbow_sniperbolt)
+			else if ( FClassnameIs( myWeapon, "weapon_crossbow" ) )
+			{
+				// Check if sniper bolt is enabled (makes crossbow hitscan)
+				ConVarRef sniperBolt( "rbsv_crossbow_sniperbolt" );
+				bool sniperMode = sniperBolt.IsValid() && sniperBolt.GetBool();
+				bool shouldZoom = threatRange > bot_crossbow_zoom_range.GetFloat() && sniperMode;
+				
+				if ( shouldZoom )
+				{
+					// Toggle zoom, then fire - crossbow becomes deadly hitscan
+					me->PressAltFireButton( 0.1f ); // Toggle zoom
+					if ( bot_altfire_debug.GetBool() )
+					{
+						DevMsg( "Bot %s: Using crossbow zoom (hitscan) at range %.1f\n", me->GetPlayerName(), threatRange );
+					}
+				}
+				me->PressFireButton( 0.5f ); // Fire bolt
+			}
+			// 357 Magnum - zoom for precision (optional, mainly for aiming)
+			else if ( FClassnameIs( myWeapon, "weapon_357" ) )
+			{
+				// 357 zoom is mainly cosmetic for bots, but we can still use it for long shots
+				bool shouldZoom = threatRange > bot_357_zoom_range.GetFloat() && me->GetDifficulty() >= CHL2MPBot::HARD;
+				
+				if ( shouldZoom && RandomInt(0, 100) < 25 )
+				{
+					me->PressAltFireButton( 0.1f ); // Toggle zoom
+					if ( bot_altfire_debug.GetBool() )
+					{
+						DevMsg( "Bot %s: Using 357 zoom at range %.1f\n", me->GetPlayerName(), threatRange );
+					}
+				}
+				me->PressFireButton( 0.3f ); // Fire
 			}
 			else if ( me->IsPistolWeapon( myWeapon ) )
 			{
 				// Pistol - spam fire rapidly instead of slow shooting
 				me->PressFireButton( bot_pistol_fire_rate.GetFloat() );
 			}
-			else if ( me->IsGrenadeWeapon( myWeapon ) && me->ShouldThrowGrenade( threat ) )
+			else if ( me->IsGrenadeWeapon( myWeapon ) )
 			{
-				// Grenade throwing logic
-				me->PressFireButton();
+				// Enhanced grenade throwing with proper state management
+				float threatRange = (threat->GetLastKnownPosition() - me->GetAbsOrigin()).Length();
+				
+				// Safety check: abort if enemy too close
+				if ( threatRange < 450.0f )
+				{
+					if ( bot_debug_superweapons.GetBool() )
+					{
+						DevMsg( "Bot %s: Enemy too close for grenade (%.1f < 450)\n", me->GetPlayerName(), threatRange );
+					}
+					// Clear any commitment and switch weapons
+					me->ClearGrenadeCommitment();
+					me->EquipBestWeaponForThreat( threat );
+					return;
+				}
+				
+				// Only attempt to throw if ShouldThrowGrenade returns true
+				if ( me->ShouldThrowGrenade( threat ) )
+				{
+					// Commit to grenade throw if not already committed
+					if ( !me->IsCommittedToGrenade() )
+					{
+						me->CommitToGrenadeThrow();
+						me->SetGrenadeTarget( threat->GetEntity() );
+						me->SetLastKnownEnemyPosition( threat->GetLastKnownPosition() );
+						if ( bot_debug_superweapons.GetBool() )
+						{
+							DevMsg( "Bot %s: COMMITTING to grenade throw\n", me->GetPlayerName() );
+						}
+					}
+					
+					// Aim at target and throw
+					me->GetBodyInterface()->AimHeadTowards( threat->GetEntity(), IBody::CRITICAL, 0.1f, NULL, "Grenade targeting" );
+					me->PressFireButton( bot_grenade_hold_time.GetFloat() );
+					
+					// Start cooldown immediately to prevent rapid throwing
+					me->StartGrenadeCooldown();
+					
+					if ( bot_debug_superweapons.GetBool() )
+					{
+						DevMsg( "Bot %s: Throwing grenade at range %.1f\n", me->GetPlayerName(), threatRange );
+					}
+				}
+				else
+				{
+					// Clear commitment if we shouldn't throw
+					me->ClearGrenadeCommitment();
+					me->EquipBestWeaponForThreat( threat );
+				}
 			}
 			else if ( me->IsContinuousFireWeapon( MY_CURRENT_GUN ) )
 			{

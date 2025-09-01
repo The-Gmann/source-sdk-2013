@@ -303,59 +303,41 @@ void CHL2MPBotSeekAndDestroy::RecomputeSeekPath( CHL2MPBot *me )
 		return;
 	}
 
-	// Don't try to find weapons if the timer elapsed. Probably went bad?
-	// Enhanced weapon collection: Also check if we need a weapon upgrade
-	if ( ( !m_bTimerElapsed && !me->IsPropFreak() ) || me->NeedsWeaponUpgrade() )
+	// Enhanced weapon collection: search for weapons we don't have
+	if ( (!m_bTimerElapsed && !me->IsPropFreak()) || me->NeedsWeaponUpgrade() )
 	{
-		CUtlVector<CBaseEntity*> pWeapons;
-
 		CNotOwnedWeaponFilter weaponFilter( me );
-		CBaseEntity* pSearch = NULL;
-		
-		// Search for weapons within collection range
-		float searchRange = bot_weapon_collection_range.GetFloat();
+		CBaseEntity* closestWeapon = NULL;
+		float closestDistance = bot_weapon_collection_range.GetFloat();
 		Vector myPos = me->GetAbsOrigin();
 		
+		// Find closest weapon we don't have
+		CBaseEntity* pSearch = NULL;
 		while ( ( pSearch = gEntList.FindEntityByClassname( pSearch, "weapon_*", &weaponFilter ) ) != NULL )
 		{
-			// Only consider weapons within range
-			if ( pSearch && myPos.DistTo( pSearch->GetAbsOrigin() ) <= searchRange )
+			float distance = myPos.DistTo( pSearch->GetAbsOrigin() );
+			if ( distance < closestDistance )
 			{
-				pWeapons.AddToTail( pSearch );
+				closestWeapon = pSearch;
+				closestDistance = distance;
 			}
 		}
 
-		pWeapons.SortPredicate(
-			[&]( CBaseEntity* a, CBaseEntity* b )
-			{
-				float flDistA = me->GetAbsOrigin().DistToSqr( a->GetAbsOrigin() );
-				float flDistB = me->GetAbsOrigin().DistToSqr( b->GetAbsOrigin() );
-
-				return flDistA < flDistB;
-			}
-		);
-
-
-		// Try and find weapons we don't have above all else on the map.
-		for ( int i = 0; i < pWeapons.Size(); i++ )
+		// Path to closest weapon if found
+		if ( closestWeapon )
 		{
-			CBaseEntity* pClosestWeapon = pWeapons[i];
-			if ( pClosestWeapon )
-			{
-				CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
-				m_hTargetEntity = pClosestWeapon;
-				m_bGoingToTargetEntity = true;
-				m_vGoalPos = pClosestWeapon->WorldSpaceCenter();
-				if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
-					return;
-			}
+			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
+			m_hTargetEntity = closestWeapon;
+			m_bGoingToTargetEntity = true;
+			m_vGoalPos = closestWeapon->WorldSpaceCenter();
+			if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
+				return;
 		}
 	}
 
-	// Fallback and roam random spawn points if we have all weapons.
+	// Fallback: roam to random spawn points or nav areas
 	{
 		CNextSpawnFilter spawnFilter( me, 128.0f );
-
 		CUtlVector<CBaseEntity*> pSpawns;
 
 		CBaseEntity* pSearch = NULL;
@@ -365,33 +347,24 @@ void CHL2MPBotSeekAndDestroy::RecomputeSeekPath( CHL2MPBot *me )
 				pSpawns.AddToTail( pSearch );
 		}
 
-		// Don't wander between spawns if there aren't that many.
+		// Use spawn points if we have enough
 		if ( pSpawns.Size() >= 3 )
 		{
-			for ( int i = 0; i < 10; i++ )
-			{
-				CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
-				m_hTargetEntity = pSpawns[RandomInt( 0, pSpawns.Size() - 1 )];
-				m_bGoingToTargetEntity = true;
-				m_vGoalPos = m_hTargetEntity->WorldSpaceCenter();
-				if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
-					return;
-			}
+			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
+			m_hTargetEntity = pSpawns[RandomInt( 0, pSpawns.Size() - 1 )];
+			m_bGoingToTargetEntity = true;
+			m_vGoalPos = m_hTargetEntity->WorldSpaceCenter();
+			if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
+				return;
+		}
+		else if ( TheNavAreas.Size() > 0 )
+		{
+			// No spawns available - wander to random nav area
+			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
+			m_vGoalPos = TheNavAreas[RandomInt( 0, TheNavAreas.Size() - 1 )]->GetCenter();
+			m_path.Compute( me, m_vGoalPos, cost );
 		}
 	}
-
-	for ( int i = 0; i < 10; i++ )
-	{
-		// No spawns we can get to? Just wander... somewhere!
-
-		CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
-		Vector vWanderPoint = TheNavAreas[RandomInt( 0, TheNavAreas.Size() - 1 )]->GetCenter();
-		m_vGoalPos = vWanderPoint;
-		if ( m_path.Compute( me, vWanderPoint, cost ) )
-			return;
-	}
-
-	m_path.Invalidate();
 }
 
 
