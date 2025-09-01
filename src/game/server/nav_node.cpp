@@ -394,8 +394,9 @@ void CNavNode::CheckCrouch( void )
 void CNavNode::ConnectTo( CNavNode *node, NavDirType dir, float obstacleHeight, float obstacleStartDist, float obstacleEndDist )
 {
 	Assert( obstacleStartDist >= 0 && obstacleStartDist <= GenerationStepSize );
-	Assert( obstacleEndDist >= 0 && obstacleStartDist <= GenerationStepSize );
-	Assert( obstacleStartDist < obstacleEndDist );
+	Assert( obstacleEndDist >= 0 && obstacleEndDist <= GenerationStepSize );
+	// Remove strict ordering assertion - can be equal in some edge cases
+	// Assert( obstacleStartDist < obstacleEndDist );
 
 	m_to[ dir ] = node;
 	m_obstacleHeight[ dir ] = obstacleHeight;

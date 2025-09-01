@@ -3727,6 +3727,87 @@ void CNavMesh::CommandNavLadderFlip( void )
 
 
 //--------------------------------------------------------------------------------------------------------------
+void CNavMesh::CommandNavLadderReconnect( void )
+{
+	CBasePlayer *player = UTIL_GetListenServerHost();
+	if (player == NULL)
+		return;
+
+	if ( !IsEditMode( NORMAL ) )
+		return;
+
+	CNavLadder *ladder = GetMarkedLadder();
+	if ( !ladder )
+	{
+		player->EmitSound( "EDIT_MOVE_CORNER.NoMarkedArea" );
+		Msg( "No ladder marked. Use 'nav_mark ladder <id>' to mark a ladder first.\n" );
+		return;
+	}
+
+	player->EmitSound( "EDIT_MOVE_CORNER.MarkedArea" );
+	
+	// Store original connection count for comparison
+	int originalConnections = 0;
+	originalConnections += ladder->m_topForwardArea != NULL;
+	originalConnections += ladder->m_topLeftArea != NULL;
+	originalConnections += ladder->m_topRightArea != NULL;
+	originalConnections += ladder->m_topBehindArea != NULL;
+	originalConnections += ladder->m_bottomArea != NULL;
+	
+	// Clear existing connections (but keep references to clean up)
+	CNavArea *oldBottomArea = ladder->m_bottomArea;
+	CNavArea *oldTopForwardArea = ladder->m_topForwardArea;
+	CNavArea *oldTopLeftArea = ladder->m_topLeftArea;
+	CNavArea *oldTopRightArea = ladder->m_topRightArea;
+	CNavArea *oldTopBehindArea = ladder->m_topBehindArea;
+	
+	// Disconnect from old areas
+	if (oldBottomArea) oldBottomArea->Disconnect( ladder );
+	if (oldTopForwardArea) oldTopForwardArea->Disconnect( ladder );
+	if (oldTopLeftArea) oldTopLeftArea->Disconnect( ladder );
+	if (oldTopRightArea) oldTopRightArea->Disconnect( ladder );
+	if (oldTopBehindArea) oldTopBehindArea->Disconnect( ladder );
+	
+	// Reset ladder connections
+	ladder->m_bottomArea = NULL;
+	ladder->m_topForwardArea = NULL;
+	ladder->m_topLeftArea = NULL;
+	ladder->m_topRightArea = NULL;
+	ladder->m_topBehindArea = NULL;
+	
+	// Attempt reconnection using the improved algorithm
+	ladder->ConnectGeneratedLadder( 0.0f );
+	
+	// Count new connections
+	int newConnections = 0;
+	newConnections += ladder->m_topForwardArea != NULL;
+	newConnections += ladder->m_topLeftArea != NULL;
+	newConnections += ladder->m_topRightArea != NULL;
+	newConnections += ladder->m_topBehindArea != NULL;
+	newConnections += ladder->m_bottomArea != NULL;
+	
+	Msg( "Ladder #%d reconnection: %d connections before, %d connections after\n", 
+		ladder->GetID(), originalConnections, newConnections );
+	
+	if ( newConnections > originalConnections )
+	{
+		Msg( "Reconnection successful! Added %d new connections.\n", newConnections - originalConnections );
+	}
+	else if ( newConnections == originalConnections )
+	{
+		Msg( "No improvement in connections.\n" );
+	}
+	else
+	{
+		Msg( "Warning: Lost %d connections during reconnection.\n", originalConnections - newConnections );
+	}
+	
+	SetMarkedArea( NULL );			// unmark the mark area
+	m_markedCorner = NUM_CORNERS;	// clear the corner selection
+}
+
+
+//--------------------------------------------------------------------------------------------------------------
 class RadiusSelect
 {
 	Vector m_origin;

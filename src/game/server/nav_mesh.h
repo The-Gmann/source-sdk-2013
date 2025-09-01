@@ -362,6 +362,7 @@ public:
 	void SetPlayerSpawnName( const char *name );						// define the name of player spawn entities
 	void AddWalkableSeed( const Vector &pos, const Vector &normal );	// add given walkable position to list of seed positions for map sampling
 	virtual void AddWalkableSeeds( void );								// adds walkable positions for any/all positions a mod specifies
+	void ScanForElevatedSurfaces( void );								// automatically scan for elevated walkable surfaces across the map
 	void ClearWalkableSeeds( void )		{ m_walkableSeeds.RemoveAll(); }	// erase all walkable seed positions
 	void MarkStairAreas( void );
 
@@ -438,6 +439,7 @@ public:
 	void CommandNavCornerPlaceOnGround( const CCommand &args );			// position a corner on the current area at ground height
 	void CommandNavWarpToMark( void );									// warp a spectating local player to the selected mark
 	void CommandNavLadderFlip( void );									// Flips the direction a ladder faces
+	void CommandNavLadderReconnect( void );								// Attempt to reconnect a ladder to nearby nav areas
 	void CommandNavToggleAttribute( NavAttributeType attribute );		// toggle an attribute on current area
 	void CommandNavMakeSniperSpots( void );								// cuts up the marked area into individual areas suitable for sniper spots
 	void CommandNavBuildLadder( void );									// builds a nav ladder on the climbable surface under the cursor

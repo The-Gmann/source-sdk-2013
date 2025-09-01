@@ -2607,6 +2607,17 @@ static ConCommand nav_ladder_flip( "nav_ladder_flip", CommandNavLadderFlip, "Fli
 
 
 //--------------------------------------------------------------------------------------------------------------
+void CommandNavLadderReconnect( void )
+{
+	if ( !UTIL_IsCommandIssuedByServerAdmin() )
+		return;
+
+	TheNavMesh->CommandNavLadderReconnect();
+}
+static ConCommand nav_ladder_reconnect( "nav_ladder_reconnect", CommandNavLadderReconnect, "Attempt to reconnect the marked ladder to nearby navigation areas.", FCVAR_GAMEDLL | FCVAR_CHEAT );
+
+
+//--------------------------------------------------------------------------------------------------------------
 void CommandNavGenerate( void )
 {
 	if ( !UTIL_IsCommandIssuedByServerAdmin() )
