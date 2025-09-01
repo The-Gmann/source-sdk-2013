@@ -54,9 +54,9 @@ void CHudChatInputLine::ApplySchemeSettings(vgui::IScheme *pScheme)
 void CHudChatInputLine::UpdateChatColors()
 {
 	// Read rb_hud_color dynamically for real-time updates
-	extern ConVar rb_hud_color;
+	extern ConVar rbcl_hud_color;
 	int r = 255, g = 255, b = 255;
-	sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+	sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 	Color hudColor(r, g, b, 255);
 	
 	// Cast to TextEntry to access selection color methods
@@ -126,10 +126,10 @@ Color CHudChat::GetClientColor( int clientIndex )
 {
 	if ( clientIndex == 0 ) // console msg
 	{
-		extern ConVar rb_hud_color;
+		extern ConVar rbcl_hud_color;
 		Color hudColor(255, 255, 255, 255);
 		int r, g, b;
-		if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+		if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 		{
 			hudColor = Color(r, g, b, 255);
 		}
@@ -143,10 +143,10 @@ Color CHudChat::GetClientColor( int clientIndex )
 		case TEAM_REBELS	: return g_ColorRed;
 		default	: 
 			{
-				extern ConVar rb_hud_color;
+				extern ConVar rbcl_hud_color;
 				Color hudColor(255, 255, 255, 255);
 				int r, g, b;
-				if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+				if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 				{
 					hudColor = Color(r, g, b, 255);
 				}
@@ -155,10 +155,10 @@ Color CHudChat::GetClientColor( int clientIndex )
 		}
 	}
 
-	extern ConVar rb_hud_color;
+	extern ConVar rbcl_hud_color;
 	Color hudColor(255, 255, 255, 255);
 	int r, g, b;
-	if (sscanf(rb_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
+	if (sscanf(rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b) == 3)
 	{
 		hudColor = Color(r, g, b, 255);
 	}

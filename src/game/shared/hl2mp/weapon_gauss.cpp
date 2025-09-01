@@ -36,6 +36,7 @@
 // Definitions
 //-----------------------------------------------------------------------------
 #define GAUSS_BEAM_SPRITE              "sprites/laserbeam.vmt"
+#define GAUSS_BEAM_SPRITE_NODEPTH      "sprites/laserbeam_nodepth.vmt"
 #define GAUSS_CHARGE_TIME              0.3f          // Time between ammo consumption during charging
 #define MAX_GAUSS_CHARGE               16.0f         // Maximum ammo that can be consumed
 #define MAX_GAUSS_CHARGE_TIME          3.0f          // Time to reach maximum charge
@@ -50,6 +51,7 @@
 #ifdef CLIENT_DLL
     CLIENTEFFECT_REGISTER_BEGIN(PrecacheEffectGauss)
         CLIENTEFFECT_MATERIAL("sprites/laserbeam")
+        CLIENTEFFECT_MATERIAL("sprites/laserbeam_nodepth")
     CLIENTEFFECT_REGISTER_END()
 #endif
 
@@ -92,6 +94,9 @@ public:
     // Audio functions
     void    StopChargeSound(void);
     void    PlayAfterShock(void);
+    
+    // Visual effect functions
+    void    DoMuzzleSparkEffect(void);
 
 #ifndef CLIENT_DLL
     DECLARE_ACTTABLE();
@@ -122,7 +127,7 @@ ConVar sk_plr_dmg_gauss("sk_plr_dmg_gauss", "20", FCVAR_REPLICATED);
 ConVar sk_plr_max_dmg_gauss("sk_plr_max_dmg_gauss", "200", FCVAR_REPLICATED);
 
 // Gameplay settings
-ConVar rb_selfgauss("rb_selfgauss", "1", FCVAR_REPLICATED, "Enable self damage from gauss gun reflections and explosions (1=enabled, 0=disabled)");
+ConVar rbsv_selfgauss("rbsv_selfgauss", "1", FCVAR_REPLICATED, "Enable self damage from gauss gun reflections and explosions (1=enabled, 0=disabled)");
 
 //=============================================================================
 // Network Implementation
@@ -234,6 +239,7 @@ CWeaponGauss::CWeaponGauss(void)
 void CWeaponGauss::Precache(void)
 {
     PrecacheModel(GAUSS_BEAM_SPRITE);
+    PrecacheModel(GAUSS_BEAM_SPRITE_NODEPTH);
 
     #ifndef CLIENT_DLL
         PrecacheScriptSound("Weapon_Gauss.ChargeLoop");
@@ -295,6 +301,9 @@ void CWeaponGauss::PrimaryAttack(void)
     // Play fire sound - NO aftershock for primary fire
     WeaponSound(SINGLE);
     pOwner->DoMuzzleFlash();
+    
+    // Create muzzle spark effect
+    DoMuzzleSparkEffect();
 
     SendWeaponAnim(ACT_VM_PRIMARYATTACK);
     pOwner->SetAnimation(PLAYER_ATTACK1);
@@ -391,7 +400,7 @@ void CWeaponGauss::IncreaseCharge(void)
             EmitSound("Weapon_Gauss.Electro2");
             
             // Deal damage to player only if self damage is enabled
-            if (rb_selfgauss.GetBool())
+            if (rbsv_selfgauss.GetBool())
             {
                 // Create damage info with proper attacker (use the player as both inflictor and attacker)
                 CTakeDamageInfo dmgInfo(pOwner, pOwner, 50, DMG_SHOCK);
@@ -576,7 +585,7 @@ void CWeaponGauss::Fire(void)
                     CTakeDamageInfo radiusDmgInfo(this, pOwner, flDamage * hitAngle, DMG_SHOCK);
                     
                     // If self damage is disabled, exclude the owner from radius damage
-                    CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
+                    CBaseEntity *pIgnoreEntity = rbsv_selfgauss.GetBool() ? NULL : pOwner;
                     
                     RadiusDamage(radiusDmgInfo, tr.endpos, 64.0f, CLASS_NONE, pIgnoreEntity);
                 #endif
@@ -640,6 +649,9 @@ void CWeaponGauss::ChargedFire(void)
     WeaponSound(SINGLE);
     m_flPlayAftershock = gpGlobals->curtime + random->RandomFloat(0.3f, 0.8f);
     pOwner->DoMuzzleFlash();
+    
+    // Create muzzle spark effect
+    DoMuzzleSparkEffect();
 
     SendWeaponAnim(ACT_VM_SECONDARYATTACK);
     pOwner->SetAnimation(PLAYER_ATTACK1);
@@ -684,7 +696,7 @@ void CWeaponGauss::ChargedFire(void)
         pOwner->SetAbsVelocity(vecVelocity);
         
         // Determine if we should ignore the owner for explosion damage
-        CBaseEntity *pIgnoreEntity = rb_selfgauss.GetBool() ? NULL : pOwner;
+        CBaseEntity *pIgnoreEntity = rbsv_selfgauss.GetBool() ? NULL : pOwner;
         
         // Move other players back to history positions based on local player's lag
         CHL2MP_Player *pHL2Player = dynamic_cast<CHL2MP_Player*>(pOwner);
@@ -1045,8 +1057,13 @@ void CWeaponGauss::DrawBeam(const Vector &startPos, const Vector &endPos, float 
         if (distance < 1.0f || distance > MAX_TRACE_LENGTH)
             return;
 
+        // Choose beam sprite based on whether this is being viewed by the local player
+        // Server can't access ShouldDrawUsingViewModel(), so use the regular sprite
+        // The client-side beam rendering for viewmodels would need separate implementation
+        const char* beamSprite = GAUSS_BEAM_SPRITE;
+
         // Create main beam
-        CBeam *pMainBeam = CBeam::BeamCreate(GAUSS_BEAM_SPRITE, width);
+        CBeam *pMainBeam = CBeam::BeamCreate(beamSprite, width);
         if (!pMainBeam)
             return;
 
@@ -1085,7 +1102,7 @@ void CWeaponGauss::DrawBeam(const Vector &startPos, const Vector &endPos, float 
         // Create electric bolt effects along beam
         for (int i = 0; i < 3; i++)
         {
-            CBeam *pBoltBeam = CBeam::BeamCreate(GAUSS_BEAM_SPRITE, (width/2.0f) + i);
+            CBeam *pBoltBeam = CBeam::BeamCreate(beamSprite, (width/2.0f) + i);
             if (!pBoltBeam)
                 continue;
 
@@ -1253,6 +1270,32 @@ void CWeaponGauss::StopChargeSound(void)
             m_sndCharge = NULL;
         }
     #endif
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Create muzzle spark effects similar to crossbow reload sparks
+//-----------------------------------------------------------------------------
+void CWeaponGauss::DoMuzzleSparkEffect(void)
+{
+    CBasePlayer *pOwner = ToBasePlayer(GetOwner());
+    if (!pOwner)
+        return;
+
+    CBaseViewModel *pViewModel = pOwner->GetViewModel();
+    if (!pViewModel)
+        return;
+
+    CEffectData data;
+
+#ifdef CLIENT_DLL
+    data.m_hEntity = pViewModel->GetRefEHandle();
+#else
+    data.m_nEntIndex = pViewModel->entindex();
+#endif
+    data.m_vOrigin = GetAbsOrigin();
+    data.m_nAttachmentIndex = 1; // Use attachment 1 like crossbow
+
+    DispatchEffect("GaussLoad", data);
 }
 
 //=============================================================================

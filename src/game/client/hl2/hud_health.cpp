@@ -271,9 +271,9 @@ Color CHudHealth::GetHealthDisplayColor( int health )
 	else
 	{
 		// Normal health - read rb_hud_color dynamically (like suit power does)
-		extern ConVar rb_hud_color;
+		extern ConVar rbcl_hud_color;
 		int r = 255, g = 255, b = 255;
-		sscanf( rb_hud_color.GetString(), "%d %d %d", &r, &g, &b );
+		sscanf( rbcl_hud_color.GetString(), "%d %d %d", &r, &g, &b );
 		return Color(r, g, b, 255);
 	}
 }

@@ -209,6 +209,39 @@ EventDesiredResult< CHL2MPBot > CHL2MPBotMainAction::OnStuck( CHL2MPBot *me )
 		UTIL_LogPrintf( "   path_goal ( \"NULL\" )\n" );
 	}
 
+	// If bot has been stuck for more than 3 seconds, try teleporting to nearest walkable nav area
+	float stuckDuration = me->GetLocomotionInterface()->GetStuckDuration();
+	if ( stuckDuration > 3.0f )
+	{
+		// Find nearest nav area that's walkable
+		CNavArea *nearestArea = TheNavMesh->GetNearestNavArea( me->GetAbsOrigin(), false, 2000.0f, false, true, me->GetTeamNumber() );
+		if ( nearestArea )
+		{
+			// Get a safe position within the nav area
+			Vector safePos = nearestArea->GetCenter();
+			safePos.z = nearestArea->GetZ( safePos ) + 10.0f; // Add some clearance above ground
+			
+			// Make sure the destination is clear
+			trace_t tr;
+			Vector mins = me->GetPlayerMins();
+			Vector maxs = me->GetPlayerMaxs();
+			UTIL_TraceHull( safePos, safePos, mins, maxs, MASK_PLAYERSOLID, me, COLLISION_GROUP_PLAYER, &tr );
+			
+			if ( !tr.startsolid )
+			{
+				// Clear any stuck status and teleport
+				me->GetLocomotionInterface()->ClearStuckStatus();
+				me->Teleport( &safePos, NULL, NULL );
+				
+				UTIL_LogPrintf( "   teleported to nav area (%3.2f %3.2f %3.2f)\n", 
+								safePos.x, safePos.y, safePos.z );
+				
+				return TryContinue();
+			}
+		}
+	}
+
+	// Fall back to original stuck behavior for shorter stuck durations or if teleport failed
 	me->GetLocomotionInterface()->Jump();
 
 	if ( RandomInt( 0, 100 ) < 50 )

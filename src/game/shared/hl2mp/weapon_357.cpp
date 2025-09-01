@@ -21,11 +21,14 @@
 #include "weapon_hl2mpbasehlmpcombatweapon.h"
 #include "zoom_shared.h" // Include for zoom functionality
 
+// External declarations for cvars from other files
+extern ConVar rbcl_smooth_zoom;
+
 #ifdef CLIENT_DLL
 #define CWeapon357 C_Weapon357
 #endif
 
-ConVar rb_357_zoom("rb_357_zoom", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable 357 zoom functionality");
+ConVar rbsv_357_zoom("rbsv_357_zoom", "1", FCVAR_REPLICATED | FCVAR_NOTIFY, "Enable or disable 357 zoom functionality");
 //-----------------------------------------------------------------------------
 // CWeapon357
 //-----------------------------------------------------------------------------
@@ -123,7 +126,7 @@ bool CWeapon357::Holster(CBaseCombatWeapon *pSwitchingTo)
 //-----------------------------------------------------------------------------
 void CWeapon357::ToggleZoom(void)
 {
-    if (!rb_357_zoom.GetBool())
+    if (!rbsv_357_zoom.GetBool())
         return;
 
     CBasePlayer *pPlayer = ToBasePlayer(GetOwner());
@@ -132,7 +135,7 @@ void CWeapon357::ToggleZoom(void)
         return;
 
 #ifndef CLIENT_DLL
-    float zoomTransitionTime = rb_smooth_zoom.GetBool() ? 0.2f : 0.0f;
+    float zoomTransitionTime = rbcl_smooth_zoom.GetBool() ? 0.2f : 0.0f;
 
     if (m_bInZoom)
     {

@@ -1,0 +1,10 @@
+"Sprite"
+{
+	"$spriteorientation" "vp_parallel"
+	"$spriteorigin" "[ 0.50 0.50 ]"
+	"$basetexture" "sprites/laserbeam"
+	"$znearer" "0"
+	"$zwrite" "0"
+	"$ignorez" "1"
+	"$nocull" "1"
+}

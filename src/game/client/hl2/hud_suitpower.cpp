@@ -19,7 +19,7 @@
 using namespace vgui;
 
 // Access to the infinite aux power ConVar
-extern ConVar rb_infinite_aux_power;
+extern ConVar rbsv_infinite_aux_power;
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -180,7 +180,7 @@ void CHudSuitPower::OnThink( void )
 void CHudSuitPower::Paint()
 {
 	// Don't show aux power HUD when infinite aux power is enabled
-	if ( rb_infinite_aux_power.GetBool() )
+	if ( rbsv_infinite_aux_power.GetBool() )
 		return;
 
 	C_BaseHLPlayer *pPlayer = (C_BaseHLPlayer *)C_BasePlayer::GetLocalPlayer();

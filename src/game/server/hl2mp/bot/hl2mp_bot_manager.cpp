@@ -124,6 +124,7 @@ void LoadBotNamesFromFile()
 
 //----------------------------------------------------------------------------------------------------------------
 // Get a random bot name from our list, avoiding duplicates until all names are used
+// Also checks for existing players with the same name and appends a number if needed
 const char* GetUniqueBotName()
 {
 	// Load names on first use
@@ -159,15 +160,101 @@ const char* GetUniqueBotName()
 		return "Bot";
 	}
 	
-	// Pick a random index from the available names
-	int randomIndex = RandomInt(0, g_AvailableNameIndices.Count() - 1);
-	int nameIndex = g_AvailableNameIndices[randomIndex];
+	// Try several names until we find one that doesn't conflict
+	for (int attempts = 0; attempts < g_AvailableNameIndices.Count(); attempts++)
+	{
+		// Pick a random index from the available names
+		int randomIndex = RandomInt(0, g_AvailableNameIndices.Count() - 1);
+		int nameIndex = g_AvailableNameIndices[randomIndex];
+		
+		// Get the base name
+		const char* baseName = g_BotNamesList[nameIndex].String();
+		static char uniqueName[256];
+		
+		// Check if this base name is already in use
+		bool nameInUse = false;
+		for (int i = 1; i <= gpGlobals->maxClients; i++)
+		{
+			CBasePlayer *pPlayer = UTIL_PlayerByIndex(i);
+			if (pPlayer && pPlayer->IsConnected())
+			{
+				if (V_strcmp(pPlayer->GetPlayerName(), baseName) == 0)
+				{
+					nameInUse = true;
+					break;
+				}
+			}
+		}
+		
+		if (!nameInUse)
+		{
+			// Base name is available, use it
+			V_strcpy_safe(uniqueName, baseName);
+			g_AvailableNameIndices.Remove(randomIndex);
+			return uniqueName;
+		}
+		else
+		{
+			// Base name is in use, try with numbers appended
+			for (int suffix = 2; suffix <= 99; suffix++)
+			{
+				V_snprintf(uniqueName, sizeof(uniqueName), "%s(%d)", baseName, suffix);
+				
+				// Check if this numbered version is available
+				bool numberedNameInUse = false;
+				for (int j = 1; j <= gpGlobals->maxClients; j++)
+				{
+					CBasePlayer *pPlayer = UTIL_PlayerByIndex(j);
+					if (pPlayer && pPlayer->IsConnected())
+					{
+						if (V_strcmp(pPlayer->GetPlayerName(), uniqueName) == 0)
+						{
+							numberedNameInUse = true;
+							break;
+						}
+					}
+				}
+				
+				if (!numberedNameInUse)
+				{
+					// Found available numbered name, don't remove from pool since base name is still taken
+					return uniqueName;
+				}
+			}
+			
+			// If we get here, all numbered versions 2-99 are taken, remove this name from available pool
+			g_AvailableNameIndices.Remove(randomIndex);
+		}
+	}
 	
-	// Get the name and remove this index from available list
-	const char* name = g_BotNamesList[nameIndex].String();
-	g_AvailableNameIndices.Remove(randomIndex);
+	// If we exhausted all names, fall back to a guaranteed unique name
+	static char fallbackName[256];
+	for (int i = 1; i <= 999; i++)
+	{
+		V_snprintf(fallbackName, sizeof(fallbackName), "Bot%d", i);
+		
+		bool fallbackInUse = false;
+		for (int j = 1; j <= gpGlobals->maxClients; j++)
+		{
+			CBasePlayer *pPlayer = UTIL_PlayerByIndex(j);
+			if (pPlayer && pPlayer->IsConnected())
+			{
+				if (V_strcmp(pPlayer->GetPlayerName(), fallbackName) == 0)
+				{
+					fallbackInUse = true;
+					break;
+				}
+			}
+		}
+		
+		if (!fallbackInUse)
+		{
+			return fallbackName;
+		}
+	}
 	
-	return name;
+	// Absolute fallback
+	return "Bot";
 }
 
 //----------------------------------------------------------------------------------------------------------------

@@ -22,7 +22,7 @@
 extern Vector			g_vecAttackDir;		// In globals.cpp
 
 // ConVar for controlling gib blood particles
-ConVar rb_gib_blood("rb_gib_blood", "1", FCVAR_ARCHIVE, "Enable blood particle effects from gibs while flying (0 = off, 1 = on)");
+ConVar rbcl_gib_blood("rbcl_gib_blood", "1", FCVAR_ARCHIVE, "Enable blood particle effects from gibs while flying (0 = off, 1 = on)");
 
 // Cache commonly used values to avoid repeated ConVar lookups and calculations
 static bool g_bBloodEnabled = true;
@@ -35,7 +35,7 @@ inline void UpdateBloodCache()
 	float flCurrentTime = gpGlobals->curtime;
 	if (flCurrentTime - g_flLastBloodCheck > 1.0f)
 	{
-		g_bBloodEnabled = rb_gib_blood.GetBool();
+		g_bBloodEnabled = rbcl_gib_blood.GetBool();
 		g_bIsGerman = (g_Language.GetInt() == LANGUAGE_GERMAN);
 		g_flLastBloodCheck = flCurrentTime;
 	}

@@ -425,14 +425,36 @@ void GaussImpactCallback(const CEffectData &data)
 
 DECLARE_CLIENT_EFFECT("GaussImpact", GaussImpactCallback);
 
-extern ConVar rb_dlight_muzzleflash;
+//-----------------------------------------------------------------------------
+// Purpose: Gauss muzzle spark effect callback (similar to crossbow reload sparks)
+// Input  : &data - Effect data containing viewmodel entity and attachment info
+//-----------------------------------------------------------------------------
+void GaussLoadCallback(const CEffectData &data)
+{
+	IClientRenderable *pRenderable = data.GetRenderable();
+	if (!pRenderable)
+		return;
+
+	Vector	position;
+	QAngle	angles;
+
+	// If we found the attachment, emit sparks there
+	if (pRenderable->GetAttachment(data.m_nAttachmentIndex, position, angles))
+	{
+		FX_ElectricSpark(position, 1.0f, 1.0f, NULL);
+	}
+}
+
+DECLARE_CLIENT_EFFECT("GaussLoad", GaussLoadCallback);
+
+extern ConVar rbcl_dlight_muzzleflash;
 
 //-----------------------------------------------------------------------------
 // Creates a muzzleflash elight
 //-----------------------------------------------------------------------------
 void CreateMuzzleflashELight( const Vector &origin, int exponent, int nMinRadius, int nMaxRadius, ClientEntityHandle_t hEntity )
 {
-	if ( rb_dlight_muzzleflash.GetInt() )
+	if ( rbcl_dlight_muzzleflash.GetInt() )
 	{
 		int entityIndex = ClientEntityList().HandleToEntIndex( hEntity );
 		if ( entityIndex >= 0 )
@@ -528,7 +550,7 @@ void MuzzleFlash_Airboat( ClientEntityHandle_t hEntity, int attachmentIndex )
 	
 #ifndef _XBOX
 	// Grab the origin out of the transform for the attachment
-	if ( rb_dlight_muzzleflash.GetInt() )
+	if ( rbcl_dlight_muzzleflash.GetInt() )
 	{
 		// If the client hasn't seen this entity yet, bail.
 		matrix3x4_t	matAttachment;
