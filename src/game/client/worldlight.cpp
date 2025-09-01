@@ -30,6 +30,9 @@
 
 static IVEngineServer *g_pEngineServer = nullptr;
 
+// Light cache grid size - 128 units per grid cell for good spatial locality
+const float CWorldLights::LIGHT_CACHE_GRID_SIZE = 128.0f;
+
 //-----------------------------------------------------------------------------
 // Purpose: Calculate intensity ratio for a worldlight by distance
 //-----------------------------------------------------------------------------
@@ -89,6 +92,8 @@ CWorldLights::CWorldLights() : CAutoGameSystem( "World lights" )
 {
 	m_nWorldLights = 0;
 	m_pWorldLights = nullptr;
+	m_nCacheFrame = 0;
+	ClearLightCache();
 }
 
 //-----------------------------------------------------------------------------
@@ -103,6 +108,8 @@ void CWorldLights::Clear()
 		delete[] m_pWorldLights;
 		m_pWorldLights = nullptr;
 	}
+	
+	ClearLightCache();
 }
 
 //-----------------------------------------------------------------------------
@@ -182,6 +189,16 @@ bool CWorldLights::GetBrightestLightSource( const Vector &vecPosition, Vector &v
 {
 	if ( !m_nWorldLights || !m_pWorldLights )
 		return false;
+	
+	// Advance cache frame counter
+	m_nCacheFrame = gpGlobals->framecount;
+	
+	// Check light cache first for performance optimization
+	if ( GetCachedLightResult( vecPosition, vecLightPos, vecLightBrightness ) )
+	{
+		// Cache hit - return cached result
+		return !vecLightBrightness.IsZero();
+	}
 
 	// Default light position and brightness to zero
 	vecLightBrightness.Init();
@@ -290,8 +307,12 @@ bool CWorldLights::GetBrightestLightSource( const Vector &vecPosition, Vector &v
 
 	delete[] pvs;
 
+	// Cache the result for future lookups
+	bool bValidResult = !vecLightBrightness.IsZero();
+	CacheLightResult( vecPosition, vecLightPos, vecLightBrightness, bValidResult );
+
 	//engine->Con_NPrintf( m_nWorldLights, "result: %d", !vecLightBrightness.IsZero() );
-	return !vecLightBrightness.IsZero();
+	return bValidResult;
 }
 
 //-----------------------------------------------------------------------------
@@ -299,3 +320,72 @@ bool CWorldLights::GetBrightestLightSource( const Vector &vecPosition, Vector &v
 //-----------------------------------------------------------------------------
 static CWorldLights s_WorldLights;
 CWorldLights *g_pWorldLights = &s_WorldLights;
+
+//-----------------------------------------------------------------------------
+// Purpose: Get light cache index from world position using spatial hashing
+//-----------------------------------------------------------------------------
+int CWorldLights::GetLightCacheIndex( const Vector &vecPosition )
+{
+	// Simple spatial hash based on world position
+	int x = (int)( vecPosition.x / LIGHT_CACHE_GRID_SIZE );
+	int y = (int)( vecPosition.y / LIGHT_CACHE_GRID_SIZE );
+	int z = (int)( vecPosition.z / LIGHT_CACHE_GRID_SIZE );
+	
+	// Hash the coordinates to get cache index
+	unsigned int hash = ( ( x * 73856093 ) ^ ( y * 19349663 ) ^ ( z * 83492791 ) );
+	return hash % LIGHT_CACHE_SIZE;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Check if we have a valid cached light result for this position
+//-----------------------------------------------------------------------------
+bool CWorldLights::GetCachedLightResult( const Vector &vecPosition, Vector &vecLightPos, Vector &vecLightBrightness )
+{
+	int cacheIndex = GetLightCacheIndex( vecPosition );
+	LightCacheEntry_t &entry = m_LightCache[cacheIndex];
+	
+	// Check if cache entry is valid and recent
+	int frameAge = m_nCacheFrame - entry.nCacheFrame;
+	if ( frameAge > 5 || frameAge < 0 ) // Cache expires after 5 frames
+		return false;
+	
+	// Check if position is close enough to cached position
+	float distSqr = entry.vecPosition.DistToSqr( vecPosition );
+	if ( distSqr > LIGHT_CACHE_GRID_SIZE * LIGHT_CACHE_GRID_SIZE * 0.25f ) // Within 25% of grid size
+		return false;
+	
+	// Valid cache hit
+	vecLightPos = entry.vecLightPos;
+	vecLightBrightness = entry.vecLightBrightness;
+	return entry.bValidResult;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Cache a light calculation result
+//-----------------------------------------------------------------------------
+void CWorldLights::CacheLightResult( const Vector &vecPosition, const Vector &vecLightPos, const Vector &vecLightBrightness, bool bValidResult )
+{
+	int cacheIndex = GetLightCacheIndex( vecPosition );
+	LightCacheEntry_t &entry = m_LightCache[cacheIndex];
+	
+	entry.vecPosition = vecPosition;
+	entry.vecLightPos = vecLightPos;
+	entry.vecLightBrightness = vecLightBrightness;
+	entry.nCacheFrame = m_nCacheFrame;
+	entry.bValidResult = bValidResult;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Clear the entire light cache
+//-----------------------------------------------------------------------------
+void CWorldLights::ClearLightCache()
+{
+	for ( int i = 0; i < LIGHT_CACHE_SIZE; i++ )
+	{
+		m_LightCache[i].vecPosition.Init();
+		m_LightCache[i].vecLightPos.Init();
+		m_LightCache[i].vecLightBrightness.Init();
+		m_LightCache[i].nCacheFrame = -1;
+		m_LightCache[i].bValidResult = false;
+	}
+}

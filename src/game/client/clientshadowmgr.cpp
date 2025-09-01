@@ -82,6 +82,7 @@
 #include "bonetoworldarray.h"
 #include "cmodel.h"
 #include "worldlight.h"
+#include "view.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -107,6 +108,14 @@ ConVar r_flashlightdepthres( "r_flashlightdepthres", "1024" );
 #endif
 
 ConVar r_threaded_client_shadow_manager( "r_threaded_client_shadow_manager", "0" );
+
+// Shadow optimization console variables
+static ConVar r_shadow_max_distance( "r_shadow_max_distance", "1200", FCVAR_ARCHIVE, "Maximum distance for shadow casting", true, 200.0f, true, 3000.0f );
+static ConVar r_shadow_lod_distance_start( "r_shadow_lod_distance_start", "600", FCVAR_ARCHIVE, "Distance where shadow quality LOD begins", true, 100.0f, true, 2000.0f );
+static ConVar r_shadow_lod_distance_end( "r_shadow_lod_distance_end", "1000", FCVAR_ARCHIVE, "Distance where shadow quality reaches minimum", true, 200.0f, true, 2500.0f );
+static ConVar r_shadow_min_screen_area( "r_shadow_min_screen_area", "8.0", FCVAR_ARCHIVE, "Minimum screen area (pixels squared) for shadow rendering", true, 1.0f, true, 100.0f );
+static ConVar r_shadow_static_cache( "r_shadow_static_cache", "0", FCVAR_ARCHIVE, "Enable static shadow caching for performance (0=off, 1=conservative)", true, 0, true, 1 );
+static ConVar r_shadow_cache_maxage( "r_shadow_cache_maxage", "10", FCVAR_ARCHIVE, "Maximum age in frames before static shadow cache expires", true, 1, true, 60 );
 
 #ifdef _WIN32
 #pragma warning( disable: 4701 )
@@ -812,6 +821,7 @@ private:
 		SHADOW_FLAGS_BRUSH_MODEL =		(CLIENT_SHADOW_FLAGS_LAST_FLAG << 2), 
 		SHADOW_FLAGS_USING_LOD_SHADOW = (CLIENT_SHADOW_FLAGS_LAST_FLAG << 3),
 		SHADOW_FLAGS_LIGHT_WORLD =		(CLIENT_SHADOW_FLAGS_LAST_FLAG << 4),
+		SHADOW_FLAGS_STATIC_CACHED =	(CLIENT_SHADOW_FLAGS_LAST_FLAG << 5),
 	};
 
 	struct ClientShadow_t
@@ -834,6 +844,13 @@ private:
 		CTextureReference		m_ShadowDepthTexture;
 		int						m_nRenderFrame;
 		EHANDLE					m_hTargetEntity;
+		
+		// Static shadow caching for performance optimization
+		int						m_nCacheFrame;		// Frame when cache was last updated
+		bool					m_bStaticCached;	// Whether this shadow is using static cache
+		bool					m_bEntityStatic;	// Whether the entity is considered static for caching
+		Vector					m_vecCachedMins;	// Cached entity bounds for movement detection
+		Vector					m_vecCachedMaxs;
 	};
 
 private:
@@ -907,6 +924,12 @@ private:
 	// One of these gets called with every shadow that potentially will need to re-render
 	bool DrawRenderToTextureShadow( unsigned short clientShadowHandle, float flArea );
 	void DrawRenderToTextureShadowLOD( unsigned short clientShadowHandle );
+	
+	// Static shadow caching functions
+	bool IsEntityStatic( IClientRenderable *pRenderable );
+	bool ShouldUseStaticShadowCache( ClientShadowHandle_t handle );
+	bool IsStaticShadowCacheValid( ClientShadowHandle_t handle );
+	void UpdateStaticShadowCache( ClientShadowHandle_t handle );
 
 	// Draws all children shadows into our own
 	bool DrawShadowHierarchy( IClientRenderable *pRenderable, const ClientShadow_t &shadow, bool bChild = false );
@@ -1109,6 +1132,15 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 	float flRadius;
 	s_ClientShadowMgr.ComputeBoundingSphere( pRenderable, vecAbsCenter, flRadius );
 
+	// Early distance culling optimization - reject shadows beyond max distance
+	Vector vecCameraPos = CurrentViewOrigin();
+	float flDistanceToCamera = ( vecAbsCenter - vecCameraPos ).Length();
+	float flMaxShadowDistance = r_shadow_max_distance.GetFloat();
+	
+	// Apply distance fade - use blobby shadows for distant objects
+	if ( flDistanceToCamera > flMaxShadowDistance )
+		return;
+
 	// Compute a box surrounding the shadow
 	Vector vecAbsMins, vecAbsMaxs;
 	s_ClientShadowMgr.ComputeShadowBBox( pRenderable, clientShadowHandle, vecAbsCenter, flRadius, &vecAbsMins, &vecAbsMaxs );
@@ -1119,10 +1151,18 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 	if (engine->CullBox( vecAbsMins, vecAbsMaxs ))
 		return;
 
+	// Calculate screen area for prioritization
+	float flScreenArea = ComputeScreenArea( vecAbsCenter, flRadius );
+	
+	// Cull shadows with very small screen area
+	if ( flScreenArea < r_shadow_min_screen_area.GetFloat() )
+		return;
+
 	int i = m_ShadowsInView.AddToTail( );
 	VisibleShadowInfo_t &info = m_ShadowsInView[i];
 	info.m_hShadow = clientShadowHandle;
-	m_ShadowsInView[i].m_flArea = ComputeScreenArea( vecAbsCenter, flRadius );
+	m_ShadowsInView[i].m_flArea = flScreenArea;
+	info.m_vecAbsCenter = vecAbsCenter;
 
 	// Har, har. When water is rendering (or any multipass technique), 
 	// we may well initially render from a viewpoint which doesn't include this shadow. 
@@ -1133,7 +1173,25 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 
 
 //-----------------------------------------------------------------------------
+// Comparison function for shadow priority sorting
+//-----------------------------------------------------------------------------
+static CVisibleShadowList *s_pCurrentShadowList = NULL;
+
+static int ShadowAreaCompare( const int *a, const int *b )
+{
+	Assert( s_pCurrentShadowList );
+	float areaA = s_pCurrentShadowList->GetVisibleShadow(*a).m_flArea;
+	float areaB = s_pCurrentShadowList->GetVisibleShadow(*b).m_flArea;
+	
+	// Sort in descending order (largest area first)
+	if ( areaA > areaB ) return -1;
+	if ( areaA < areaB ) return 1;
+	return 0;
+}
+
+//-----------------------------------------------------------------------------
 // CVisibleShadowList - Sort based on screen area/priority
+// Optimized: Replace O(n²) selection sort with efficient sorting
 //-----------------------------------------------------------------------------
 void CVisibleShadowList::PrioritySort()
 {
@@ -1142,26 +1200,19 @@ void CVisibleShadowList::PrioritySort()
 
 	m_PriorityIndex.RemoveAll();
 
-	int i, j;
-	for ( i = 0; i < nCount; ++i )
+	// Build initial index array
+	for ( int i = 0; i < nCount; ++i )
 	{
 		m_PriorityIndex.AddToTail(i);
 	}
 
-	for ( i = 0; i < nCount - 1; ++i )
+	// Use efficient sorting - this is much faster than O(n²) selection sort
+	if ( nCount > 1 )
 	{
-		int nLargestInd = i;
-		float flLargestArea = m_ShadowsInView[m_PriorityIndex[i]].m_flArea;
-		for ( j = i + 1; j < nCount; ++j )
-		{
-			int nIndex = m_PriorityIndex[j];
-			if ( flLargestArea < m_ShadowsInView[nIndex].m_flArea )
-			{
-				nLargestInd = j;
-				flLargestArea = m_ShadowsInView[nIndex].m_flArea;
-			}
-		}
-		::V_swap( m_PriorityIndex[i], m_PriorityIndex[nLargestInd] );
+		// Set static pointer for comparison function
+		s_pCurrentShadowList = this;
+		m_PriorityIndex.Sort( ShadowAreaCompare );
+		s_pCurrentShadowList = NULL;
 	}
 }
 
@@ -1850,6 +1901,13 @@ ClientShadowHandle_t CClientShadowMgr::CreateProjectedTexture( ClientEntityHandl
 	shadow.m_LerpStartDistance = 0.0f;
 	shadow.m_LastOrigin.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	shadow.m_LastAngles.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	
+	// Initialize static shadow caching fields
+	shadow.m_nCacheFrame = -1;
+	shadow.m_bStaticCached = false;
+	shadow.m_bEntityStatic = false;
+	shadow.m_vecCachedMins.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_vecCachedMaxs.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	Assert( ( ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT ) == 0 ) != 
 			( ( shadow.m_Flags & SHADOW_FLAGS_SHADOW ) == 0 ) );
 
@@ -3219,7 +3277,31 @@ void CClientShadowMgr::UpdateProjectedTextureInternal( ClientShadowHandle_t hand
 	{
 		Assert( shadow.m_Flags & SHADOW_FLAGS_SHADOW );
 		Assert( ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT ) == 0 );
-		UpdateShadow( handle, force );
+		
+		// Check for static shadow caching optimization
+		if ( !force && ShouldUseStaticShadowCache( handle ) )
+		{
+			// If cache is valid, skip expensive shadow update
+			if ( IsStaticShadowCacheValid( handle ) )
+			{
+				// Cache hit - but still need to check if shadow projection changed
+				// Always update if entity is marked dirty to prevent clipping
+				IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+				if ( pRenderable && !pRenderable->IsShadowDirty() )
+				{
+					return; // Safe to use cache
+				}
+			}
+			
+			// Cache miss or entity dirty - update the cache after rendering
+			UpdateShadow( handle, force );
+			UpdateStaticShadowCache( handle );
+		}
+		else
+		{
+			// Normal shadow update (non-static or cache disabled)
+			UpdateShadow( handle, force );
+		}
 	}
 }
 
@@ -4108,8 +4190,29 @@ void CClientShadowMgr::ComputeShadowTextures( const CViewSetup &viewShadow, int 
 		const VisibleShadowInfo_t &info = s_VisibleShadowList.GetVisibleShadow(i);
 		if ( nModelsRendered < nMaxShadows )
 		{
-			if ( DrawRenderToTextureShadow( info.m_hShadow, info.m_flArea ) )
+			// Calculate distance from camera for LOD decision
+			Vector vecCameraPos = CurrentViewOrigin();
+			float flDistance = ( info.m_vecAbsCenter - vecCameraPos ).Length();
+			
+			// Apply shadow quality LOD based on distance
+			float flLODStartDist = r_shadow_lod_distance_start.GetFloat();
+			float flLODEndDist = r_shadow_lod_distance_end.GetFloat();
+			
+			// Use full quality for close shadows, LOD for distant ones
+			if ( flDistance > flLODEndDist )
 			{
+				// Very distant - use LOD shadow
+				DrawRenderToTextureShadowLOD( info.m_hShadow );
+			}
+			else if ( flDistance > flLODStartDist )
+			{
+				// Transition zone - blend between full quality and LOD
+				// For now, use LOD in transition zone too (can be enhanced later)
+				DrawRenderToTextureShadowLOD( info.m_hShadow );
+			}
+			else if ( DrawRenderToTextureShadow( info.m_hShadow, info.m_flArea ) )
+			{
+				// Close distance - full quality shadow
 				++nModelsRendered;
 			}
 		}
@@ -4555,4 +4658,147 @@ void CClientShadowMgr::SetShadowFromWorldLightsEnabled( bool bEnabled )
  
 	m_bShadowFromWorldLights = bEnabled;
 	UpdateAllShadows();
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Determine if an entity is static for shadow caching purposes
+//-----------------------------------------------------------------------------
+bool CClientShadowMgr::IsEntityStatic( IClientRenderable *pRenderable )
+{
+	if ( !pRenderable )
+		return false;
+	
+	// Get the base entity
+	C_BaseEntity *pEntity = pRenderable->GetIClientUnknown()->GetBaseEntity();
+	if ( !pEntity )
+		return false;
+	
+	// Only consider brush models truly static for caching
+	// This is conservative but prevents clipping issues
+	int modelType = modelinfo->GetModelType( pRenderable->GetModel() );
+	if ( modelType != mod_brush )
+		return false;
+	
+	// Check for movement indicators that would make entity non-static
+	// Skip entities with any velocity
+	if ( pEntity->GetAbsVelocity().LengthSqr() > 0.0f )
+		return false;
+	
+	// Skip animating entities (moving parts)
+	if ( pEntity->GetEffects() & EF_NOINTERP )
+		return false;
+	
+	// Additional safety: skip if entity has physics object that could move
+	IPhysicsObject *pPhysics = pEntity->VPhysicsGetObject();
+	if ( pPhysics && !pPhysics->IsAsleep() )
+		return false;
+	
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Check if we should use static shadow caching for this shadow
+//-----------------------------------------------------------------------------
+bool CClientShadowMgr::ShouldUseStaticShadowCache( ClientShadowHandle_t handle )
+{
+	if ( !r_shadow_static_cache.GetBool() )
+		return false;
+	
+	ClientShadow_t &shadow = m_Shadows[handle];
+	
+	// Don't cache flashlights
+	if ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT )
+		return false;
+	
+	// Don't cache if using depth textures
+	if ( shadow.m_Flags & SHADOW_FLAGS_USE_DEPTH_TEXTURE )
+		return false;
+	
+	// Only cache render-to-texture shadows
+	if ( !(shadow.m_Flags & SHADOW_FLAGS_USE_RENDER_TO_TEXTURE) )
+		return false;
+	
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+	return IsEntityStatic( pRenderable );
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Check if the static shadow cache is still valid
+//-----------------------------------------------------------------------------
+bool CClientShadowMgr::IsStaticShadowCacheValid( ClientShadowHandle_t handle )
+{
+	ClientShadow_t &shadow = m_Shadows[handle];
+	
+	// Check if cache is enabled and exists
+	if ( !shadow.m_bStaticCached || shadow.m_nCacheFrame < 0 )
+		return false;
+	
+	// Check cache age - much shorter for moving shadows
+	int nCurrentFrame = gpGlobals->framecount;
+	int nCacheAge = nCurrentFrame - shadow.m_nCacheFrame;
+	if ( nCacheAge > 2 ) // Only cache for 2 frames max to prevent clipping issues
+		return false;
+	
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+	if ( !pRenderable )
+		return false;
+	
+	// Check if entity moved or changed
+	C_BaseEntity *pEntity = pRenderable->GetIClientUnknown()->GetBaseEntity();
+	if ( !pEntity )
+		return false;
+	
+	// Very strict position/angle change detection to prevent clipping
+	if ( shadow.m_LastOrigin.DistToSqr( pEntity->GetAbsOrigin() ) > 0.1f ) // 0.3 unit tolerance
+		return false;
+	
+	QAngle currentAngles = pEntity->GetAbsAngles();
+	if ( fabs( shadow.m_LastAngles.x - currentAngles.x ) > 0.1f ||
+		 fabs( shadow.m_LastAngles.y - currentAngles.y ) > 0.1f ||
+		 fabs( shadow.m_LastAngles.z - currentAngles.z ) > 0.1f )
+		return false;
+	
+	// Check if entity bounds changed
+	Vector mins, maxs;
+	pRenderable->GetRenderBounds( mins, maxs );
+	if ( shadow.m_vecCachedMins.DistToSqr( mins ) > 0.01f ||
+		 shadow.m_vecCachedMaxs.DistToSqr( maxs ) > 0.01f )
+		return false;
+	
+	// Additional check: if entity is marked as dirty, invalidate cache
+	if ( pRenderable->IsShadowDirty() )
+		return false;
+	
+	return true;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Update the static shadow cache for this shadow
+//-----------------------------------------------------------------------------
+void CClientShadowMgr::UpdateStaticShadowCache( ClientShadowHandle_t handle )
+{
+	ClientShadow_t &shadow = m_Shadows[handle];
+	
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+	if ( !pRenderable )
+		return;
+	
+	C_BaseEntity *pEntity = pRenderable->GetIClientUnknown()->GetBaseEntity();
+	if ( !pEntity )
+		return;
+	
+	// Update cache metadata
+	shadow.m_nCacheFrame = gpGlobals->framecount;
+	shadow.m_bStaticCached = true;
+	shadow.m_bEntityStatic = IsEntityStatic( pRenderable );
+	
+	// Cache entity state
+	shadow.m_LastOrigin = pEntity->GetAbsOrigin();
+	shadow.m_LastAngles = pEntity->GetAbsAngles();
+	
+	// Cache entity bounds
+	pRenderable->GetRenderBounds( shadow.m_vecCachedMins, shadow.m_vecCachedMaxs );
+	
+	// Mark as using static cache
+	shadow.m_Flags |= SHADOW_FLAGS_STATIC_CACHED;
 }

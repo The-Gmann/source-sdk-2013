@@ -23,6 +23,18 @@ class ConVar;
 extern ConVar r_worldlight_mincastintensity;
 
 //-----------------------------------------------------------------------------
+// Purpose: Light cache entry for spatial optimization
+//-----------------------------------------------------------------------------
+struct LightCacheEntry_t
+{
+	Vector		vecPosition;		// Cached world position
+	Vector		vecLightPos;		// Best light position found
+	Vector		vecLightBrightness;	// Best light brightness found
+	int			nCacheFrame;		// Frame when cached
+	bool		bValidResult;		// Whether cache contains valid light result
+};
+
+//-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 class CWorldLights : public CAutoGameSystem
@@ -40,10 +52,22 @@ public:
 
 private:
 	void Clear();
+	
+	// Light cache optimization functions
+	int GetLightCacheIndex( const Vector &vecPosition );
+	bool GetCachedLightResult( const Vector &vecPosition, Vector &vecLightPos, Vector &vecLightBrightness );
+	void CacheLightResult( const Vector &vecPosition, const Vector &vecLightPos, const Vector &vecLightBrightness, bool bValidResult );
+	void ClearLightCache();
 
 private:
 	int m_nWorldLights;
 	dworldlight_t *m_pWorldLights;
+	
+	// Spatial light cache for performance optimization
+	static const int LIGHT_CACHE_SIZE = 256;
+	static const float LIGHT_CACHE_GRID_SIZE;
+	LightCacheEntry_t m_LightCache[LIGHT_CACHE_SIZE];
+	int m_nCacheFrame;
 };
 
 // Singleton accessor
