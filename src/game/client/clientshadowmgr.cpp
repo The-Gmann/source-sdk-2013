@@ -72,6 +72,7 @@
 #include "tier0/vprof.h"
 #include "engine/ivmodelinfo.h"
 #include "view_shared.h"
+#include "view.h"
 #include "engine/ivdebugoverlay.h"
 #include "engine/IStaticPropMgr.h"
 #include "datacache/imdlcache.h"
@@ -107,6 +108,17 @@ ConVar r_flashlightdepthres( "r_flashlightdepthres", "1024" );
 #endif
 
 ConVar r_threaded_client_shadow_manager( "r_threaded_client_shadow_manager", "0" );
+
+// Enhanced shadow quality ConVars for modern hardware optimization
+static ConVar r_shadow_distance_fade_start( "r_shadow_distance_fade_start", "400", FCVAR_ARCHIVE, "Distance where shadow quality begins to fade" );
+static ConVar r_shadow_distance_fade_end( "r_shadow_distance_fade_end", "800", FCVAR_ARCHIVE, "Distance where shadows fade to blobby/simple" );
+static ConVar r_shadow_quality_bias( "r_shadow_quality_bias", "1.0", FCVAR_ARCHIVE, "Bias for shadow quality calculations (higher = better quality)" );
+static ConVar r_shadow_static_cache_time( "r_shadow_static_cache_time", "5.0", FCVAR_ARCHIVE, "Time in seconds to cache static object shadows" );
+static ConVar r_shadow_temporal_smooth( "r_shadow_temporal_smooth", "1", FCVAR_ARCHIVE, "Enable temporal smoothing for shadow LOD transitions" );
+static ConVar r_shadow_modern_allocation( "r_shadow_modern_allocation", "1", FCVAR_ARCHIVE, "Use improved texture allocation for modern hardware" );
+static ConVar r_shadow_lod_bias( "r_shadow_lod_bias", "0.0", FCVAR_ARCHIVE, "Bias towards higher quality shadows (-1.0 to 1.0)" );
+static ConVar r_shadow_max_distance( "r_shadow_max_distance", "1200", FCVAR_ARCHIVE, "Maximum distance for any shadow rendering" );
+static ConVar r_shadow_rtt_min_quality( "r_shadow_rtt_min_quality", "0.4", FCVAR_ARCHIVE, "Minimum quality multiplier for RTT shadows (lower = more RTT shadows)" );
 
 #ifdef _WIN32
 #pragma warning( disable: 4701 )
@@ -514,10 +526,16 @@ bool CTextureAllocator::HasValidTexture( TextureHandle_t h )
 //-----------------------------------------------------------------------------
 bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float flArea )
 {
-//	Warning( "Top of UseTexture\n" );
-//	DebugPrintCache();
-
 	TextureInfo_t& info = m_Textures[h];
+
+	// Enhanced area calculation for modern hardware
+	if ( r_shadow_modern_allocation.GetBool() )
+	{
+		// Modern hardware can handle larger textures more efficiently
+		// Apply quality bias to increase texture resolution
+		float flQualityBias = r_shadow_quality_bias.GetFloat();
+		flArea *= flQualityBias;
+	}
 
 	// spin up to the best fragment size
 	int nDesiredPower = MIN_TEXTURE_POWER;
@@ -542,7 +560,22 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 		// If the current fragment is at or near the desired power, we're done
 		nCurrentPower = GetFragmentPower(info.m_Fragment);
 		Assert( nCurrentPower <= info.m_Power );
-		bool bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nDesiredPower - nCurrentPower <= 1);
+		
+		// Enhanced logic for modern hardware - be less conservative about texture reuse
+		bool bShouldKeepTexture;
+		if ( r_shadow_modern_allocation.GetBool() )
+		{
+			// Modern systems: be more aggressive about using higher resolution
+			// Only keep if exactly matching or if not redrawing and within 1 level
+			bShouldKeepTexture = (nCurrentPower == nDesiredPower) || 
+								 (!bWillRedraw && (nDesiredPower - nCurrentPower <= 1));
+		}
+		else
+		{
+			// Legacy behavior: more conservative
+			bShouldKeepTexture = (!bWillRedraw) && (nDesiredPower < 8) && (nDesiredPower - nCurrentPower <= 1);
+		}
+		
 		if ((nCurrentPower == nDesiredPower) || bShouldKeepTexture)
 		{
 			// Move to the back of the LRU
@@ -550,9 +583,6 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 			return false;
 		}
 	}
-
-//	Warning( "\n\nUseTexture B\n" );
-//	DebugPrintCache();
 
 	// Grab the LRU fragment from the appropriate cache
 	// If that fragment is connected to a texture, disconnect it.
@@ -576,10 +606,6 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 			--power;
 		}
 	}
-
-
-//	Warning( "\n\nUseTexture C\n" );
-//	DebugPrintCache();
 
 	// Ok, lets see if we're better off than we were...
 	if (currentFragment != INVALID_FRAGMENT_HANDLE)
@@ -606,7 +632,7 @@ bool CTextureAllocator::UseTexture( TextureHandle_t h, bool bWillRedraw, float f
 	// Disconnect existing texture from this fragment (if necessary)
 	DisconnectTextureFromFragment(f);
 
-	// Connnect new texture to this fragment
+	// Connect new texture to this fragment
 	info.m_Fragment = f;
 	m_Fragments[f].m_Texture = h;
 
@@ -834,6 +860,16 @@ private:
 		CTextureReference		m_ShadowDepthTexture;
 		int						m_nRenderFrame;
 		EHANDLE					m_hTargetEntity;
+		
+		// Enhanced shadow quality management
+		float					m_flLastQualityScore;		// Last computed quality score for temporal smoothing
+		float					m_flQualityTransition;		// Smooth transition value (0.0-1.0)
+		float					m_flStaticCacheTime;		// Time this shadow has been static
+		Vector					m_vecLastPosition;			// Last known position for movement detection
+		QAngle					m_angLastAngles;			// Last known angles for movement detection
+		int						m_nLastMovementFrame;		// Frame when last movement was detected
+		bool					m_bIsStatic;				// Is this shadow from a static object?
+		float					m_flDistanceQuality;		// Distance-based quality modifier
 	};
 
 private:
@@ -965,6 +1001,13 @@ private:
 	void	UpdateDirtyShadow( ClientShadowHandle_t handle );
 	void	UpdateShadowDirectionFromLocalLightSource( ClientShadowHandle_t shadowHandle );
 
+	// Enhanced shadow quality functions
+	float	ComputeEnhancedShadowQuality( IClientRenderable *pRenderable, const Vector &vecCenter, float flRadius, float flDistance );
+	bool	IsObjectStatic( IClientRenderable *pRenderable, ClientShadowHandle_t handle );
+	void	UpdateStaticShadowCache( ClientShadowHandle_t handle );
+	float	ComputeSmoothLODTransition( ClientShadowHandle_t handle, float flDesiredQuality );
+	ShadowType_t GetOptimalShadowType( ClientShadowHandle_t handle, float flQualityScore );
+
 private:
 	Vector	m_SimpleShadowDir;
 	color32	m_AmbientLightColor;
@@ -994,6 +1037,11 @@ private:
 	int	m_nMaxDepthTextureShadows;
 
 	bool m_bShadowFromWorldLights;
+
+	// Enhanced shadow quality management state
+	float m_flLastFrameTime;
+	CUtlVector< ClientShadowHandle_t > m_StaticShadows;		// Cached static shadows
+	int m_nQualityFrameCounter;								// Frame counter for quality updates
 
 	friend class CVisibleShadowList;
 	friend class CVisibleShadowFrustumList;
@@ -1066,6 +1114,222 @@ const VisibleShadowInfo_t &CVisibleShadowList::GetVisibleShadow( int i ) const
 
 
 //-----------------------------------------------------------------------------
+// CVisibleShadowList - Computes enhanced shadow quality with distance, temporal smoothing
+//-----------------------------------------------------------------------------
+float CClientShadowMgr::ComputeEnhancedShadowQuality( IClientRenderable *pRenderable, const Vector &vecCenter, float flRadius, float flDistance )
+{
+	CMatRenderContextPtr pRenderContext( materials );
+	float flScreenDiameter = pRenderContext->ComputePixelDiameterOfSphere( vecCenter, flRadius );
+	float flScreenArea = flScreenDiameter * flScreenDiameter;
+	
+	// Distance-based quality scaling
+	float flDistanceFadeStart = r_shadow_distance_fade_start.GetFloat();
+	float flDistanceFadeEnd = r_shadow_distance_fade_end.GetFloat();
+	float flMaxDistance = r_shadow_max_distance.GetFloat();
+	
+	// Early distance cull
+	if ( flDistance > flMaxDistance )
+		return 0.0f;
+	
+	// Compute distance factor (1.0 at close range, fades to 0.0 at far range)
+	float flDistanceFactor = 1.0f;
+	if ( flDistance > flDistanceFadeStart )
+	{
+		if ( flDistance >= flDistanceFadeEnd )
+		{
+			flDistanceFactor = 0.1f; // Don't completely eliminate, just make very low quality
+		}
+		else
+		{
+			// Smooth fade between start and end distances
+			float flFadeRange = flDistanceFadeEnd - flDistanceFadeStart;
+			float flFadeProgress = ( flDistance - flDistanceFadeStart ) / flFadeRange;
+			// Use smooth step function for better visual transition
+			flFadeProgress = flFadeProgress * flFadeProgress * ( 3.0f - 2.0f * flFadeProgress );
+			flDistanceFactor = Lerp( flFadeProgress, 1.0f, 0.1f );
+		}
+	}
+	
+	// Apply quality bias
+	float flQualityBias = r_shadow_quality_bias.GetFloat();
+	float flLODBias = r_shadow_lod_bias.GetFloat();
+	
+	// Combine screen area and distance factors
+	float flBaseQuality = flScreenArea * flDistanceFactor * flQualityBias;
+	
+	// Apply LOD bias (negative bias reduces quality, positive increases it)
+	flBaseQuality *= ( 1.0f + flLODBias );
+	
+	return MAX( flBaseQuality, 0.0f );
+}
+
+//-----------------------------------------------------------------------------
+// Checks if an object is static for caching purposes
+//-----------------------------------------------------------------------------
+bool CClientShadowMgr::IsObjectStatic( IClientRenderable *pRenderable, ClientShadowHandle_t handle )
+{
+	if ( handle == CLIENTSHADOW_INVALID_HANDLE )
+		return false;
+		
+	ClientShadow_t &shadow = m_Shadows[handle];
+	Vector vecCurrentPos = pRenderable->GetRenderOrigin();
+	QAngle angCurrentAngles = pRenderable->GetRenderAngles();
+	
+	// Check if position or angles have changed
+	float flPosDelta = ( vecCurrentPos - shadow.m_vecLastPosition ).Length();
+	QAngle angDelta = angCurrentAngles - shadow.m_angLastAngles;
+	float flAngleDelta = angDelta.Length();
+	
+	// Update tracking
+	shadow.m_vecLastPosition = vecCurrentPos;
+	shadow.m_angLastAngles = angCurrentAngles;
+	
+	// Consider static if minimal movement (threshold for floating point precision)
+	const float flPosThreshold = 0.1f;
+	const float flAngleThreshold = 0.1f;
+	
+	if ( flPosDelta > flPosThreshold || flAngleDelta > flAngleThreshold )
+	{
+		shadow.m_nLastMovementFrame = gpGlobals->framecount;
+		shadow.m_flStaticCacheTime = 0.0f;
+		shadow.m_bIsStatic = false;
+		return false;
+	}
+	
+	// Object hasn't moved, increase cache time
+	shadow.m_flStaticCacheTime += gpGlobals->frametime;
+	
+	// Mark as static after being stationary for the cache time
+	float flCacheThreshold = r_shadow_static_cache_time.GetFloat();
+	if ( shadow.m_flStaticCacheTime >= flCacheThreshold )
+	{
+		shadow.m_bIsStatic = true;
+		return true;
+	}
+	
+	return false;
+}
+
+//-----------------------------------------------------------------------------
+// Computes smooth LOD transition to prevent quality jumps
+//-----------------------------------------------------------------------------
+float CClientShadowMgr::ComputeSmoothLODTransition( ClientShadowHandle_t handle, float flDesiredQuality )
+{
+	if ( !r_shadow_temporal_smooth.GetBool() || handle == CLIENTSHADOW_INVALID_HANDLE )
+		return flDesiredQuality;
+		
+	ClientShadow_t &shadow = m_Shadows[handle];
+	
+	// For static objects, use faster transitions since they're cached
+	float flTransitionSpeed = shadow.m_bIsStatic ? 8.0f : 4.0f;
+	float flFrameTime = gpGlobals->frametime;
+	
+	// Smooth transition between quality levels
+	float flDelta = flDesiredQuality - shadow.m_flLastQualityScore;
+	float flMaxChange = flTransitionSpeed * flFrameTime;
+	
+	// Clamp the change to prevent sudden jumps
+	if ( fabs( flDelta ) > flMaxChange )
+	{
+		flDelta = ( flDelta > 0.0f ) ? flMaxChange : -flMaxChange;
+	}
+	
+	float flSmoothedQuality = shadow.m_flLastQualityScore + flDelta;
+	shadow.m_flLastQualityScore = flSmoothedQuality;
+	
+	return flSmoothedQuality;
+}
+
+//-----------------------------------------------------------------------------
+// Updates static shadow cache management
+//-----------------------------------------------------------------------------
+void CClientShadowMgr::UpdateStaticShadowCache( ClientShadowHandle_t handle )
+{
+	if ( handle == CLIENTSHADOW_INVALID_HANDLE )
+		return;
+		
+	ClientShadow_t &shadow = m_Shadows[handle];
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+	
+	if ( !pRenderable )
+		return;
+	
+	// Check if object has become static
+	bool bWasStatic = shadow.m_bIsStatic;
+	bool bIsNowStatic = IsObjectStatic( pRenderable, handle );
+	
+	if ( bIsNowStatic && !bWasStatic )
+	{
+		// Object became static, add to static cache if not already there
+		if ( m_StaticShadows.Find( handle ) == m_StaticShadows.InvalidIndex() )
+		{
+			m_StaticShadows.AddToTail( handle );
+		}
+	}
+	else if ( !bIsNowStatic && bWasStatic )
+	{
+		// Object is no longer static, remove from cache
+		int idx = m_StaticShadows.Find( handle );
+		if ( idx != m_StaticShadows.InvalidIndex() )
+		{
+			m_StaticShadows.Remove( idx );
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Determines optimal shadow type based on quality score
+//-----------------------------------------------------------------------------
+ShadowType_t CClientShadowMgr::GetOptimalShadowType( ClientShadowHandle_t handle, float flQualityScore )
+{
+	if ( handle == CLIENTSHADOW_INVALID_HANDLE )
+		return SHADOWS_NONE;
+		
+	ClientShadow_t &shadow = m_Shadows[handle];
+	
+	// Check if render-to-texture is enabled
+	if ( !m_RenderToTextureActive )
+		return SHADOWS_SIMPLE;
+	
+	// Use enhanced quality thresholds
+	float flBlobbyCutoff = GetBlobbyCutoffArea();
+	
+	// For static objects, bias towards higher quality since they're cached
+	if ( shadow.m_bIsStatic )
+	{
+		flQualityScore *= 1.5f; // 50% bias towards better quality for static objects
+	}
+	
+	// Multi-threshold system for smoother transitions - more aggressive RTT usage for modern hardware
+	float flHighQualityThreshold = flBlobbyCutoff * 2.5f; // Reduced from 4.0f
+	float flMediumQualityThreshold = flBlobbyCutoff * 0.8f; // Reduced from 1.5f
+	float flMinRTTThreshold = flBlobbyCutoff * r_shadow_rtt_min_quality.GetFloat(); // Configurable minimum for RTT
+	
+	if ( flQualityScore >= flHighQualityThreshold )
+	{
+		return SHADOWS_RENDER_TO_TEXTURE;
+	}
+	else if ( flQualityScore >= flMediumQualityThreshold )
+	{
+		// Always use render-to-texture for medium quality and above
+		return SHADOWS_RENDER_TO_TEXTURE;
+	}
+	else if ( flQualityScore >= flMinRTTThreshold )
+	{
+		// Use RTT for static objects even at lower quality levels
+		return shadow.m_bIsStatic ? SHADOWS_RENDER_TO_TEXTURE : SHADOWS_SIMPLE;
+	}
+	else if ( flQualityScore >= flBlobbyCutoff * 0.2f ) // Lower threshold for simple shadows
+	{
+		return SHADOWS_SIMPLE;
+	}
+	else
+	{
+		return SHADOWS_NONE;
+	}
+}
+
+//-----------------------------------------------------------------------------
 // CVisibleShadowList - Computes approximate screen area of the shadow
 //-----------------------------------------------------------------------------
 float CVisibleShadowList::ComputeScreenArea( const Vector &vecCenter, float r ) const
@@ -1079,7 +1343,7 @@ float CVisibleShadowList::ComputeScreenArea( const Vector &vecCenter, float r ) 
 //-----------------------------------------------------------------------------
 // CVisibleShadowList - Visits every shadow in the list of leaves
 //-----------------------------------------------------------------------------
-void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
+	void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 {
 	CClientShadowMgr::ClientShadow_t& shadow = s_ClientShadowMgr.m_Shadows[clientShadowHandle];
 
@@ -1113,7 +1377,12 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 	Vector vecAbsMins, vecAbsMaxs;
 	s_ClientShadowMgr.ComputeShadowBBox( pRenderable, clientShadowHandle, vecAbsCenter, flRadius, &vecAbsMins, &vecAbsMaxs );
 
-	// FIXME: Add distance check here?
+	// Compute distance from camera for enhanced quality calculation
+	float flDistance = ( vecAbsCenter - MainViewOrigin() ).Length();
+	
+	// Enhanced distance check with max shadow distance
+	if ( flDistance > r_shadow_max_distance.GetFloat() )
+		return;
 
 	// Make sure it's in the frustum. If it isn't it's not interesting
 	if (engine->CullBox( vecAbsMins, vecAbsMaxs ))
@@ -1122,7 +1391,9 @@ void CVisibleShadowList::EnumShadow( unsigned short clientShadowHandle )
 	int i = m_ShadowsInView.AddToTail( );
 	VisibleShadowInfo_t &info = m_ShadowsInView[i];
 	info.m_hShadow = clientShadowHandle;
-	m_ShadowsInView[i].m_flArea = ComputeScreenArea( vecAbsCenter, flRadius );
+	
+	// Use enhanced quality calculation instead of simple screen area
+	m_ShadowsInView[i].m_flArea = s_ClientShadowMgr.ComputeEnhancedShadowQuality( pRenderable, vecAbsCenter, flRadius, flDistance );
 
 	// Har, har. When water is rendering (or any multipass technique), 
 	// we may well initially render from a viewpoint which doesn't include this shadow. 
@@ -1196,6 +1467,10 @@ CClientShadowMgr::CClientShadowMgr() :
 	m_nDepthTextureResolution = r_flashlightdepthres.GetInt();
 	m_bThreaded = false;
 	m_bShadowFromWorldLights = r_worldlight_castshadows.GetBool();
+	
+	// Initialize enhanced shadow quality members
+	m_flLastFrameTime = 0.0f;
+	m_nQualityFrameCounter = 0;
 }
 
 
@@ -1850,6 +2125,17 @@ ClientShadowHandle_t CClientShadowMgr::CreateProjectedTexture( ClientEntityHandl
 	shadow.m_LerpStartDistance = 0.0f;
 	shadow.m_LastOrigin.Init( FLT_MAX, FLT_MAX, FLT_MAX );
 	shadow.m_LastAngles.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	
+	// Initialize enhanced shadow quality fields
+	shadow.m_flLastQualityScore = 0.0f;
+	shadow.m_flQualityTransition = 0.0f;
+	shadow.m_flStaticCacheTime = 0.0f;
+	shadow.m_vecLastPosition.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_angLastAngles.Init( FLT_MAX, FLT_MAX, FLT_MAX );
+	shadow.m_nLastMovementFrame = gpGlobals->framecount;
+	shadow.m_bIsStatic = false;
+	shadow.m_flDistanceQuality = 1.0f;
+	
 	Assert( ( ( shadow.m_Flags & SHADOW_FLAGS_FLASHLIGHT ) == 0 ) != 
 			( ( shadow.m_Flags & SHADOW_FLAGS_SHADOW ) == 0 ) );
 
@@ -3763,6 +4049,45 @@ bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHan
 {
 	ClientShadow_t& shadow = m_Shadows[clientShadowHandle];
 
+	// Update static object caching
+	UpdateStaticShadowCache( clientShadowHandle );
+
+	// Apply enhanced quality calculation with temporal smoothing
+	IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
+	if ( pRenderable )
+	{
+		// Compute distance for enhanced quality calculation
+		Vector vecCenter;
+		float flRadius;
+		ComputeBoundingSphere( pRenderable, vecCenter, flRadius );
+		float flDistance = ( vecCenter - MainViewOrigin() ).Length();
+		
+		// Calculate enhanced quality score
+		float flRawQuality = ComputeEnhancedShadowQuality( pRenderable, vecCenter, flRadius, flDistance );
+		
+		// Apply temporal smoothing to prevent quality jumps
+		float flSmoothedQuality = ComputeSmoothLODTransition( clientShadowHandle, flRawQuality );
+		
+		// Use smoothed quality for texture allocation decision
+		flArea = flSmoothedQuality;
+		
+		// Check if we should use a different shadow type based on final quality
+		ShadowType_t optimalType = GetOptimalShadowType( clientShadowHandle, flSmoothedQuality );
+		ShadowType_t currentType = GetActualShadowCastType( clientShadowHandle );
+		
+		// If optimal type suggests we should use blobby shadow instead, do that
+		if ( optimalType == SHADOWS_SIMPLE && currentType == SHADOWS_RENDER_TO_TEXTURE )
+		{
+			DrawRenderToTextureShadowLOD( clientShadowHandle );
+			return false;
+		}
+		else if ( optimalType == SHADOWS_NONE )
+		{
+			// Shadow quality too low, skip rendering entirely
+			return false;
+		}
+	}
+
 	// If we were previously using the LOD shadow, set the material
 	bool bPreviouslyUsingLODShadow = ( shadow.m_Flags & SHADOW_FLAGS_USING_LOD_SHADOW ) != 0; 
 	shadow.m_Flags &= ~SHADOW_FLAGS_USING_LOD_SHADOW;
@@ -3785,7 +4110,6 @@ bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHan
 	if ( bNeedsRedraw || bDirtyTexture )
 	{
 		// shadow to be redrawn; for now, we'll always do it.
-		IClientRenderable *pRenderable = ClientEntityList().GetClientRenderableFromHandle( shadow.m_Entity );
 
 		CMatRenderContextPtr pRenderContext( materials );
 		
@@ -3818,8 +4142,8 @@ bool CClientShadowMgr::DrawRenderToTextureShadow( unsigned short clientShadowHan
 			DevMsg( "Didn't draw shadow hierarchy.. bad shadow texcoords probably going to happen..grab Brian!\n" );
 		}
 
-		// Only clear the dirty flag if the caster isn't animating
-		if ( (shadow.m_Flags & SHADOW_FLAGS_ANIMATING_SOURCE) == 0 )
+		// For static objects, clear dirty flag more aggressively since they're cached
+		if ( (shadow.m_Flags & SHADOW_FLAGS_ANIMATING_SOURCE) == 0 || shadow.m_bIsStatic )
 		{
 			shadow.m_Flags &= ~SHADOW_FLAGS_TEXTURE_DIRTY;
 		}
