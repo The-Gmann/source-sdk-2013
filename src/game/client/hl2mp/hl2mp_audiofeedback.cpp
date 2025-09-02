@@ -19,6 +19,9 @@ static ConVar rbcl_hitsound_fixed_pitch( "rbcl_hitsound_fixed_pitch", "0", FCVAR
 static ConVar rbcl_killsound_enabled( "rbcl_killsound_enabled", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Enable killsound feedback" );
 static ConVar rbcl_killsound_volume( "rbcl_killsound_volume", "1.0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE, "Killsound volume", true, 0.0f, true, 1.0f );
 
+// Ear ringing client-side setting
+static ConVar rbcl_ear_ringing( "rbcl_ear_ringing", "1", FCVAR_CLIENTDLL | FCVAR_ARCHIVE | FCVAR_USERINFO, "Enable ear ringing effect from explosions" );
+
 //-----------------------------------------------------------------------------
 // Purpose: Handle HitSound user message from server
 //-----------------------------------------------------------------------------

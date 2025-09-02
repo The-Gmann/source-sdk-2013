@@ -24,7 +24,7 @@
 #define MsgPredTest(...)
 #define MsgPredTest2(...)
 
-ConVar rbsv_infinite_aux_power( "rbsv_infinite_aux_power", "0", FCVAR_CHEAT | FCVAR_REPLICATED );
+ConVar rbsv_infinite_aux_power( "rbsv_infinite_aux_power", "0", FCVAR_REPLICATED );
 
 LINK_ENTITY_TO_CLASS( player, C_HL2MP_Player );
 

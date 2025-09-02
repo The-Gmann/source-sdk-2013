@@ -124,7 +124,7 @@ ConVar	sv_noclipduringpause( "sv_noclipduringpause", "0", FCVAR_REPLICATED | FCV
 extern ConVar sv_maxunlag;
 extern ConVar sv_turbophysics;
 extern ConVar *sv_maxreplay;
-extern ConVar rbsv_ear_ringing;
+// rbsv_ear_ringing is now client-side (rbcl_ear_ringing), no extern needed
 
 extern CServerGameDLL g_ServerGameDLL;
 
@@ -1479,7 +1479,28 @@ void CBasePlayer::OnDamagedByExplosion( const CTakeDamageInfo &info )
 		random->RandomInt( 32, 34 );
 
 	CSingleUserRecipientFilter user( this );
-	if (rbsv_ear_ringing.GetBool())
+	
+	// Check client's ear ringing preference
+	const char *clientEarRingingValue = engine->GetClientConVarValue( entindex(), "rbcl_ear_ringing" );
+	bool enableEarRinging = true; // Default fallback
+	
+	if ( clientEarRingingValue && *clientEarRingingValue )
+	{
+		// Client has set the cvar, use their preference
+		enableEarRinging = (atoi(clientEarRingingValue) != 0);
+	}
+	else
+	{
+		// Client hasn't set it, use server default
+		ConVar *pServerDefault = cvar->FindVar("rbsv_ear_ringing_default");
+		if ( pServerDefault )
+		{
+			enableEarRinging = pServerDefault->GetBool();
+		}
+		// If server cvar not found, fall back to enabled (already set above)
+	}
+	
+	if ( enableEarRinging )
 	{
 		enginesound->SetPlayerDSP(user, effect, false);
 	}

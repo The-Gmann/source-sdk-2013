@@ -519,9 +519,12 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 				bool healthFull = (me->GetHealth() >= me->GetMaxHealth());
 				bool armorFull = !pPlayer || !pPlayer->IsSuitEquipped() || (pPlayer->ArmorValue() >= maxArmor);
 				
-				// Check if we're done
-				if ( healthFull && armorFull )
-					return Done( "Health and armor are full" );
+				// Check if we're done - stop when we can't get any more from this charger
+				bool canGetHealth = CanChargerProvideHealth( m_healthKit ) && !healthFull;
+				bool canGetArmor = CanChargerProvideArmor( m_healthKit ) && !armorFull;
+				
+				if ( !canGetHealth && !canGetArmor )
+					return Done( "Can't get any more from this charger" );
 				
 				// Check if this charger can't provide what we need
 				if ( !healthFull && !CanChargerProvideHealth( m_healthKit ) && armorFull )
@@ -583,9 +586,11 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 				me->GetBodyInterface()->AimHeadTowards( m_healthKit, IBody::CRITICAL, 0.5f, NULL, "Using health charger" );
 				if ( me->GetBodyInterface()->IsHeadAimingOnTarget() )
 				{
-					// Stop when limits are reached
-					if ( (me->GetHealth() >= me->GetMaxHealth()) && 
-						 (!pPlayer || !pPlayer->IsSuitEquipped() || (pPlayer->ArmorValue() >= maxArmor)) )
+					// Check again if we're done while using charger
+					bool canGetHealth = CanChargerProvideHealth( m_healthKit ) && (me->GetHealth() < me->GetMaxHealth());
+					bool canGetArmor = CanChargerProvideArmor( m_healthKit ) && pPlayer && pPlayer->IsSuitEquipped() && (pPlayer->ArmorValue() < maxArmor);
+					
+					if ( !canGetHealth && !canGetArmor )
 					{
 						me->ReleaseUseButton();
 						return Done( "Charging complete" );

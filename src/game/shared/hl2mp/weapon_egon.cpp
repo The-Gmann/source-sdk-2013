@@ -322,6 +322,11 @@ void CWeaponEgon::Precache()
         }
     }
 
+#ifndef CLIENT_DLL
+    // Precache dissolve system (similar to AR2)
+    UTIL_PrecacheOther( "env_entity_dissolver" );
+#endif
+
     BaseClass::Precache();
 }
 
@@ -1013,7 +1018,7 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
     {
         
         ClearMultiDamage();
-        CTakeDamageInfo directDmg(this, pOwner, baseDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB);
+        CTakeDamageInfo directDmg(this, pOwner, baseDamage, DMG_ENERGYBEAM | DMG_ALWAYSGIB | DMG_DISSOLVE);
         Vector force = direction * baseDamage * 500.0f;
         directDmg.SetDamageForce(force);
         directDmg.SetDamagePosition(tr.endpos); // Fix assertion: set damage position
@@ -1026,7 +1031,7 @@ void CWeaponEgon::ProcessDamage(const trace_t &tr, const Vector &direction)
     // Radius damage (like HL1's wide mode)
     const float radiusDamage = baseDamage * EgonConstants::RADIUS_DAMAGE_MULTIPLIER;
     CTakeDamageInfo radiusDmgInfo(this, pOwner, radiusDamage, 
-                                 DMG_ENERGYBEAM | DMG_BLAST | DMG_ALWAYSGIB);
+                                 DMG_ENERGYBEAM | DMG_BLAST | DMG_ALWAYSGIB | DMG_DISSOLVE);
     // Fix assertion: set damage position and force for radius damage
     radiusDmgInfo.SetDamagePosition(tr.endpos);
     Vector radiusForce = direction * radiusDamage * 300.0f; // Slightly less force for radius

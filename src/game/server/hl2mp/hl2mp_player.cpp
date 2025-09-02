@@ -1682,6 +1682,17 @@ void CHL2MP_Player::Event_Killed( const CTakeDamageInfo &info )
 				{
 					pFirstGib = pGib;
 				}
+				
+				// Apply dissolve effect to gibs if DMG_DISSOLVE was used
+				if ( info.GetDamageType() & DMG_DISSOLVE )
+				{
+					int nDissolveType = ENTITY_DISSOLVE_NORMAL;
+					if ( info.GetDamageType() & DMG_SHOCK )
+					{
+						nDissolveType = ENTITY_DISSOLVE_ELECTRICAL;
+					}
+					pGib->Dissolve( NULL, gpGlobals->curtime, false, nDissolveType );
+				}
 			}
 
 			// Restore original attack direction
