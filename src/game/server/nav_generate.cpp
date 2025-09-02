@@ -22,8 +22,6 @@
 #include "func_simpleladder.h"
 #endif
 
-#include "func_ladder.h"
-
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
@@ -44,21 +42,6 @@ ConVar nav_generate_fixup_jump_areas( "nav_generate_fixup_jump_areas", "1", FCVA
 ConVar nav_generate_jump_connections( "nav_generate_jump_connections", "1", FCVAR_CHEAT, "If disabled, don't generate jump connections from jump areas" );
 ConVar nav_generate_incremental_range( "nav_generate_incremental_range", "2000", FCVAR_CHEAT );
 ConVar nav_generate_incremental_tolerance( "nav_generate_incremental_tolerance", "0", FCVAR_CHEAT, "Z tolerance for adding new nav areas." );
-ConVar nav_generate_rooftop_debug( "nav_generate_rooftop_debug", "0", FCVAR_CHEAT, "Enable debug output for rooftop spawn detection" );
-ConVar nav_generate_force_spawn_seeds( "nav_generate_force_spawn_seeds", "1", FCVAR_CHEAT, "Force creation of walkable seeds at spawn positions even if trace fails" );
-ConVar nav_generate_rooftop_tolerance( "nav_generate_rooftop_tolerance", "100", FCVAR_CHEAT, "Z tolerance for rooftop area detection and expansion" );
-ConVar nav_generate_sampling_debug( "nav_generate_sampling_debug", "0", FCVAR_CHEAT, "Enable debug output for navigation sampling process" );
-ConVar nav_generate_radial_spawn_samples( "nav_generate_radial_spawn_samples", "8", FCVAR_CHEAT, "Number of radial samples around each spawn point" );
-ConVar nav_generate_spawn_sample_radius( "nav_generate_spawn_sample_radius", "128", FCVAR_CHEAT, "Radius for radial sampling around spawn points" );
-ConVar nav_generate_extended_trace_distance( "nav_generate_extended_trace_distance", "1024", FCVAR_CHEAT, "Extended trace distance for better ground finding" );
-ConVar nav_generate_all_spawns( "nav_generate_all_spawns", "1", FCVAR_CHEAT, "Find all spawn points instead of just the first one" );
-ConVar nav_generate_elevation_samples( "nav_generate_elevation_samples", "4", FCVAR_CHEAT, "Number of elevation levels to sample for spawn points (helps find rooftops)" );
-ConVar nav_generate_elevation_step( "nav_generate_elevation_step", "128", FCVAR_CHEAT, "Height step between elevation samples" );
-ConVar nav_generate_max_trace_distance( "nav_generate_max_trace_distance", "2048", FCVAR_CHEAT, "Maximum trace distance for ground finding" );
-ConVar nav_generate_multi_surface_check( "nav_generate_multi_surface_check", "1", FCVAR_CHEAT, "Check multiple surfaces for better elevated area detection" );
-ConVar nav_generate_auto_scan_elevated( "nav_generate_auto_scan_elevated", "1", FCVAR_CHEAT, "Automatically scan for elevated walkable surfaces across the map" );
-ConVar nav_generate_scan_grid_size( "nav_generate_scan_grid_size", "512", FCVAR_CHEAT, "Grid size for automatic elevated surface scanning" );
-ConVar nav_generate_scan_elevation_layers( "nav_generate_scan_elevation_layers", "6", FCVAR_CHEAT, "Number of elevation layers to scan for elevated surfaces" );
 ConVar nav_area_max_size( "nav_area_max_size", "50", FCVAR_CHEAT, "Max area size created in nav generation" );
 
 // Common bounding box for traces
@@ -165,8 +148,6 @@ void CNavMesh::BuildLadders( void )
 	// remove any left-over ladders
 	DestroyLadders();
 
-	int laddersFound = 0;
-
 #ifdef TERROR
 	CFuncSimpleLadder *ladder = NULL;
 	while( (ladder = dynamic_cast< CFuncSimpleLadder * >(gEntList.FindEntityByClassname( ladder, "func_simpleladder" ))) != NULL )
@@ -174,57 +155,9 @@ void CNavMesh::BuildLadders( void )
 		Vector mins, maxs;
 		ladder->CollisionProp()->WorldSpaceSurroundingBounds( &mins, &maxs );
 		CreateLadder( mins, maxs, 0.0f );
-		laddersFound++;
 	}
 #endif
-
-	// Standard func_ladder entities
-	CBaseEntity *entity = NULL;
-	while( (entity = gEntList.FindEntityByClassname( entity, "func_ladder" )) != NULL )
-	{
-		Vector mins, maxs;
-		entity->CollisionProp()->WorldSpaceSurroundingBounds( &mins, &maxs );
-		CreateLadder( mins, maxs, 0.0f );
-		laddersFound++;
-	}
-
-	// Support for func_useableladder entities (HL2/CSS/TF2)
-	entity = NULL;
-	while( (entity = gEntList.FindEntityByClassname( entity, "func_useableladder" )) != NULL )
-	{
-		// Use the ladder's defined mount points if available
-		CFuncLadder *funcLadder = dynamic_cast<CFuncLadder*>(entity);
-		if ( funcLadder )
-		{
-			Vector top, bottom;
-			funcLadder->GetTopPosition( top );
-			funcLadder->GetBottomPosition( bottom );
-			
-			// Calculate width and direction from the ladder entity
-			Vector mins, maxs;
-			entity->CollisionProp()->WorldSpaceSurroundingBounds( &mins, &maxs );
-			float width = MAX( maxs.x - mins.x, maxs.y - mins.y );
-			
-			Vector ladderDir3D = funcLadder->GetLadderDirection();
-			Vector2D ladderDir( ladderDir3D.x, ladderDir3D.y );
-			
-			CreateLadder( top, bottom, width, ladderDir, 0.0f );
-			laddersFound++;
-		}
-		else
-		{
-			// Fallback to bounding box method
-			Vector mins, maxs;
-			entity->CollisionProp()->WorldSpaceSurroundingBounds( &mins, &maxs );
-			CreateLadder( mins, maxs, 0.0f );
-			laddersFound++;
-		}
-	}
-
-	Msg( "Built %d ladder navigation representations.\n", laddersFound );
 }
-
-
 
 
 //--------------------------------------------------------------------------------------------------------------
@@ -436,48 +369,22 @@ void CNavMesh::CreateLadder( const Vector &top, const Vector &bottom, float widt
 //--------------------------------------------------------------------------------------------------------------
 void CNavLadder::ConnectGeneratedLadder( float maxHeightAboveTopArea )
 {
-	const float nearLadderRange = 150.0f;		// Increased for better connectivity
+	const float nearLadderRange = 75.0f;		// 50
 
 	//
-	// Find navigation area at bottom of ladder
+	// Find naviagtion area at bottom of ladder
 	//
 
-	// get approximate position of player on ladder
+	// get approximate postion of player on ladder
 	Vector center = m_bottom + Vector( 0, 0, GenerationStepSize );
 	AddDirectionVector( &center, m_dir, HalfHumanWidth );
 
 	m_bottomArea = TheNavMesh->GetNearestNavArea( center, true );
 	if (!m_bottomArea)
 	{
-		// Try multiple search positions and ranges for bottom area
-		Vector searchPositions[5];
-		searchPositions[0] = center; // original position
-		searchPositions[1] = m_bottom + Vector( 0, 0, 2.0f ); // lower position
-		searchPositions[2] = m_bottom + Vector( 0, 0, GenerationStepSize * 2.0f ); // higher position
-		// Try positions slightly offset from the ladder
-		searchPositions[3] = center;
-		AddDirectionVector( &searchPositions[3], OppositeDirection( m_dir ), HalfHumanWidth );
-		searchPositions[4] = m_bottom + Vector( 0, 0, 2.0f );
-		AddDirectionVector( &searchPositions[4], OppositeDirection( m_dir ), HalfHumanWidth );
-
-		float searchRanges[] = { nearLadderRange * 1.5f, nearLadderRange * 2.0f, nearLadderRange * 3.0f };
-		
-		for ( int posIdx = 0; posIdx < 5 && !m_bottomArea; posIdx++ )
-		{
-			for ( int rangeIdx = 0; rangeIdx < 3 && !m_bottomArea; rangeIdx++ )
-			{
-				m_bottomArea = TheNavMesh->GetNearestNavArea( searchPositions[posIdx], true, searchRanges[rangeIdx] );
-			}
-		}
-		
-		if (!m_bottomArea)
-		{
-			DevMsg( "ERROR: Unconnected ladder bottom at ( %g, %g, %g )\n", m_bottom.x, m_bottom.y, m_bottom.z );
-			DevWarning( "nav_unmark; nav_mark; nav_warp_to_mark\n" );
-		}
+		DevMsg( "ERROR: Unconnected ladder bottom at ( %g, %g, %g )\n", m_bottom.x, m_bottom.y, m_bottom.z );
 	}
-	
-	if (m_bottomArea)
+	else
 	{
 		// store reference to ladder in the area
 		m_bottomArea->AddLadderUp( this );
@@ -487,136 +394,35 @@ void CNavLadder::ConnectGeneratedLadder( float maxHeightAboveTopArea )
 	// Find adjacent navigation areas at the top of the ladder
 	//
 
-	// get approximate position of player on ladder
+	// get approximate postion of player on ladder
 	center = m_top + Vector( 0, 0, GenerationStepSize );
 	AddDirectionVector( &center, m_dir, HalfHumanWidth );
 
-	float beneathLimit = MIN( 150.0f, m_top.z - m_bottom.z + HalfHumanWidth ); // Increased from 120.0f
+	float beneathLimit = MIN( 120.0f, m_top.z - m_bottom.z + HalfHumanWidth );
 
-	// Enhanced search for top areas with multiple strategies
-	bool foundAnyTopConnection = false;
+	// find "ahead" area
+	m_topForwardArea = findFirstAreaInDirection( &center, OppositeDirection( m_dir ), nearLadderRange, beneathLimit, NULL );
+	if (m_topForwardArea == m_bottomArea)
+		m_topForwardArea = NULL;
 
-	// Strategy 1: Standard directional searches with progressive range increases
-	float searchRanges[] = { nearLadderRange, nearLadderRange * 2.0f, nearLadderRange * 3.0f };
-	
-	for ( int rangeIdx = 0; rangeIdx < 3 && !foundAnyTopConnection; rangeIdx++ )
-	{
-		float currentRange = searchRanges[rangeIdx];
-		
-		// find "ahead" area
-		if (!m_topForwardArea)
-		{
-			m_topForwardArea = findFirstAreaInDirection( &center, OppositeDirection( m_dir ), currentRange, beneathLimit, NULL );
-			if (m_topForwardArea == m_bottomArea) m_topForwardArea = NULL;
-		}
+	// find "left" area
+	m_topLeftArea = findFirstAreaInDirection( &center, DirectionLeft( m_dir ), nearLadderRange, beneathLimit, NULL );
+	if (m_topLeftArea == m_bottomArea)
+		m_topLeftArea = NULL;
 
-		// find "left" area
-		if (!m_topLeftArea)
-		{
-			m_topLeftArea = findFirstAreaInDirection( &center, DirectionLeft( m_dir ), currentRange, beneathLimit, NULL );
-			if (m_topLeftArea == m_bottomArea) m_topLeftArea = NULL;
-		}
+	// find "right" area
+	m_topRightArea = findFirstAreaInDirection( &center, DirectionRight( m_dir ), nearLadderRange, beneathLimit, NULL );
+	if (m_topRightArea == m_bottomArea)
+		m_topRightArea = NULL;
 
-		// find "right" area
-		if (!m_topRightArea)
-		{
-			m_topRightArea = findFirstAreaInDirection( &center, DirectionRight( m_dir ), currentRange, beneathLimit, NULL );
-			if (m_topRightArea == m_bottomArea) m_topRightArea = NULL;
-		}
-
-		// find "behind" area - must look farther, since ladder is against the wall away from this area
-		if (!m_topBehindArea)
-		{
-			m_topBehindArea = findFirstAreaInDirection( &center, m_dir, currentRange * 2.5f, beneathLimit, NULL );
-			if (m_topBehindArea == m_bottomArea) m_topBehindArea = NULL;
-		}
-		
-		foundAnyTopConnection = (m_topForwardArea || m_topLeftArea || m_topRightArea);
-	}
-
-	// Strategy 2: Try alternative search positions if no connections found
-	if (!foundAnyTopConnection)
-	{
-		// Try searching from different vertical offsets and horizontal positions around the ladder top
-		Vector searchCenters[8];
-		int numSearchCenters = 0;
-		
-		// Different vertical offsets
-		for ( int offset = 0; offset <= 4; offset++ )
-		{
-			Vector altCenter = m_top + Vector( 0, 0, GenerationStepSize * offset );
-			AddDirectionVector( &altCenter, m_dir, HalfHumanWidth );
-			searchCenters[numSearchCenters++] = altCenter;
-			
-			// Also try offset backward from ladder face
-			if ( offset <= 2 )
-			{
-				Vector backwardCenter = m_top + Vector( 0, 0, GenerationStepSize * offset );
-				AddDirectionVector( &backwardCenter, OppositeDirection( m_dir ), HalfHumanWidth );
-				searchCenters[numSearchCenters++] = backwardCenter;
-			}
-		}
-		
-		for ( int centerIdx = 0; centerIdx < numSearchCenters && !foundAnyTopConnection; centerIdx++ )
-		{
-			Vector &searchCenter = searchCenters[centerIdx];
-			
-			if (!m_topForwardArea)
-			{
-				m_topForwardArea = findFirstAreaInDirection( &searchCenter, OppositeDirection( m_dir ), nearLadderRange * 2.0f, beneathLimit, NULL );
-				if (m_topForwardArea == m_bottomArea) m_topForwardArea = NULL;
-			}
-			if (!m_topLeftArea)
-			{
-				m_topLeftArea = findFirstAreaInDirection( &searchCenter, DirectionLeft( m_dir ), nearLadderRange * 2.0f, beneathLimit, NULL );
-				if (m_topLeftArea == m_bottomArea) m_topLeftArea = NULL;
-			}
-			if (!m_topRightArea)
-			{
-				m_topRightArea = findFirstAreaInDirection( &searchCenter, DirectionRight( m_dir ), nearLadderRange * 2.0f, beneathLimit, NULL );
-				if (m_topRightArea == m_bottomArea) m_topRightArea = NULL;
-			}
-			
-			foundAnyTopConnection = (m_topForwardArea || m_topLeftArea || m_topRightArea);
-		}
-	}
-
-	// Strategy 3: Final fallback - use a much more relaxed beneath limit and wider search
-	if (!foundAnyTopConnection)
-	{
-		float relaxedBeneathLimit = MIN( 250.0f, m_top.z - m_bottom.z + HumanHeight * 2.0f );
-		float wideRange = nearLadderRange * 4.0f;
-		
-		if (!m_topForwardArea)
-		{
-			m_topForwardArea = findFirstAreaInDirection( &center, OppositeDirection( m_dir ), wideRange, relaxedBeneathLimit, NULL );
-			if (m_topForwardArea == m_bottomArea) m_topForwardArea = NULL;
-		}
-		if (!m_topLeftArea)
-		{
-			m_topLeftArea = findFirstAreaInDirection( &center, DirectionLeft( m_dir ), wideRange, relaxedBeneathLimit, NULL );
-			if (m_topLeftArea == m_bottomArea) m_topLeftArea = NULL;
-		}
-		if (!m_topRightArea)
-		{
-			m_topRightArea = findFirstAreaInDirection( &center, DirectionRight( m_dir ), wideRange, relaxedBeneathLimit, NULL );
-			if (m_topRightArea == m_bottomArea) m_topRightArea = NULL;
-		}
-		if (!m_topBehindArea)
-		{
-			m_topBehindArea = findFirstAreaInDirection( &center, m_dir, wideRange, relaxedBeneathLimit, NULL );
-			if (m_topBehindArea == m_bottomArea) m_topBehindArea = NULL;
-		}
-		
-		foundAnyTopConnection = (m_topForwardArea || m_topLeftArea || m_topRightArea);
-	}
+	// find "behind" area - must look farther, since ladder is against the wall away from this area
+	m_topBehindArea = findFirstAreaInDirection( &center, m_dir, 2.0f*nearLadderRange, beneathLimit, NULL );
+	if (m_topBehindArea == m_bottomArea)
+		m_topBehindArea = NULL;
 
 	// can't include behind area, since it is not used when going up a ladder
-	if (!foundAnyTopConnection)
-	{
+	if (!m_topForwardArea && !m_topLeftArea && !m_topRightArea)
 		DevMsg( "ERROR: Unconnected ladder top at ( %g, %g, %g )\n", m_top.x, m_top.y, m_top.z );
-		DevWarning( "nav_unmark; nav_mark; nav_warp_to_mark\n" );
-	}
 
 	// store reference to ladder in the area(s)
 	if (m_topForwardArea)
@@ -3587,423 +3393,23 @@ void CNavMesh::CreateNavAreasFromNodes( void )
 // adds walkable positions for any/all positions a mod specifies
 void CNavMesh::AddWalkableSeeds( void )
 {
-	// Array of spawn entity types to search for
-	const char *spawnTypes[] = {
-		GetPlayerSpawnName(),
-		"info_player_deathmatch",
-		"info_player_start",
-		"info_player_combine",
-		"info_player_rebel",
-		"info_player_teamspawn",
-		NULL
-	};
+	CBaseEntity *spawn = gEntList.FindEntityByClassname( NULL, GetPlayerSpawnName() );
 
-	int spawnsFound = 0;
-	int elevationSamples = nav_generate_elevation_samples.GetInt();
-	float elevationStep = nav_generate_elevation_step.GetFloat();
-	bool findAllSpawns = nav_generate_all_spawns.GetBool();
-	int radialSamples = nav_generate_radial_spawn_samples.GetInt();
-	float sampleRadius = nav_generate_spawn_sample_radius.GetFloat();
-
-	// Search through all spawn entity types
-	for ( int typeIdx = 0; spawnTypes[typeIdx] != NULL; typeIdx++ )
+	if (spawn )
 	{
-		const char *spawnType = spawnTypes[typeIdx];
-		
-		// Skip duplicates
-		if ( typeIdx > 0 )
+		// snap it to the sampling grid
+		Vector pos = spawn->GetAbsOrigin();
+		pos.x = TheNavMesh->SnapToGrid( pos.x );
+		pos.y = TheNavMesh->SnapToGrid( pos.y );
+
+		Vector normal;
+		if ( FindGroundForNode( &pos, &normal ) )
 		{
-			bool isDuplicate = false;
-			for ( int prevIdx = 0; prevIdx < typeIdx; prevIdx++ )
-			{
-				if ( Q_stricmp( spawnTypes[prevIdx], spawnType ) == 0 )
-				{
-					isDuplicate = true;
-					break;
-				}
-			}
-			if ( isDuplicate )
-				continue;
+			AddWalkableSeed( pos, normal );
 		}
-
-		// Find all spawn points of this type
-		CBaseEntity *spawn = NULL;
-		while ( (spawn = gEntList.FindEntityByClassname( spawn, spawnType )) != NULL )
-		{
-			Vector pos = spawn->GetAbsOrigin();
-			
-			// Try the spawn point at its original height
-			Vector testPos = pos;
-			testPos.x = TheNavMesh->SnapToGrid( testPos.x );
-			testPos.y = TheNavMesh->SnapToGrid( testPos.y );
-
-			Vector normal;
-			bool foundGround = FindGroundForNode( &testPos, &normal );
-			
-			if ( nav_generate_rooftop_debug.GetBool() )
-			{
-				Msg( "Spawn at (%.1f, %.1f, %.1f): Ground detection %s\n", 
-					pos.x, pos.y, pos.z, foundGround ? "SUCCESS" : "FAILED" );
-				if ( foundGround )
-				{
-					Msg( "  -> Found ground at (%.1f, %.1f, %.1f)\n", testPos.x, testPos.y, testPos.z );
-				}
-			}
-			
-			if ( foundGround )
-			{
-				AddWalkableSeed( testPos, normal );
-				spawnsFound++;
-			}
-			else if ( nav_generate_force_spawn_seeds.GetBool() )
-			{
-				// Force spawn seed creation for rooftop spawns
-				// This handles cases where the spawn is already on a valid surface
-				// but our trace logic fails to detect it properly
-				trace_t groundCheck;
-				CTraceFilterWalkableEntities filter( NULL, COLLISION_GROUP_PLAYER_MOVEMENT, WALK_THRU_EVERYTHING );
-				
-				// Check if spawn is already on solid ground
-				Vector checkStart = testPos + Vector( 0, 0, 2.0f );
-				Vector checkEnd = testPos - Vector( 0, 0, 2.0f );
-				
-				UTIL_TraceHull(
-					checkStart,
-					checkEnd,
-					NavTraceMins,
-					NavTraceMaxs,
-					GetGenerationTraceMask(),
-					&filter,
-					&groundCheck );
-				
-				if ( !groundCheck.allsolid && groundCheck.fraction < 1.0f && 
-					 groundCheck.plane.normal.z >= nav_slope_limit.GetFloat() )
-				{
-					// Force add this spawn as a walkable seed
-					testPos = groundCheck.endpos;
-					normal = groundCheck.plane.normal;
-					AddWalkableSeed( testPos, normal );
-					spawnsFound++;
-					
-					if ( nav_generate_rooftop_debug.GetBool() )
-					{
-						Msg( "  -> FORCED spawn seed at (%.1f, %.1f, %.1f)\n", testPos.x, testPos.y, testPos.z );
-					}
-				}
-				else
-				{
-					// Last resort: Use spawn position directly with estimated normal
-					normal = Vector( 0, 0, 1 );
-					AddWalkableSeed( testPos, normal );
-					spawnsFound++;
-					
-					if ( nav_generate_rooftop_debug.GetBool() )
-					{
-						Msg( "  -> LAST RESORT spawn seed at (%.1f, %.1f, %.1f)\n", testPos.x, testPos.y, testPos.z );
-					}
-				}
-			}
-
-			// Add radial samples around the spawn point to catch nearby walkable areas
-			if ( radialSamples > 0 && sampleRadius > 0.0f )
-			{
-				for ( int sample = 0; sample < radialSamples; sample++ )
-				{
-					float angle = (sample * 360.0f) / radialSamples;
-					float radians = DEG2RAD( angle );
-					
-					Vector radialPos = pos;
-					radialPos.x += cos( radians ) * sampleRadius;
-					radialPos.y += sin( radians ) * sampleRadius;
-					radialPos.x = TheNavMesh->SnapToGrid( radialPos.x );
-					radialPos.y = TheNavMesh->SnapToGrid( radialPos.y );
-					
-					if ( FindGroundForNode( &radialPos, &normal ) )
-					{
-						// Check if this position is significantly different from existing seeds
-						bool isNewPosition = true;
-						for ( int i = 0; i < m_walkableSeeds.Count(); i++ )
-						{
-							const Vector &existingSeed = m_walkableSeeds[i].pos;
-							float distXY = (existingSeed.AsVector2D() - radialPos.AsVector2D()).Length();
-							float distZ = fabs( existingSeed.z - radialPos.z );
-							
-							// Don't add if too close to existing seed
-							if ( distXY < 32.0f && distZ < 24.0f )
-							{
-								isNewPosition = false;
-								break;
-							}
-						}
-						
-						if ( isNewPosition )
-						{
-							AddWalkableSeed( radialPos, normal );
-							spawnsFound++;
-						}
-					}
-				}
-			}
-
-			// If elevation sampling is enabled, try multiple height levels
-			// This helps find spawn points on rooftops and elevated platforms
-			if ( elevationSamples > 1 )
-			{
-				for ( int level = 1; level < elevationSamples; level++ )
-				{
-					// Sample above the original spawn point
-					testPos = pos;
-					testPos.z += level * elevationStep;
-					testPos.x = TheNavMesh->SnapToGrid( testPos.x );
-					testPos.y = TheNavMesh->SnapToGrid( testPos.y );
-
-					if ( FindGroundForNode( &testPos, &normal ) )
-					{
-						// Only add if it's significantly different in height from existing seeds
-						bool isNewElevation = true;
-						for ( int i = 0; i < m_walkableSeeds.Count(); i++ )
-						{
-							const Vector &existingSeed = m_walkableSeeds[i].pos;
-							float distXY = (existingSeed.AsVector2D() - testPos.AsVector2D()).Length();
-							float distZ = fabs( existingSeed.z - testPos.z );
-							
-							// If within same horizontal area but different elevation
-							if ( distXY < 64.0f && distZ < 32.0f )
-							{
-								isNewElevation = false;
-								break;
-							}
-						}
-						
-						if ( isNewElevation )
-						{
-							AddWalkableSeed( testPos, normal );
-							spawnsFound++;
-						}
-					}
-
-					// Also sample below the original spawn point
-					testPos = pos;
-					testPos.z -= level * elevationStep;
-					testPos.x = TheNavMesh->SnapToGrid( testPos.x );
-					testPos.y = TheNavMesh->SnapToGrid( testPos.y );
-
-					if ( FindGroundForNode( &testPos, &normal ) )
-					{
-						// Only add if it's significantly different in height from existing seeds
-						bool isNewElevation = true;
-						for ( int i = 0; i < m_walkableSeeds.Count(); i++ )
-						{
-							const Vector &existingSeed = m_walkableSeeds[i].pos;
-							float distXY = (existingSeed.AsVector2D() - testPos.AsVector2D()).Length();
-							float distZ = fabs( existingSeed.z - testPos.z );
-							
-							// If within same horizontal area but different elevation
-							if ( distXY < 64.0f && distZ < 32.0f )
-							{
-								isNewElevation = false;
-								break;
-							}
-						}
-						
-						if ( isNewElevation )
-						{
-							AddWalkableSeed( testPos, normal );
-							spawnsFound++;
-						}
-					}
-				}
-			}
-
-			// If not finding all spawns, break after first valid spawn point
-			if ( !findAllSpawns && spawnsFound > 0 )
-				break;
-		}
-		
-		// If not finding all spawns and we found some, break
-		if ( !findAllSpawns && spawnsFound > 0 )
-			break;
-	}
-
-	Msg( "Added %d walkable seed positions from spawn points.", spawnsFound );
-	if ( radialSamples > 0 )
-	{
-		Msg( " (includes %d radial samples per spawn)", radialSamples );
-	}
-	Msg( "\n" );
-
-	// If we didn't find enough spawn points, try a fallback method
-	if ( spawnsFound == 0 )
-	{
-		Msg( "No spawn-based walkable seeds found. Trying fallback spawn detection...\n" );
-		
-		// Try to find ANY spawn point entity that might work
-		const char *fallbackSpawnTypes[] = {
-			"info_player_start",
-			"info_player_deathmatch", 
-			"info_target",
-			"info_landmark",
-			NULL
-		};
-		
-		for ( int typeIdx = 0; fallbackSpawnTypes[typeIdx] != NULL && spawnsFound == 0; typeIdx++ )
-		{
-			CBaseEntity *entity = NULL;
-			while ( (entity = gEntList.FindEntityByClassname( entity, fallbackSpawnTypes[typeIdx] )) != NULL )
-			{
-				Vector pos = entity->GetAbsOrigin();
-				
-				// Try a more aggressive search for ground
-				for ( float zOffset = -256.0f; zOffset <= 256.0f; zOffset += 64.0f )
-				{
-					Vector testPos = pos;
-					testPos.z += zOffset;
-					testPos.x = TheNavMesh->SnapToGrid( testPos.x );
-					testPos.y = TheNavMesh->SnapToGrid( testPos.y );
-					
-					Vector normal;
-					if ( FindGroundForNode( &testPos, &normal ) )
-					{
-						AddWalkableSeed( testPos, normal );
-						spawnsFound++;
-						Msg( "Found fallback walkable seed at (%.1f, %.1f, %.1f) from %s\n", 
-							testPos.x, testPos.y, testPos.z, fallbackSpawnTypes[typeIdx] );
-						break;
-					}
-				}
-				
-				if ( spawnsFound > 0 )
-					break;
-			}
-		}
-	}
-
-	// If automatic elevated surface scanning is enabled, scan the entire map
-	if ( nav_generate_auto_scan_elevated.GetBool() )
-	{
-		ScanForElevatedSurfaces();
 	}
 }
 
-
-//--------------------------------------------------------------------------------------------------------------
-// Automatically scan the map for elevated walkable surfaces
-void CNavMesh::ScanForElevatedSurfaces( void )
-{
-	int surfacesFound = 0;
-	float gridSize = nav_generate_scan_grid_size.GetFloat();
-	int elevationLayers = nav_generate_scan_elevation_layers.GetInt();
-	float elevationStep = nav_generate_elevation_step.GetFloat();
-	
-	// Get map bounds by checking existing world geometry
-	Vector mapMin( 32767, 32767, 32767 );
-	Vector mapMax( -32768, -32768, -32768 );
-	
-	// Quick bounds detection using trace sweep
-	float searchRange = 8192.0f;
-	float searchHeight = 4096.0f;
-	float traceStep = 512.0f;
-	
-	for ( float x = -searchRange; x <= searchRange; x += traceStep )
-	{
-		for ( float y = -searchRange; y <= searchRange; y += traceStep )
-		{
-			Vector traceStart( x, y, searchHeight );
-			Vector traceEnd( x, y, -searchHeight );
-			
-			trace_t tr;
-			CTraceFilterWalkableEntities filter( NULL, COLLISION_GROUP_PLAYER_MOVEMENT, WALK_THRU_EVERYTHING );
-			UTIL_TraceLine( traceStart, traceEnd, GetGenerationTraceMask(), &filter, &tr );
-			
-			if ( !tr.allsolid && tr.fraction < 1.0f )
-			{
-				// Found solid surface, update bounds
-				if ( tr.endpos.x < mapMin.x ) mapMin.x = tr.endpos.x;
-				if ( tr.endpos.y < mapMin.y ) mapMin.y = tr.endpos.y;
-				if ( tr.endpos.z < mapMin.z ) mapMin.z = tr.endpos.z;
-				if ( tr.endpos.x > mapMax.x ) mapMax.x = tr.endpos.x;
-				if ( tr.endpos.y > mapMax.y ) mapMax.y = tr.endpos.y;
-				if ( tr.endpos.z > mapMax.z ) mapMax.z = tr.endpos.z;
-			}
-		}
-	}
-	
-	// Expand bounds slightly and snap to grid
-	mapMin.x = SnapToGrid( mapMin.x - gridSize );
-	mapMin.y = SnapToGrid( mapMin.y - gridSize );
-	mapMax.x = SnapToGrid( mapMax.x + gridSize );
-	mapMax.y = SnapToGrid( mapMax.y + gridSize );
-	
-	Msg( "Scanning for elevated surfaces in bounds (%.0f,%.0f,%.0f) to (%.0f,%.0f,%.0f)...\n", 
-		mapMin.x, mapMin.y, mapMin.z, mapMax.x, mapMax.y, mapMax.z );
-	
-	// Now scan the determined bounds in a systematic grid
-	for ( float x = mapMin.x; x <= mapMax.x; x += gridSize )
-	{
-		for ( float y = mapMin.y; y <= mapMax.y; y += gridSize )
-		{
-			// Check multiple elevation layers at this XY position
-			for ( int layer = 0; layer < elevationLayers; layer++ )
-			{
-				float baseHeight = mapMin.z + (layer * elevationStep * 2.0f);
-				Vector scanPos( x, y, baseHeight + 1024.0f ); // Start high
-				
-				// Snap to grid
-				scanPos.x = SnapToGrid( scanPos.x );
-				scanPos.y = SnapToGrid( scanPos.y );
-				
-				Vector normal;
-				if ( FindGroundForNode( &scanPos, &normal ) )
-				{
-					// Check if this is a new elevated surface
-					bool isNewSurface = true;
-					
-					// Don't add if too close to existing seeds
-					for ( int i = 0; i < m_walkableSeeds.Count(); i++ )
-					{
-						const Vector &existingSeed = m_walkableSeeds[i].pos;
-						float distXY = (existingSeed.AsVector2D() - scanPos.AsVector2D()).Length();
-						float distZ = fabs( existingSeed.z - scanPos.z );
-						
-						// If within reasonable distance, don't add
-						if ( distXY < gridSize * 0.5f && distZ < elevationStep * 0.5f )
-						{
-							isNewSurface = false;
-							break;
-						}
-					}
-					
-					// Verify this surface is walkable by checking clearance above
-					if ( isNewSurface )
-					{
-						Vector clearanceStart = scanPos + Vector( 0, 0, StepHeight );
-						Vector clearanceEnd = scanPos + Vector( 0, 0, HumanHeight );
-						
-						trace_t clearanceCheck;
-						CTraceFilterWalkableEntities filter( NULL, COLLISION_GROUP_PLAYER_MOVEMENT, WALK_THRU_EVERYTHING );
-						UTIL_TraceHull(
-							clearanceStart,
-							clearanceEnd,
-							NavTraceMins,
-							NavTraceMaxs,
-							GetGenerationTraceMask(),
-							&filter,
-							&clearanceCheck );
-						
-						// Only add if there's enough clearance for a player
-						if ( !clearanceCheck.startsolid && clearanceCheck.fraction > 0.8f )
-						{
-							AddWalkableSeed( scanPos, normal );
-							surfacesFound++;
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	Msg( "Found %d additional elevated walkable surfaces.\n", surfacesFound );
-}
 
 //--------------------------------------------------------------------------------------------------------------
 /**
@@ -4011,8 +3417,11 @@ void CNavMesh::ScanForElevatedSurfaces( void )
  */
 void CNavMesh::BeginGeneration( bool incremental )
 {
-	// Nav generation event removed to prevent "not registered" warning
-	// The event isn't needed for HL2:DM functionality
+	IGameEvent *event = gameeventmanager->CreateEvent( "nav_generate" );
+	if ( event )
+	{
+		gameeventmanager->FireEvent( event );
+	}
 
 #ifdef TERROR
 	engine->ServerCommand( "director_stop\nnb_delete_all\n" );
@@ -4792,17 +4201,9 @@ bool CNavMesh::FindGroundForNode( Vector *pos, Vector *normal )
 {
 	CTraceFilterWalkableEntities filter( NULL, COLLISION_GROUP_PLAYER_MOVEMENT, WALK_THRU_EVERYTHING );
 	trace_t tr;
-	float maxTraceDistance = nav_generate_max_trace_distance.GetFloat();
-	float extendedTraceDistance = nav_generate_extended_trace_distance.GetFloat();
-	bool multiSurfaceCheck = nav_generate_multi_surface_check.GetBool();
-	
-	// For rooftop detection, we need to be smarter about our starting position
-	// Try multiple trace strategies to find ground
-	
-	// Strategy 1: Standard trace from slightly above the position
 	Vector start( pos->x, pos->y, pos->z + VEC_DUCK_HULL_MAX.z - 0.1f );
 	Vector end( *pos );
-	end.z -= maxTraceDistance;
+	end.z -= DeathDrop;
 
 	UTIL_TraceHull(
 		start,
@@ -4813,134 +4214,10 @@ bool CNavMesh::FindGroundForNode( Vector *pos, Vector *normal )
 		&filter,
 		&tr );
 
-	if ( !tr.allsolid && tr.fraction < 1.0f && tr.plane.normal.z >= nav_slope_limit.GetFloat() )
-	{
-		*pos = tr.endpos;
-		*normal = tr.plane.normal;
-		return true;
-	}
+	*pos = tr.endpos;
+	*normal = tr.plane.normal;
 
-	// Strategy 2: Rooftop-aware trace - start from the actual spawn position and trace down
-	// This is crucial for spawn points that are already ON the rooftop
-	start = *pos;
-	end = *pos;
-	end.z -= maxTraceDistance;
-
-	UTIL_TraceHull(
-		start,
-		end,
-		NavTraceMins,
-		NavTraceMaxs,
-		GetGenerationTraceMask(),
-		&filter,
-		&tr );
-
-	if ( !tr.allsolid && tr.fraction < 1.0f && tr.plane.normal.z >= nav_slope_limit.GetFloat() )
-	{
-		*pos = tr.endpos;
-		*normal = tr.plane.normal;
-		return true;
-	}
-
-	// Strategy 3: Try a very short downward trace for spawn points already on surfaces
-	start = *pos;
-	start.z += 1.0f; // Just slightly above
-	end = *pos;
-	end.z -= 64.0f; // Short range
-
-	UTIL_TraceHull(
-		start,
-		end,
-		NavTraceMins,
-		NavTraceMaxs,
-		GetGenerationTraceMask(),
-		&filter,
-		&tr );
-
-	if ( !tr.allsolid && tr.fraction < 1.0f && tr.plane.normal.z >= nav_slope_limit.GetFloat() )
-	{
-		*pos = tr.endpos;
-		*normal = tr.plane.normal;
-		return true;
-	}
-
-	// Strategy 4: If multi-surface checking is enabled, try enhanced detection
-	if ( multiSurfaceCheck )
-	{
-		// Try tracing from much higher up to catch elevated platforms and rooftops
-		start.z = pos->z + extendedTraceDistance;
-		end.z = pos->z - extendedTraceDistance;
-		
-		UTIL_TraceHull(
-			start,
-			end,
-			NavTraceMins,
-			NavTraceMaxs,
-			GetGenerationTraceMask(),
-			&filter,
-			&tr );
-
-		if ( !tr.allsolid && tr.fraction < 1.0f && tr.plane.normal.z >= nav_slope_limit.GetFloat() )
-		{
-			// Verify player can stand here with hull check
-			Vector hullTestStart = tr.endpos + Vector( 0, 0, StepHeight );
-			Vector hullTestEnd = tr.endpos + Vector( 0, 0, HumanHeight );
-			trace_t hullCheck;
-			
-			UTIL_TraceHull(
-				hullTestStart,
-				hullTestEnd,
-				NavTraceMins,
-				NavTraceMaxs,
-				GetGenerationTraceMask(),
-				&filter,
-				&hullCheck );
-			
-			if ( !hullCheck.startsolid && hullCheck.fraction > 0.8f )
-			{
-				*pos = tr.endpos;
-				*normal = tr.plane.normal;
-				return true;
-			}
-		}
-		
-		// Try a point trace for more precise surface detection
-		start = Vector( pos->x, pos->y, pos->z + extendedTraceDistance * 0.5f );
-		end = Vector( pos->x, pos->y, pos->z - extendedTraceDistance );
-		
-		UTIL_TraceLine(
-			start,
-			end,
-			GetGenerationTraceMask(),
-			&filter,
-			&tr );
-
-		if ( !tr.allsolid && tr.fraction < 1.0f && tr.plane.normal.z >= nav_slope_limit.GetFloat() )
-		{
-			// Verify this surface can support a player hull
-			Vector hullStart = tr.endpos + Vector( 0, 0, StepHeight );
-			Vector hullEnd = tr.endpos;
-			trace_t hullCheck;
-			
-			UTIL_TraceHull(
-				hullStart,
-				hullEnd,
-				NavTraceMins,
-				NavTraceMaxs,
-				GetGenerationTraceMask(),
-				&filter,
-				&hullCheck );
-			
-			if ( !hullCheck.startsolid && hullCheck.fraction > 0.9f )
-			{
-				*pos = tr.endpos;
-				*normal = tr.plane.normal;
-				return true;
-			}
-		}
-	}
-
-	return false;
+	return ( !tr.allsolid );
 }
 
 
@@ -5241,23 +4518,23 @@ bool CNavMesh::SampleStep( void )
 							// Could not trace from node to node at this height, something is in the way.
 							// Trace in the other direction to see if we hit something
 							Vector vecToObstacleStart = tr.endpos - start;
-							// Remove strict assertion - allow for longer traces in elevated areas
-							if ( vecToObstacleStart.LengthSqr() <= Square( GenerationStepSize * 2.0f ) ) // More permissive
+							Assert( vecToObstacleStart.LengthSqr() <= Square( GenerationStepSize ) );
+							if ( vecToObstacleStart.LengthSqr() <= Square( GenerationStepSize ) )
 							{
 								UTIL_TraceHull( end, start, NavTraceMins, NavTraceMaxs, GetGenerationTraceMask(), &filter, &tr );
 								if ( !tr.startsolid && tr.fraction < 1.0 )
 								{
 									// We hit something going the other direction.  There is some obstacle between the two nodes.
 									Vector vecToObstacleEnd = tr.endpos - start;
-									// Remove strict assertion - allow for longer traces in elevated areas
-									if ( vecToObstacleEnd.LengthSqr() <= Square( GenerationStepSize * 2.0f ) ) // More permissive
+									Assert( vecToObstacleEnd.LengthSqr() <= Square( GenerationStepSize ) );
+									if ( vecToObstacleEnd.LengthSqr() <= Square( GenerationStepSize )  )
 									{
 										// Remember the distances to start and end of the obstacle (with respect to the "from" node).
 										// Keep track of the last distances to obstacle as we keep increasing the height we do a trace for.
 										// If we do eventually clear the obstacle, these values will be the start and end distance to the
 										// very tip of the obstacle.
-										obstacleStartDist = MIN( vecToObstacleStart.Length(), GenerationStepSize );
-										obstacleEndDist = MIN( vecToObstacleEnd.Length(), GenerationStepSize );
+										obstacleStartDist = vecToObstacleStart.Length();
+										obstacleEndDist = vecToObstacleEnd.Length();
 										if ( obstacleEndDist == 0 )
 										{
 											obstacleEndDist = GenerationStepSize;
@@ -5270,109 +4547,7 @@ bool CNavMesh::SampleStep( void )
 
 					if ( !success )
 					{
-						// Enhanced rooftop/elevated area detection
-						bool isElevatedArea = false;
-						float rooftopTolerance = nav_generate_rooftop_tolerance.GetFloat();
-						float nearbyRadius = 1024.0f;  // Increased search radius
-						
-						// Check if we're near ANY spawn seed (not just elevated ones)
-						// This catches all spawn-related areas including ground-level rooftops
-						for ( int i = 0; i < m_walkableSeeds.Count(); i++ )
-						{
-							const Vector &seedPos = m_walkableSeeds[i].pos;
-							float distXY = (seedPos.AsVector2D() - from.AsVector2D()).Length();
-							float heightDiff = fabs(from.z - seedPos.z);
-							
-							// If we're near a spawn seed at similar elevation OR the seed is elevated
-							if ( distXY < nearbyRadius && (heightDiff < 128.0f || seedPos.z > rooftopTolerance) )
-							{
-								isElevatedArea = true;
-								if ( nav_generate_sampling_debug.GetBool() )
-								{
-									Msg( "Detected elevated/spawn area near seed at (%.1f,%.1f,%.1f), dist=%.1f, heightDiff=%.1f\n",
-										seedPos.x, seedPos.y, seedPos.z, distXY, heightDiff );
-								}
-								break;
-							}
-						}
-						
-						if ( isElevatedArea )
-						{
-							// Try multiple strategies for elevated area movement
-							trace_t elevatedTrace;
-							
-							// Strategy 1: Direct horizontal trace at current elevation
-							Vector start1 = from;
-							Vector end1 = pos;
-							end1.z = from.z;  // Keep same Z level
-							
-							UTIL_TraceHull( start1, end1, NavTraceMins, NavTraceMaxs, 
-								GetGenerationTraceMask(), &filter, &elevatedTrace );
-							
-							if ( !elevatedTrace.startsolid && elevatedTrace.fraction > 0.75f )
-							{
-								Vector groundPos = elevatedTrace.endpos;
-								Vector groundNormal;
-								
-								if ( FindGroundForNode( &groundPos, &groundNormal ) )
-								{
-									to = groundPos;
-									toNormal = groundNormal;
-									success = true;
-									
-									if ( nav_generate_sampling_debug.GetBool() )
-									{
-										Msg( "Elevated area horizontal movement success from (%.1f,%.1f,%.1f) to (%.1f,%.1f,%.1f)\n",
-											from.x, from.y, from.z, to.x, to.y, to.z );
-									}
-								}
-							}
-							
-							// Strategy 2: Allow more flexible movement for elevated areas
-							if ( !success )
-							{
-								// Try tracing with a more permissive height range
-								for ( float heightOffset = -32.0f; heightOffset <= 32.0f && !success; heightOffset += 16.0f )
-								{
-									Vector start2 = from;
-									Vector end2 = pos;
-									end2.z = from.z + heightOffset;
-									
-									UTIL_TraceHull( start2, end2, NavTraceMins, NavTraceMaxs, 
-										GetGenerationTraceMask(), &filter, &elevatedTrace );
-									
-									if ( !elevatedTrace.startsolid && elevatedTrace.fraction > 0.6f )
-									{
-										Vector groundPos = elevatedTrace.endpos;
-										Vector groundNormal;
-										
-										if ( FindGroundForNode( &groundPos, &groundNormal ) )
-										{
-											to = groundPos;
-											toNormal = groundNormal;
-											success = true;
-											
-											if ( nav_generate_sampling_debug.GetBool() )
-											{
-												Msg( "Elevated area flexible movement success (offset=%.1f) from (%.1f,%.1f,%.1f) to (%.1f,%.1f,%.1f)\n",
-													heightOffset, from.x, from.y, from.z, to.x, to.y, to.z );
-											}
-											break;
-										}
-									}
-								}
-							}
-						}
-						
-						if ( !success )
-						{
-							if ( nav_generate_sampling_debug.GetBool() )
-							{
-								Msg( "Failed to find valid movement from (%.1f,%.1f,%.1f) to (%.1f,%.1f,%.1f)\n",
-									from.x, from.y, from.z, pos.x, pos.y, pos.z );
-							}
-							return true;
-						}
+						return true;
 					}
 				}
 
@@ -5496,27 +4671,10 @@ CNavNode *CNavMesh::GetNextWalkableSeedNode( void )
 	WalkableSeedSpot spot = m_walkableSeeds[ m_seedIdx ];
 	++m_seedIdx;
 
-	if ( nav_generate_rooftop_debug.GetBool() )
-	{
-		Msg( "Processing walkable seed %d/%d at (%.1f, %.1f, %.1f)\n", 
-			m_seedIdx, m_walkableSeeds.Count(), spot.pos.x, spot.pos.y, spot.pos.z );
-	}
-
 	// check if a node exists at this location
 	CNavNode *node = CNavNode::GetNode( spot.pos );
 	if ( node )
-	{
-		if ( nav_generate_rooftop_debug.GetBool() )
-		{
-			Msg( "  -> Seed already has node, skipping\n" );
-		}
 		return NULL;
-	}
-
-	if ( nav_generate_rooftop_debug.GetBool() )
-	{
-		Msg( "  -> Creating new node for seed\n" );
-	}
 
 	return new CNavNode( spot.pos, spot.normal, NULL, false );
 }
