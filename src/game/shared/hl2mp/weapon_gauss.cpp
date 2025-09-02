@@ -1057,10 +1057,9 @@ void CWeaponGauss::DrawBeam(const Vector &startPos, const Vector &endPos, float 
         if (distance < 1.0f || distance > MAX_TRACE_LENGTH)
             return;
 
-        // Choose beam sprite based on whether this is being viewed by the local player
-        // Server can't access ShouldDrawUsingViewModel(), so use the regular sprite
-        // The client-side beam rendering for viewmodels would need separate implementation
-        const char* beamSprite = GAUSS_BEAM_SPRITE;
+        // Choose beam sprite - use nodepth only for first beam (weapon-attached)
+        // Reflected beams use regular sprite since they're not attached to viewmodel
+        const char* beamSprite = useMuzzle ? GAUSS_BEAM_SPRITE_NODEPTH : GAUSS_BEAM_SPRITE;
 
         // Create main beam
         CBeam *pMainBeam = CBeam::BeamCreate(beamSprite, width);
