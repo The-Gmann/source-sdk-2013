@@ -242,9 +242,10 @@ public:
 
 	CBaseEntity *GetMissile( void ) { return m_hMissile; }
 
-#ifndef CLIENT_DLL
+	//Tony; third person check thing, to destroy/reinitialize the beam ( swapping first -> third or back, etc )
+	virtual void			ThirdPersonSwitch( bool bThirdPerson );
+
 	DECLARE_ACTTABLE();
-#endif
 	
 protected:
 

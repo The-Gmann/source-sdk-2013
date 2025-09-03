@@ -34,10 +34,3 @@ ConVar mp_ready_signal(
 	FCVAR_GAMEDLL,
 	"Text that each player must speak for the match to begin");
 
-// Ear ringing - now handled client-side, this is just for server default
-// Individual clients control this via rbcl_ear_ringing
-ConVar rbsv_ear_ringing_default(
-	"rbsv_ear_ringing_default",
-	"1",
-	FCVAR_GAMEDLL,
-	"Default ear ringing setting for clients who haven't set rbcl_ear_ringing");

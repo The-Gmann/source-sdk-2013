@@ -6,6 +6,7 @@ WeaponData
     "viewmodel"        "models/weapons/v_egon.mdl"
     "playermodel"      "models/weapons/w_egon.mdl"
     "anim_prefix"      "egon"
+    "PlayerAnimationType"  "ar2"
     "bucket"           "4"
     "bucket_position"  "2"
 
