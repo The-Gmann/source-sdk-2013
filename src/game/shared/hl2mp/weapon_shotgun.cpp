@@ -95,6 +95,7 @@ BEGIN_PREDICTION_DATA( CWeaponShotgun )
 	DEFINE_PRED_FIELD( m_bDelayedFire1, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_bDelayedFire2, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 	DEFINE_PRED_FIELD( m_bDelayedReload, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
+	DEFINE_PRED_FIELD( m_bInReload, FIELD_BOOLEAN, FTYPEDESC_INSENDTABLE ),
 END_PREDICTION_DATA()
 #endif
 
@@ -614,26 +615,6 @@ void CWeaponShotgun::ItemHolsterFrame( void )
 		m_iClip1 += ammoFill;
 	}
 }
-
-//==================================================
-// Purpose: 
-//==================================================
-/*
-void CWeaponShotgun::WeaponIdle( void )
-{
-	//Only the player fires this way so we can cast
-	CBasePlayer *pPlayer = GetOwner()
-
-	if ( pPlayer == NULL )
-		return;
-
-	//If we're on a target, play the new anim
-	if ( pPlayer->IsOnTarget() )
-	{
-		SendWeaponAnim( ACT_VM_IDLE_ACTIVE );
-	}
-}
-*/
 
 #ifndef CLIENT_DLL
 //-----------------------------------------------------------------------------
