@@ -7,7 +7,6 @@ WeaponData
 	"viewmodel"		"models/weapons/v_gauss.mdl" 
 	"playermodel"		"models/weapons/w_gauss.mdl"
 	"anim_prefix"		"gauss"
-	"PlayerAnimationType"	"ar2"
 	"bucket"		"4"
 	"bucket_position"	"1"	
 

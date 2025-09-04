@@ -511,4 +511,3 @@ FodyWeavers.xsd
 .qoder/rules/AlwaysUpdateMemoryWithGoodPracticesAndRemoveOrChangeDisprovenPractices.md
 .qoder/rules/AlwaysSearchWellAndIfYouCantFindSomethingTellUser.md
 *.md
-/src_tony

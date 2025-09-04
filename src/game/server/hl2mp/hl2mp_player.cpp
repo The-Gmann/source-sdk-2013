@@ -20,8 +20,6 @@
 #include "grenade_satchel.h"
 #include "eventqueue.h"
 #include "gamestats.h"
-#include "tier0/vprof.h"
-#include "bone_setup.h"
 #include "ammodef.h"
 #include "NextBot.h"
 #include "gib.h"
@@ -34,9 +32,6 @@
 
 #include "ilagcompensationmanager.h"
 #include "shareddefs.h"
-
-// memdbgon must be the last include file in a .cpp file!!!
-#include "tier0/memdbgon.h"
 
 // ConVar and definitions needed for ReduceTimers
 extern ConVar hl2_sprintspeed;
@@ -54,8 +49,6 @@ ConVar hl2mp_spawn_frag_fallback_radius( "hl2mp_spawn_frag_fallback_radius", "48
 
 #define HL2MP_COMMAND_MAX_RATE 0.3
 
-#define CYCLELATCH_UPDATE_INTERVAL	0.2f
-
 void DropPrimedFragGrenade( CHL2MP_Player *pPlayer, CBaseCombatWeapon *pGrenade );
 
 LINK_ENTITY_TO_CLASS( player, CHL2MP_Player );
@@ -63,54 +56,57 @@ LINK_ENTITY_TO_CLASS( player, CHL2MP_Player );
 LINK_ENTITY_TO_CLASS( info_player_combine, CPointEntity );
 LINK_ENTITY_TO_CLASS( info_player_rebel, CPointEntity );
 
-extern void SendProxy_Origin( const SendProp *pProp, const void *pStruct, const void *pData, DVariant *pOut, int iElement, int objectID );
-
-extern void* SendProxy_SendNonLocalDataTable( const SendProp *pProp, const void *pStruct, const void *pVarData, CSendProxyRecipients *pRecipients, int objectID );
-
 // specific to the local player
 BEGIN_SEND_TABLE_NOBASE( CHL2MP_Player, DT_HL2MPLocalPlayerExclusive )
 	// send a hi-res origin to the local player for use in prediction
-	SendPropVector	(SENDINFO(m_vecOrigin), -1,  SPROP_NOSCALE|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_Origin ),
+	SendPropVectorXY(SENDINFO(m_vecOrigin),               -1, SPROP_NOSCALE|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_OriginXY ),
+	SendPropFloat   (SENDINFO_VECTORELEM(m_vecOrigin, 2), -1, SPROP_NOSCALE|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_OriginZ ),
+
 	SendPropFloat( SENDINFO_VECTORELEM(m_angEyeAngles, 0), 8, SPROP_CHANGES_OFTEN, -90.0f, 90.0f ),
-//	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 1), 10, SPROP_CHANGES_OFTEN ),
+	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 1), 10, SPROP_CHANGES_OFTEN ),
+
 END_SEND_TABLE()
 
 // all players except the local player
 BEGIN_SEND_TABLE_NOBASE( CHL2MP_Player, DT_HL2MPNonLocalPlayerExclusive )
 	// send a lo-res origin to other players
-	SendPropVector	(SENDINFO(m_vecOrigin), -1,  SPROP_COORD_MP_LOWPRECISION|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_Origin ),
+	SendPropVectorXY(SENDINFO(m_vecOrigin),               -1, SPROP_COORD_MP_LOWPRECISION|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_OriginXY ),
+	SendPropFloat   (SENDINFO_VECTORELEM(m_vecOrigin, 2), -1, SPROP_COORD_MP_LOWPRECISION|SPROP_CHANGES_OFTEN, 0.0f, HIGH_DEFAULT, SendProxy_OriginZ ),
+
 	SendPropFloat( SENDINFO_VECTORELEM(m_angEyeAngles, 0), 8, SPROP_CHANGES_OFTEN, -90.0f, 90.0f ),
 	SendPropAngle( SENDINFO_VECTORELEM(m_angEyeAngles, 1), 10, SPROP_CHANGES_OFTEN ),
-	// Only need to latch cycle for other players
-	// If you increase the number of bits networked, make sure to also modify the code below and in the client class.
-	SendPropInt( SENDINFO( m_cycleLatch ), 4, SPROP_UNSIGNED ),
+
 END_SEND_TABLE()
 
 IMPLEMENT_SERVERCLASS_ST(CHL2MP_Player, DT_HL2MP_Player)
-	SendPropExclude( "DT_BaseAnimating", "m_flPoseParameter" ),
-	SendPropExclude( "DT_BaseAnimating", "m_flPlaybackRate" ),	
-	SendPropExclude( "DT_BaseAnimating", "m_nSequence" ),
-	SendPropExclude( "DT_BaseEntity", "m_angRotation" ),
-	SendPropExclude( "DT_BaseAnimatingOverlay", "overlay_vars" ),
-
 	SendPropExclude( "DT_BaseEntity", "m_vecOrigin" ),
 
-	// playeranimstate and clientside animation takes care of these on the client
-	SendPropExclude( "DT_ServerAnimationData" , "m_flCycle" ),	
-	SendPropExclude( "DT_AnimTimeMustBeFirst" , "m_flAnimTime" ),
+	// misyl:
+	// m_flMaxspeed is fully predicted by the client and the client's
+	// maxspeed is sent in the user message.
+	// Other games like DOD, etc don't use this var at all and just fully
+	// predict in GameMovement, but the HL2 codebase doesn't do that and modifies this
+	// on the player.
+	// So, just never send it, and don't predict it on the client either.
+	SendPropExclude( "DT_BasePlayer", "m_flMaxspeed" ),
 
-	SendPropExclude( "DT_BaseFlex", "m_flexWeight" ),
-	SendPropExclude( "DT_BaseFlex", "m_blinktoggle" ),
-	SendPropExclude( "DT_BaseFlex", "m_viewtarget" ),
 
-	// Data that only gets sent to the local player.
-	SendPropDataTable( "hl2mplocaldata", 0, &REFERENCE_SEND_TABLE(DT_HL2MPLocalPlayerExclusive), SendProxy_SendLocalDataTable ),
+	// Data that only gets sent to the local player
+	SendPropDataTable( "hl2mplocaldata", 0, &REFERENCE_SEND_TABLE( DT_HL2MPLocalPlayerExclusive ), SendProxy_SendLocalDataTable ),
+
 	// Data that gets sent to all other players
-	SendPropDataTable( "hl2mpnonlocaldata", 0, &REFERENCE_SEND_TABLE(DT_HL2MPNonLocalPlayerExclusive), SendProxy_SendNonLocalDataTable ),
+	SendPropDataTable( "hl2mpnonlocaldata", 0, &REFERENCE_SEND_TABLE( DT_HL2MPNonLocalPlayerExclusive ), SendProxy_SendNonLocalDataTable ),
 
 	SendPropEHandle( SENDINFO( m_hRagdoll ) ),
+    SendPropEHandle( SENDINFO( m_hDeathCamGib ) ),
 	SendPropInt( SENDINFO( m_iSpawnInterpCounter), 4 ),
-	SendPropInt( SENDINFO( m_iPlayerSoundType), 3 ),	
+	SendPropInt( SENDINFO( m_iPlayerSoundType), 3 ),
+	
+	SendPropExclude( "DT_BaseAnimating", "m_flPoseParameter" ),
+	SendPropExclude( "DT_BaseFlex", "m_viewtarget" ),
+
+//	SendPropExclude( "DT_ServerAnimationData" , "m_flCycle" ),	
+//	SendPropExclude( "DT_AnimTimeMustBeFirst" , "m_flAnimTime" ),	
 END_SEND_TABLE()
 
 BEGIN_DATADESC( CHL2MP_Player )
@@ -155,12 +151,8 @@ const char *g_ppszRandomCombineModels[] =
 
 #pragma warning( disable : 4355 )
 
-CHL2MP_Player::CHL2MP_Player()
+CHL2MP_Player::CHL2MP_Player() : m_PlayerAnimState( this )
 {
-	//Tony; create our player animation state.
-	m_PlayerAnimState = CreateHL2MPPlayerAnimState( this );
-	UseClientSideAnimation();
-
 	m_angEyeAngles.Init();
 
 	m_iLastWeaponFireUsercmd = 0;
@@ -176,17 +168,15 @@ CHL2MP_Player::CHL2MP_Player()
 	m_bKilledByHeadshot = false; // Initialize headshot tracking
 	m_bTookHeadshotDamage = false; // Initialize headshot damage tracking
 
-	m_cycleLatch = 0;
-	m_cycleLatchTimer.Invalidate();
-
 	BaseClass::ChangeTeam( 0 );
 
 	m_hDeathCamGib = NULL;  // Add this line
+	
+	//UseClientSideAnimation();
 }
 
 CHL2MP_Player::~CHL2MP_Player( void )
 {
-	m_PlayerAnimState->Release();
 
 }
 
@@ -397,6 +387,9 @@ void CHL2MP_Player::Spawn(void)
 		GiveDefaultItems();
 	}
 
+	SetNumAnimOverlays( 3 );
+	ResetAnimation();
+
 	m_nRenderFX = kRenderNormal;
 
 	m_Local.m_iHideHUD = 0;
@@ -424,9 +417,6 @@ void CHL2MP_Player::Spawn(void)
 	m_fLongJump = false; // Reset longjump capability on spawn
 
 	m_hDeathCamGib = NULL;  // Add this line - clear death cam gib on respawn
-	//Tony; do the spawn animevent
-	DoAnimationEvent( PLAYERANIMEVENT_SPAWN );
-
 }
 
 bool CHL2MP_Player::ValidatePlayerModel( const char *pModel )
@@ -606,10 +596,35 @@ void CHL2MP_Player::SetupPlayerSoundsByModel( const char *pModelName )
 	}
 }
 
+void CHL2MP_Player::ResetAnimation( void )
+{
+	if ( IsAlive() )
+	{
+		SetSequence ( -1 );
+		SetActivity( ACT_INVALID );
+
+		if (!GetAbsVelocity().x && !GetAbsVelocity().y)
+			SetAnimation( PLAYER_IDLE );
+		else if ((GetAbsVelocity().x || GetAbsVelocity().y) && ( GetFlags() & FL_ONGROUND ))
+			SetAnimation( PLAYER_WALK );
+		else if (GetWaterLevel() > 1)
+			SetAnimation( PLAYER_WALK );
+		else if ( ( GetFlags() & FL_ONGROUND ) != FL_ONGROUND)
+			SetAnimation( PLAYER_JUMP );
+		else
+			SetAnimation( PLAYER_IDLE );
+	}
+}
+
 
 bool CHL2MP_Player::Weapon_Switch( CBaseCombatWeapon *pWeapon, int viewmodelindex )
 {
 	bool bRet = BaseClass::Weapon_Switch( pWeapon, viewmodelindex );
+
+	if ( bRet == true )
+	{
+		ResetAnimation();
+	}
 
 	return bRet;
 }
@@ -645,20 +660,14 @@ void CHL2MP_Player::PostThink( void )
 		SetCollisionBounds( VEC_CROUCH_TRACE_MIN, VEC_CROUCH_TRACE_MAX );
 	}
 
-	QAngle angles = GetLocalAngles();
-	angles[PITCH] = 0;
-	SetLocalAngles( angles );
+	m_PlayerAnimState.Update();
 
 	// Store the eye angles pitch so the client can compute its animation state correctly.
 	m_angEyeAngles = EyeAngles();
-	m_PlayerAnimState->Update( m_angEyeAngles[YAW], m_angEyeAngles[PITCH] );
 
-	if ( IsAlive() && m_cycleLatchTimer.IsElapsed() )
-	{
-		m_cycleLatchTimer.Start( CYCLELATCH_UPDATE_INTERVAL );
-		// Compress the cycle into 4 bits. Can represent 0.0625 in steps which is enough.
-		m_cycleLatch.GetForModify() = 16 * GetCycle();
-	}
+	QAngle angles = GetLocalAngles();
+	angles[PITCH] = 0;
+	SetLocalAngles( angles );
 }
 
 void CHL2MP_Player::PlayerDeathThink()
@@ -815,37 +824,174 @@ Activity CHL2MP_Player::TranslateTeamActivity( Activity ActToTranslate )
 	return ActToTranslate;
 }
 
-//Tony; this should pass the event to the player anim state.
-void CHL2MP_Player::DoAnimationEvent( PlayerAnimEvent_t event, int nData )
-{
-	m_PlayerAnimState->DoAnimationEvent( event, nData );
-	// Note: TE_PlayerAnimEvent is not needed in the new animation system
-}
-
-void CHL2MP_Player::SetupBones( matrix3x4_t *pBoneToWorld, int boneMask )
-{
-	VPROF_BUDGET( "CHL2MP_Player::SetupBones", VPROF_BUDGETGROUP_SERVER_ANIM );
-
-	BaseClass::SetupBones( pBoneToWorld, boneMask );
-}
-
-//=========================================================
-// Autoaim
-// set crosshair position to point to enemey
-//=========================================================
-Vector CHL2MP_Player::GetAutoaimVector( float flDelta )
-{
-	// Never autoaim in multiplayer
-	Vector	forward;
-	AngleVectors( EyeAngles() + GetPunchAngle(), &forward );
-	return	forward;
-}
+extern ConVar hl2_normspeed;
 
 // Set the activity based on an event or current state
 void CHL2MP_Player::SetAnimation( PLAYER_ANIM playerAnim )
 {
-	return;
+	int animDesired;
+
+	float speed;
+
+	speed = GetAbsVelocity().Length2D();
+
+	
+	// bool bRunning = true;
+
+	//Revisit!
+/*	if ( ( m_nButtons & ( IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT ) ) )
+	{
+		if ( speed > 1.0f && speed < hl2_normspeed.GetFloat() - 20.0f )
+		{
+			bRunning = false;
+		}
+	}*/
+
+	if ( GetFlags() & ( FL_FROZEN | FL_ATCONTROLS ) )
+	{
+		speed = 0;
+		playerAnim = PLAYER_IDLE;
+	}
+
+	Activity idealActivity = ACT_HL2MP_RUN;
+
+	// This could stand to be redone. Why is playerAnim abstracted from activity? (sjb)
+	if ( playerAnim == PLAYER_JUMP )
+	{
+		idealActivity = ACT_HL2MP_JUMP;
+	}
+	else if ( playerAnim == PLAYER_DIE )
+	{
+		if ( m_lifeState == LIFE_ALIVE )
+		{
+			return;
+		}
+	}
+	else if ( playerAnim == PLAYER_ATTACK1 )
+	{
+		if ( GetActivity( ) == ACT_HOVER	|| 
+			 GetActivity( ) == ACT_SWIM		||
+			 GetActivity( ) == ACT_HOP		||
+			 GetActivity( ) == ACT_LEAP		||
+			 GetActivity( ) == ACT_DIESIMPLE )
+		{
+			idealActivity = GetActivity( );
+		}
+		else
+		{
+			idealActivity = ACT_HL2MP_GESTURE_RANGE_ATTACK;
+		}
+	}
+	else if ( playerAnim == PLAYER_RELOAD )
+	{
+		idealActivity = ACT_HL2MP_GESTURE_RELOAD;
+	}
+	else if ( playerAnim == PLAYER_IDLE || playerAnim == PLAYER_WALK )
+	{
+		if ( !( GetFlags() & FL_ONGROUND ) && GetActivity( ) == ACT_HL2MP_JUMP )	// Still jumping
+		{
+			idealActivity = GetActivity( );
+		}
+		/*
+		else if ( GetWaterLevel() > 1 )
+		{
+			if ( speed == 0 )
+				idealActivity = ACT_HOVER;
+			else
+				idealActivity = ACT_SWIM;
+		}
+		*/
+		else
+		{
+			if ( GetFlags() & FL_DUCKING )
+			{
+				if ( speed > 0 )
+				{
+					idealActivity = ACT_HL2MP_WALK_CROUCH;
+				}
+				else
+				{
+					idealActivity = ACT_HL2MP_IDLE_CROUCH;
+				}
+			}
+			else
+			{
+				if ( speed > 0 )
+				{
+					/*
+					if ( bRunning == false )
+					{
+						idealActivity = ACT_WALK;
+					}
+					else
+					*/
+					{
+						idealActivity = ACT_HL2MP_RUN;
+					}
+				}
+				else
+				{
+					idealActivity = ACT_HL2MP_IDLE;
+				}
+			}
+		}
+
+		idealActivity = TranslateTeamActivity( idealActivity );
+	}
+	
+	if ( idealActivity == ACT_HL2MP_GESTURE_RANGE_ATTACK )
+	{
+		RestartGesture( Weapon_TranslateActivity( idealActivity ) );
+
+		// FIXME: this seems a bit wacked
+		//
+		// misyl: it was and was causing a pred error every time.
+		// the weapons already call SendWeaponAnim with the right activity.
+		//Weapon_SetActivity( Weapon_TranslateActivity( ACT_RANGE_ATTACK1 ), 0 );
+
+		return;
+	}
+	else if ( idealActivity == ACT_HL2MP_GESTURE_RELOAD )
+	{
+		RestartGesture( Weapon_TranslateActivity( idealActivity ) );
+		return;
+	}
+	else
+	{
+		SetActivity( idealActivity );
+
+		animDesired = SelectWeightedSequence( Weapon_TranslateActivity ( idealActivity ) );
+
+		if (animDesired == -1)
+		{
+			animDesired = SelectWeightedSequence( idealActivity );
+
+			if ( animDesired == -1 )
+			{
+				animDesired = 0;
+			}
+		}
+	
+		// Already using the desired animation?
+		if ( GetSequence() == animDesired )
+			return;
+
+		m_flPlaybackRate = 1.0;
+		ResetSequence( animDesired );
+		SetCycle( 0 );
+		return;
+	}
+
+	// Already using the desired animation?
+	if ( GetSequence() == animDesired )
+		return;
+
+	//Msg( "Set animation to %d\n", animDesired );
+	// Reset to first frame of desired animation
+	ResetSequence( animDesired );
+	SetCycle( 0 );
 }
+
 
 extern int	gEvilImpulse101;
 //-----------------------------------------------------------------------------

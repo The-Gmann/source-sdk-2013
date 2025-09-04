@@ -64,8 +64,8 @@ public:
 
 #ifndef CLIENT_DLL
 	virtual int WeaponRangeAttack2Condition( float flDot, float flDist );
-#endif
 	DECLARE_ACTTABLE();
+#endif
 
 	CWeaponShotgun(void);
 
@@ -101,24 +101,22 @@ END_PREDICTION_DATA()
 LINK_ENTITY_TO_CLASS( weapon_shotgun, CWeaponShotgun );
 PRECACHE_WEAPON_REGISTER(weapon_shotgun);
 
+#ifndef CLIENT_DLL
 acttable_t CWeaponShotgun::m_acttable[] = 
 {
-	{ ACT_MP_STAND_IDLE,				ACT_HL2MP_IDLE_SHOTGUN,					false },
-	{ ACT_MP_CROUCH_IDLE,				ACT_HL2MP_IDLE_CROUCH_SHOTGUN,			false },
-
-	{ ACT_MP_RUN,						ACT_HL2MP_RUN_SHOTGUN,					false },
-	{ ACT_MP_CROUCHWALK,				ACT_HL2MP_WALK_CROUCH_SHOTGUN,			false },
-
-	{ ACT_MP_ATTACK_STAND_PRIMARYFIRE,	ACT_HL2MP_GESTURE_RANGE_ATTACK_SHOTGUN,	false },
-	{ ACT_MP_ATTACK_CROUCH_PRIMARYFIRE,	ACT_HL2MP_GESTURE_RANGE_ATTACK_SHOTGUN,	false },
-
-	{ ACT_MP_RELOAD_STAND,				ACT_HL2MP_GESTURE_RELOAD_SHOTGUN,		false },
-	{ ACT_MP_RELOAD_CROUCH,				ACT_HL2MP_GESTURE_RELOAD_SHOTGUN,		false },
-
-	{ ACT_MP_JUMP,						ACT_HL2MP_JUMP_SHOTGUN,					false },
+	{ ACT_HL2MP_IDLE,					ACT_HL2MP_IDLE_SHOTGUN,					false },
+	{ ACT_HL2MP_RUN,					ACT_HL2MP_RUN_SHOTGUN,					false },
+	{ ACT_HL2MP_IDLE_CROUCH,			ACT_HL2MP_IDLE_CROUCH_SHOTGUN,			false },
+	{ ACT_HL2MP_WALK_CROUCH,			ACT_HL2MP_WALK_CROUCH_SHOTGUN,			false },
+	{ ACT_HL2MP_GESTURE_RANGE_ATTACK,	ACT_HL2MP_GESTURE_RANGE_ATTACK_SHOTGUN,	false },
+	{ ACT_HL2MP_GESTURE_RELOAD,			ACT_HL2MP_GESTURE_RELOAD_SHOTGUN,		false },
+	{ ACT_HL2MP_JUMP,					ACT_HL2MP_JUMP_SHOTGUN,					false },
+	{ ACT_RANGE_ATTACK1,				ACT_RANGE_ATTACK_SHOTGUN,				false },
 };
 
 IMPLEMENT_ACTTABLE(CWeaponShotgun);
+
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -131,7 +129,7 @@ bool CWeaponShotgun::StartReload( void )
 	if ( m_bNeedPump )
 		return false;
 
-	CHL2MP_Player *pOwner = ToHL2MPPlayer( GetOwner() );
+	CBaseCombatCharacter *pOwner  = GetOwner();
 	
 	if ( pOwner == NULL )
 		return false;
@@ -149,9 +147,6 @@ bool CWeaponShotgun::StartReload( void )
 		return false;
 
 	SendWeaponAnim( ACT_SHOTGUN_RELOAD_START );
-
-	//Tony; BUG BUG BUG!!! shotgun does one shell at a time!!! -- player model only has a single reload!!! so I'm just going to dispatch the singular for now.
-	pOwner->DoAnimationEvent( PLAYERANIMEVENT_RELOAD );
 
 	// Make shotgun shell visible
 	SetBodygroup(1,0);
@@ -300,7 +295,7 @@ void CWeaponShotgun::DryFire( void )
 void CWeaponShotgun::PrimaryAttack( void )
 {
 	// Only the player fires this way so we can cast
-	CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetOwner() );
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
 
 	if (!pPlayer)
 	{
@@ -319,7 +314,7 @@ void CWeaponShotgun::PrimaryAttack( void )
 	m_iClip1 -= 1;
 
 	// player "shoot" animation
-	pPlayer->DoAnimationEvent( PLAYERANIMEVENT_ATTACK_PRIMARY );
+	pPlayer->SetAnimation( PLAYER_ATTACK1 );
 
 	Vector	vecSrc		= pPlayer->Weapon_ShootPosition( );
 	Vector	vecAiming	= pPlayer->GetAutoaimVector( AUTOAIM_10DEGREES );	
@@ -351,7 +346,7 @@ void CWeaponShotgun::PrimaryAttack( void )
 void CWeaponShotgun::SecondaryAttack( void )
 {
 	// Only the player fires this way so we can cast
-	CHL2MP_Player *pPlayer = ToHL2MPPlayer( GetOwner() );
+	CBasePlayer *pPlayer = ToBasePlayer( GetOwner() );
 
 	if (!pPlayer)
 	{
@@ -371,7 +366,7 @@ void CWeaponShotgun::SecondaryAttack( void )
 	m_iClip1 -= 2;	// Shotgun uses same clip for primary and secondary attacks
 
 	// player "shoot" animation
-	pPlayer->DoAnimationEvent( PLAYERANIMEVENT_ATTACK_PRIMARY );	//Tony; shotgun doesn't have a secondary anim, use primary.
+	pPlayer->SetAnimation( PLAYER_ATTACK1 );
 
 	Vector vecSrc	 = pPlayer->Weapon_ShootPosition();
 	Vector vecAiming = pPlayer->GetAutoaimVector( AUTOAIM_10DEGREES );	

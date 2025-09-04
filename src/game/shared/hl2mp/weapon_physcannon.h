@@ -420,9 +420,6 @@ protected:
 	bool			m_bOldOpen;			// Used for parity checks
 
 	void			NotifyShouldTransmit( ShouldTransmitState_t state );
-private:
-	virtual void ThirdPersonSwitch( bool bThirdPerson );
-protected:
 
 #endif	// CLIENT_DLL
 
@@ -448,7 +445,10 @@ protected:
 
 private:
 	CWeaponPhysCannon( const CWeaponPhysCannon & );
+
+#ifndef CLIENT_DLL
 	DECLARE_ACTTABLE();
+#endif
 };
 
 #endif // WEAPON_PHYSCANNON_H
