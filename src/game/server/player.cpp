@@ -1480,24 +1480,14 @@ void CBasePlayer::OnDamagedByExplosion( const CTakeDamageInfo &info )
 
 	CSingleUserRecipientFilter user( this );
 	
-	// Check client's ear ringing preference
+	// Check client's ear ringing preference (rbcl_ear_ringing)
 	const char *clientEarRingingValue = engine->GetClientConVarValue( entindex(), "rbcl_ear_ringing" );
-	bool enableEarRinging = true; // Default fallback
+	bool enableEarRinging = true; // Default to enabled if not set
 	
 	if ( clientEarRingingValue && *clientEarRingingValue )
 	{
 		// Client has set the cvar, use their preference
 		enableEarRinging = (atoi(clientEarRingingValue) != 0);
-	}
-	else
-	{
-		// Client hasn't set it, use server default
-		ConVar *pServerDefault = cvar->FindVar("rbsv_ear_ringing_default");
-		if ( pServerDefault )
-		{
-			enableEarRinging = pServerDefault->GetBool();
-		}
-		// If server cvar not found, fall back to enabled (already set above)
 	}
 	
 	if ( enableEarRinging )
