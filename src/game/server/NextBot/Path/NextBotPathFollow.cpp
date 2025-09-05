@@ -23,13 +23,14 @@
 
 ConVar NextBotSpeedLookAheadRange( "nb_speed_look_ahead_range", "150", FCVAR_CHEAT );
 ConVar NextBotGoalLookAheadRange( "nb_goal_look_ahead_range", "50", FCVAR_CHEAT );
-ConVar NextBotLadderAlignRange( "nb_ladder_align_range", "50", FCVAR_CHEAT );
+ConVar NextBotLadderAlignRange( "nb_ladder_align_range", "75", FCVAR_CHEAT );
 
 ConVar NextBotAllowAvoiding( "nb_allow_avoiding", "1", FCVAR_CHEAT );
 ConVar NextBotAllowClimbing( "nb_allow_climbing", "1", FCVAR_CHEAT );
 ConVar NextBotAllowGapJumping( "nb_allow_gap_jumping", "1", FCVAR_CHEAT );
 
 ConVar NextBotDebugClimbing( "nb_debug_climbing", "0", FCVAR_CHEAT );
+ConVar NextBotDebugLadders( "nb_debug_ladders", "0", FCVAR_CHEAT, "Show bot ladder mounting debug info" );
 
 
 //--------------------------------------------------------------------------------------------------------------
@@ -328,7 +329,7 @@ bool PathFollower::LadderUpdate( INextBot *bot )
 	
 
 	// start using the ladder
-	const float mountRange = 25.0f;
+	const float mountRange = 35.0f; // Increased from 25.0f for easier mounting
 
 	if ( m_goal->how == GO_LADDER_UP )
 	{
@@ -350,20 +351,37 @@ bool PathFollower::LadderUpdate( INextBot *bot )
 							  "Mounting upward ladder" );
 
 		float range = to.NormalizeInPlace();
+		
+		if ( NextBotDebugLadders.GetBool() )
+		{
+			NDebugOverlay::Text( mover->GetFeet(), CFmtStr( "Range: %.1f/%.1f", range, NextBotLadderAlignRange.GetFloat() ), false, 0.1f );
+		}
+		
 		if ( range < NextBotLadderAlignRange.GetFloat() )
 		{
 			// getting close - line up
 			Vector2D ladderNormal2D = m_goal->ladder->GetNormal().AsVector2D();
 			float dot = DotProduct2D( ladderNormal2D, to );
 
-			const float cos5 = 0.9f;
-			if ( dot < -cos5 )
+			// CRITICAL FIX: Much more forgiving alignment requirements for bot ladder mounting
+			const float cos30 = 0.5f; // 60-degree cone instead of ~25-degree cone
+			
+			if ( NextBotDebugLadders.GetBool() )
+			{
+				NDebugOverlay::Text( mover->GetFeet() + Vector(0,0,16), CFmtStr( "Dot: %.2f (need < %.2f)", dot, -cos30 ), false, 0.1f );
+			}
+			
+			if ( dot < -cos30 )
 			{
 				// lined up - continue approach
 				mover->Approach( m_goal->ladder->m_bottom );
 
 				if ( range < mountRange )
 				{
+					if ( NextBotDebugLadders.GetBool() )
+					{
+						NDebugOverlay::Text( mover->GetFeet() + Vector(0,0,32), "MOUNTING LADDER!", false, 1.0f );
+					}
 					// go up ladder
 					mover->ClimbLadder( m_goal->ladder, m_goal->area );
 				}				

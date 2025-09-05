@@ -441,10 +441,39 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::OnStart( CHL2MPBot *me, Action< CH
 	m_healthKit = s_possibleHealth;
 	m_isGoalCharger = s_possibleIsCharger;
 
-	CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
-	if ( !m_path.Compute( me, GetHealthKitPathOrigin( m_healthKit, m_isGoalCharger ), cost ) )
+	// Check elevation difference to health item
+	Vector myPos = me->GetAbsOrigin();
+	Vector healthPos = GetHealthKitPathOrigin( m_healthKit, m_isGoalCharger );
+	float heightDiff = fabs( healthPos.z - myPos.z );
+	
+	// Use ladder-preferring pathfinding for any significant elevation differences
+	if ( heightDiff > 32.0f ) // Lower threshold for better ladder detection
 	{
-		return Done( "No path to health!" );
+		// Aggressively prefer ladders for vertical movement to health items
+		CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+		if ( !m_path.Compute( me, healthPos, cost ) )
+		{
+			// Fallback to default route
+			CHL2MPBotPathCost fallbackCost( me, DEFAULT_ROUTE );
+			if ( !m_path.Compute( me, healthPos, fallbackCost ) )
+			{
+				return Done( "No path to health!" );
+			}
+		}
+	}
+	else
+	{
+		// Try fastest route first even for same-level health seeking
+		CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+		if ( !m_path.Compute( me, healthPos, cost ) )
+		{
+			// Fallback to safest route
+			CHL2MPBotPathCost safeCost( me, SAFEST_ROUTE );
+			if ( !m_path.Compute( me, healthPos, safeCost ) )
+			{
+				return Done( "No path to health!" );
+			}
+		}
 	}
 
 	return Continue();
@@ -623,12 +652,40 @@ ActionResult< CHL2MPBot >	CHL2MPBotGetHealth::Update( CHL2MPBot *me, float inter
 
 	if ( !m_path.IsValid() )
 	{
-		// this can occur if we overshoot the health kit's location
+		// This can occur if we overshoot the health kit's location
 		// because it is momentarily gone
-		CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
-		if ( !m_path.Compute( me, GetHealthKitPathOrigin( m_healthKit, m_isGoalCharger ), cost ) )
+		// Check elevation difference for pathfinding strategy
+		Vector myPos = me->GetAbsOrigin();
+		Vector healthPos = GetHealthKitPathOrigin( m_healthKit, m_isGoalCharger );
+		float heightDiff = fabs( healthPos.z - myPos.z );
+		
+		if ( heightDiff > 32.0f ) // Lower threshold for better ladder detection
 		{
-			return Done( "No path to health!" );
+			// Use ladder-preferring pathfinding for elevation changes
+			CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+			if ( !m_path.Compute( me, healthPos, cost ) )
+			{
+				// Fallback to default route
+				CHL2MPBotPathCost fallbackCost( me, DEFAULT_ROUTE );
+				if ( !m_path.Compute( me, healthPos, fallbackCost ) )
+				{
+					return Done( "No path to health!" );
+				}
+			}
+		}
+		else
+		{
+			// Try fastest route first for better ladder detection
+			CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+			if ( !m_path.Compute( me, healthPos, cost ) )
+			{
+				// Fallback to standard pathfinding
+				CHL2MPBotPathCost safeCost( me, SAFEST_ROUTE );
+				if ( !m_path.Compute( me, healthPos, safeCost ) )
+				{
+					return Done( "No path to health!" );
+				}
+			}
 		}
 	}
 

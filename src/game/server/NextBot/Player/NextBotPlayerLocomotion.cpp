@@ -743,14 +743,17 @@ const Vector &PlayerLocomotion::GetGroundNormal( void ) const
  */
 void PlayerLocomotion::ClimbLadder( const CNavLadder *ladder, const CNavArea *dismountGoal )
 {
-	// look up and push forward
-// 	Vector goal =  GetBot()->GetPosition() + 100.0f * ( Vector( 0, 0, 1.0f ) - ladder->GetNormal() );
-// 	Approach( goal );
-// 	FaceTowards( goal );
-	
+	// Set up ladder climbing
 	m_ladderState = APPROACHING_ASCENDING_LADDER;
 	m_ladderInfo = ladder;
 	m_ladderDismountGoal = dismountGoal;
+	m_ladderTimer.Start( 30.0f ); // 30 second timeout
+
+	if ( GetBot()->IsDebugging( NEXTBOT_LOCOMOTION ) )
+	{
+		NDebugOverlay::Text( GetBot()->GetEntity()->GetAbsOrigin() + Vector( 0, 0, 64 ), 
+			"Starting ladder climb", false, 2.0f );
+	}
 }
 
 
@@ -760,14 +763,17 @@ void PlayerLocomotion::ClimbLadder( const CNavLadder *ladder, const CNavArea *di
  */
 void PlayerLocomotion::DescendLadder( const CNavLadder *ladder, const CNavArea *dismountGoal )
 {
-	// look down and push forward
-// 	Vector goal =  GetBot()->GetPosition() + 100.0f * ( Vector( 0, 0, -1.0f ) - ladder->GetNormal() );
-// 	Approach( goal );
-// 	FaceTowards( goal );
-
+	// Set up ladder descending
 	m_ladderState = APPROACHING_DESCENDING_LADDER;
 	m_ladderInfo = ladder;
 	m_ladderDismountGoal = dismountGoal;
+	m_ladderTimer.Start( 30.0f ); // 30 second timeout
+
+	if ( GetBot()->IsDebugging( NEXTBOT_LOCOMOTION ) )
+	{
+		NDebugOverlay::Text( GetBot()->GetEntity()->GetAbsOrigin() + Vector( 0, 0, 64 ), 
+			"Starting ladder descent", false, 2.0f );
+	}
 }
 
 

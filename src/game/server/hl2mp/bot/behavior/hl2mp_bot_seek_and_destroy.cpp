@@ -326,14 +326,57 @@ void CHL2MPBotSeekAndDestroy::RecomputeSeekPath( CHL2MPBot *me )
 		// Path to closest weapon if found
 		if ( closestWeapon )
 		{
-			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
 			m_hTargetEntity = closestWeapon;
 			m_bGoingToTargetEntity = true;
 			m_vGoalPos = closestWeapon->WorldSpaceCenter();
-			if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
-				return;
+			
+			// Check if significant height difference - prefer ladders for vertical movement
+			float heightDiff = fabs( m_vGoalPos.z - myPos.z );
+			if ( heightDiff > 32.0f ) // Lower threshold to catch more ladder scenarios
+			{
+				// Use ladder-preferring pathfinding for any significant elevation changes
+				CHL2MPBotPathCost cost( me, FASTEST_ROUTE ); // Fastest route will aggressively prefer ladders
+				bool pathComputed = m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				
+				if ( pathComputed )
+				{
+					return;
+				}
+				else
+				{
+					// Fallback to default route if fastest fails
+					CHL2MPBotPathCost fallbackCost( me, DEFAULT_ROUTE );
+					bool fallbackComputed = m_path.Compute( me, m_vGoalPos, fallbackCost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+					
+					if ( fallbackComputed )
+					{
+						return;
+					}
+				}
+			}
+			else
+			{
+				// Use standard pathfinding for same-level movement, but try fastest first for better ladder detection
+				CHL2MPBotPathCost cost( me, FASTEST_ROUTE ); // Try fastest first even for same level
+				bool pathComputed = m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				
+				if ( !pathComputed )
+				{
+					// Fallback to safest route
+					CHL2MPBotPathCost safeCost( me, SAFEST_ROUTE );
+					pathComputed = m_path.Compute( me, m_vGoalPos, safeCost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				}
+				
+				if ( pathComputed )
+				{
+					return;
+				}
+			}
 		}
 	}
+
+	// Debug code removed - using natural efficiency-based ladder preference
+
 
 	// Fallback: roam to random spawn points or nav areas
 	{
@@ -350,18 +393,58 @@ void CHL2MPBotSeekAndDestroy::RecomputeSeekPath( CHL2MPBot *me )
 		// Use spawn points if we have enough
 		if ( pSpawns.Size() >= 3 )
 		{
-			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
 			m_hTargetEntity = pSpawns[RandomInt( 0, pSpawns.Size() - 1 )];
 			m_bGoingToTargetEntity = true;
 			m_vGoalPos = m_hTargetEntity->WorldSpaceCenter();
-			if ( m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH )
-				return;
+			
+			// Check for significant height difference to prefer ladder routes
+			Vector myPos = me->GetAbsOrigin();
+			float heightDiff = fabs( m_vGoalPos.z - myPos.z );
+			
+			if ( heightDiff > 32.0f ) // Lower threshold for better ladder detection
+			{
+				// Use fastest route for any elevation changes - will aggressively prefer ladders
+				CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+				bool pathComputed = m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				
+				if ( !pathComputed )
+				{
+					// Fallback to default route
+					CHL2MPBotPathCost fallbackCost( me, DEFAULT_ROUTE );
+					pathComputed = m_path.Compute( me, m_vGoalPos, fallbackCost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				}
+				
+				if ( pathComputed )
+				{
+					return;
+				}
+			}
+			else
+			{
+				// Try fastest route first even for same-level movement
+				CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
+				bool pathComputed = m_path.Compute( me, m_vGoalPos, cost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				
+				if ( !pathComputed )
+				{
+					// Fallback to standard pathfinding
+					CHL2MPBotPathCost safeCost( me, SAFEST_ROUTE );
+					pathComputed = m_path.Compute( me, m_vGoalPos, safeCost, 0.0f, true, true ) && m_path.IsValid() && m_path.GetResult() == Path::COMPLETE_PATH;
+				}
+				
+				if ( pathComputed )
+				{
+					return;
+				}
+			}
 		}
 		else if ( TheNavAreas.Size() > 0 )
 		{
 			// No spawns available - wander to random nav area
-			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
 			m_vGoalPos = TheNavAreas[RandomInt( 0, TheNavAreas.Size() - 1 )]->GetCenter();
+			
+			// Use standard pathfinding
+			CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
 			m_path.Compute( me, m_vGoalPos, cost );
 		}
 	}
@@ -395,6 +478,7 @@ EventDesiredResult< CHL2MPBot > CHL2MPBotSeekAndDestroy::OnCommandApproach( CHL2
 	m_bOverrideApproach = true;
 	m_vOverrideApproach = pos;
 
+	// Use standard pathfinding for command approach
 	CHL2MPBotPathCost cost( me, SAFEST_ROUTE );
 	m_path.Compute( me, m_vOverrideApproach, cost );
 

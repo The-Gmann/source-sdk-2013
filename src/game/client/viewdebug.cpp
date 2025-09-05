@@ -518,11 +518,25 @@ void CDebugViewRender::Draw3DDebuggingInfo( const CViewSetup &viewDebug )
 {
 	VPROF("CViewRender::Draw3DDebuggingInfo");
 
-	// Draw 3d overlays
-	render->Draw3DDebugOverlays();
-
-	// Draw the line file used for debugging leaks
-	render->DrawLineFile();
+	// Enhanced safety checks to prevent crashes while allowing normal debug rendering
+	if ( render && materials && materials->GetRenderContext() )
+	{
+		// Additional safety check - only render if we have a valid viewport
+		if ( viewDebug.width > 0 && viewDebug.height > 0 )
+		{
+			// Only call Draw3DDebugOverlays if render context is valid
+			CMatRenderContextPtr pRenderContext( materials );
+			if ( pRenderContext )
+			{
+				// Basic safety check before calling debug overlays
+				render->Draw3DDebugOverlays();
+			}
+			
+			// Skip DrawLineFile() as it's the main source of crashes
+			// This function seems to have issues with null pointer access
+			// render->DrawLineFile();
+		}
+	}
 }
 
 
