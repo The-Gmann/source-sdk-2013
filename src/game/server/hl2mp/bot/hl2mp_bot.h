@@ -15,6 +15,7 @@
 #include "hl2mp/weapon_hl2mpbasehlmpcombatweapon.h"
 #include "nav_entities.h"
 #include "utlstack.h"
+#include "NextBot/Path/NextBotPath.h"
 
 #define HL2MP_BOT_TYPE	1337
 
@@ -142,7 +143,7 @@ public:
 	bool IsContinuousFireWeapon( CBaseHL2MPCombatWeapon *weapon ) const;		// return true if given weapon "sprays" bullets/fire/etc continuously (ie: not individual rockets/etc)
 	bool IsExplosiveProjectileWeapon( CBaseHL2MPCombatWeapon *weapon ) const;// return true if given weapon launches explosive projectiles with splash damage
 	bool IsBarrageAndReloadWeapon( CBaseHL2MPCombatWeapon *weapon ) const;	// return true if given weapon has small clip and long reload cost (ie: rocket launcher, etc)
-	bool IsQuietWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if given weapon doesn't make much sound when used (ie: spy knife, etc)
+	bool IsQuietWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if given weapon doesn0't make much sound when used (ie: spy knife, etc)
 
 	// Enhanced weapon handling methods
 	bool IsGaussWeapon( CBaseHL2MPCombatWeapon *weapon ) const;				// return true if weapon is gauss gun
@@ -855,6 +856,45 @@ public:
 				// too far to drop
 				return -1.0f;
 			}
+			else if ( deltaZ < -m_stepHeight )
+			{
+				// CRITICAL FIX: Add severe penalties for dangerous drops to discourage rooftop jumping
+				float dropDistance = fabs( deltaZ );
+				float dropPenalty = 1.0f;
+				
+				if ( dropDistance > 100.0f )
+				{
+					// Very dangerous drops - massive penalty to strongly discourage
+					dropPenalty = 15.0f; // 1500% cost increase
+				}
+				else if ( dropDistance > 64.0f )
+				{
+					// Moderately dangerous drops - heavy penalty
+					dropPenalty = 8.0f; // 800% cost increase
+				}
+				else if ( dropDistance > 32.0f )
+				{
+					// Small dangerous drops - significant penalty
+					dropPenalty = 4.0f; // 400% cost increase
+				}
+				else
+				{
+					// Minor drops - moderate penalty
+					dropPenalty = 2.0f; // 200% cost increase
+				}
+				
+				// Apply additional penalty based on route type
+				if ( m_routeType == SAFEST_ROUTE )
+				{
+					dropPenalty *= 2.0f; // Double penalty for safest routes
+				}
+				else if ( m_routeType == RETREAT_ROUTE )
+				{
+					dropPenalty *= 1.5f; // Higher penalty for retreat routes
+				}
+				
+				dist *= dropPenalty;
+			}
 
 			// add a random penalty unique to this character so they choose different routes to the same place
 			float preference = 1.0f;
@@ -882,18 +922,128 @@ public:
 
 			float cost = ( dist * preference );
 
-			if ( area->HasAttributes( NAV_MESH_FUNC_COST ) )
+			// REVOLUTIONARY LADDER PREFERENCE: Make ladder traversal extremely attractive
+			// The core issue is that bots don't even consider ladder routes during pathfinding
+			if ( ladder )
 			{
-				cost *= area->ComputeFuncNavCost( m_me );
-				DebuggerBreakOnNaN_StagingOnly( cost );
+				// Calculate the actual vertical benefit of this ladder
+				float heightChange = fabs( ladder->m_top.z - ladder->m_bottom.z );
+				
+				// CRITICAL FIX: Make ladders virtually free for any meaningful height change
+				// This ensures they're always selected over ground detours
+				if ( heightChange > 16.0f ) // Any significant vertical movement
+				{
+					// Calculate potential ground route distance saved by using ladder
+					// Assume ground detours are at least 2x the direct horizontal distance
+					float horizontalDistance = ( ladder->m_top.AsVector2D() - ladder->m_bottom.AsVector2D() ).Length();
+					float estimatedGroundDetour = MAX( horizontalDistance * 2.0f, heightChange * 4.0f );
+					
+					// Make ladder cost a tiny fraction of the estimated alternative
+					if ( m_routeType == FASTEST_ROUTE )
+					{
+						// Virtually free ladder traversal - massive advantage
+						cost = estimatedGroundDetour * 0.01f; // 1% of ground route cost
+					}
+					else if ( m_routeType == SAFEST_ROUTE )
+					{
+						// Still very cheap but slightly more conservative
+						cost = estimatedGroundDetour * 0.05f; // 5% of ground route cost
+					}
+					else // DEFAULT_ROUTE and others
+					{
+						// Moderate but still very attractive ladder cost
+						cost = estimatedGroundDetour * 0.1f; // 10% of ground route cost
+					}
+					
+					// Additional massive bonus for tall ladders that save huge detours
+					if ( heightChange > 128.0f )
+					{
+						cost *= 0.1f; // Another 90% reduction for very tall ladders
+					}
+					else if ( heightChange > 64.0f )
+					{
+						cost *= 0.3f; // 70% additional reduction for tall ladders
+					}
+				}
+				else if ( heightChange > 4.0f )
+				{
+					// Even small ladders get significant cost reduction
+					cost *= 0.2f; // 80% reduction
+				}
+				else
+				{
+					// Horizontal or minimal height ladders still get bonus
+					cost *= 0.7f; // 30% reduction
+				}
+				
+				// Ensure ladder cost is never higher than original pathfinding distance
+				// This guarantees ladders are ALWAYS preferred when available
+				float originalDistance = ( ladder ) ? ladder->m_length : dist;
+				cost = MIN( cost, originalDistance * 0.5f );
 			}
 
-			return cost + fromArea->GetCostSoFar();
+			// Compute the total cost so far
+			float costSoFar = cost + fromArea->GetCostSoFar();
+			
+			return costSoFar;
 		}
 	}
 
+
 	CHL2MPBot *m_me;
 	RouteType m_routeType;
+	float m_stepHeight;
+	float m_maxJumpHeight;
+	float m_maxDropHeight;
+};
+
+
+class CHL2MPBotLadderPathCost : public IPathCost
+{
+public:
+	CHL2MPBotLadderPathCost( CHL2MPBot *me )
+	{
+		m_me = me;
+		m_stepHeight = me->GetLocomotionInterface()->GetStepHeight();
+		m_maxJumpHeight = me->GetLocomotionInterface()->GetMaxJumpHeight();
+		m_maxDropHeight = me->GetLocomotionInterface()->GetDeathDropHeight();
+	}
+
+	virtual float operator()( CNavArea *baseArea, CNavArea *fromArea, const CNavLadder *ladder, const CFuncElevator *elevator, float length ) const
+	{
+		VPROF_BUDGET( "CHL2MPBotLadderPathCost::operator()", "NextBot" );
+
+		CNavArea *area = (CNavArea *)baseArea;
+
+		if ( fromArea == NULL )
+		{
+			// first area in path, no cost
+			return 0.0f;
+		}
+		else
+		{
+			if ( !m_me->GetLocomotionInterface()->IsAreaTraversable( area ) )
+			{
+				return -1.0f;
+			}
+
+			// ONLY allow ladder connections in this cost function
+			if ( !ladder )
+			{
+				// Block ALL non-ladder connections
+				return -1.0f;
+			}
+
+			// This is a ladder connection - allow it
+			float dist = ladder->m_length;
+			
+			// Give slight preference to this connection to help with search ordering
+			return (dist * 0.9f) + fromArea->GetCostSoFar();
+		}
+	}
+
+private:
+	CHL2MPBot *m_me;
 	float m_stepHeight;
 	float m_maxJumpHeight;
 	float m_maxDropHeight;

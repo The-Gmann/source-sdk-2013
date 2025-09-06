@@ -15,6 +15,7 @@ extern ConVar hl2_sprintspeed;
 // Debug ConVar for sprint tracking
 ConVar bot_debug_sprint( "bot_debug_sprint", "0", FCVAR_CHEAT, "Show bot sprint debug messages with timestamps and duration" );
 
+
 // Sprint behavior ConVars
 ConVar bot_sprint_when_chasing( "bot_sprint_when_chasing", "1", FCVAR_CHEAT, "Bots sprint when chasing enemies" );
 ConVar bot_sprint_when_fleeing( "bot_sprint_when_fleeing", "1", FCVAR_CHEAT, "Bots sprint when fleeing from enemies" );
@@ -36,6 +37,32 @@ void CHL2MPBotLocomotion::Update( void )
 
 	// Determine if bot should sprint based on tactical situation
 	bool shouldSprint = ShouldSprint( me );
+	
+	// Never sprint while using ladders - this interferes with proper ladder traversal
+	if ( IsUsingLadder() )
+	{
+		shouldSprint = false;
+		
+		// If we were sprinting, stop it immediately
+		if ( m_isSprinting )
+		{
+			me->ReleaseWalkButton();
+			m_isSprinting = false;
+			m_sprintStartTime = 0.0f;
+			m_lastSprintButtonPress = 0.0f;
+		}
+		
+		// Handle ladder traversal with HL2 movement system
+		if ( HandleLadderMovement( me ) )
+		{
+			// Ladder movement handled, continue with base update but skip normal movement
+			return BaseClass::Update();
+		}
+	}
+	
+
+	
+
 	
 	// Add sprint state stability - prevent rapid switching
 	if ( m_isSprinting )
@@ -395,4 +422,395 @@ bool CHL2MPBotLocomotion::IsEntityTraversable( CBaseEntity* obstacle, TraverseWh
 	}
 
 	return PlayerLocomotion::IsEntityTraversable( obstacle, when );
+}
+
+
+//-----------------------------------------------------------------------------------------
+// Ladder Navigation Overrides
+//-----------------------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------------------
+void CHL2MPBotLocomotion::ClimbLadder( const CNavLadder *ladder, const CNavArea *dismountGoal )
+{
+	CHL2MPBot* me = ToHL2MPBot( GetBot()->GetEntity() );
+	if ( !me || !ladder )
+	{
+		return;
+	}
+
+	// Stop sprinting during ladder navigation for better control
+	if ( m_isSprinting )
+	{
+		me->ReleaseWalkButton();
+		m_isSprinting = false;
+	}
+
+	// Store ladder information for HL2 ladder movement system
+	m_ladderInfo = ladder;
+	m_ladderDismountGoal = dismountGoal;
+	m_isGoingUpLadder = true;
+	m_ladderState = APPROACHING_ASCENDING_LADDER;
+	
+	// Initialize oscillation prevention
+	m_lastLadderZ = me->GetAbsOrigin().z;
+	m_ladderDirectionChangeTime = 0.0f;
+	m_ladderDirectionChanges = 0;
+	
+	// Position bot correctly for ladder mounting
+	IBody *body = GetBot()->GetBodyInterface();
+	if ( body )
+	{
+		// Line up to climb - use improved approach angle
+		Vector mountSpot = ladder->m_bottom + ladder->GetNormal() * (0.5f * body->GetHullWidth());
+		mountSpot.z = GetBot()->GetEntity()->GetAbsOrigin().z;
+		
+		// Face towards the ladder with smooth transition
+		body->AimHeadTowards( ladder->m_top, IBody::MANDATORY, 0.5f, NULL, "Approaching ladder" );
+	}
+	
+	// Call the base PlayerLocomotion implementation
+	BaseClass::ClimbLadder( ladder, dismountGoal );
+}
+
+//-----------------------------------------------------------------------------------------
+void CHL2MPBotLocomotion::DescendLadder( const CNavLadder *ladder, const CNavArea *dismountGoal )
+{
+	CHL2MPBot* me = ToHL2MPBot( GetBot()->GetEntity() );
+	if ( !me || !ladder )
+	{
+		return;
+	}
+
+	// Stop sprinting during ladder navigation for better control
+	if ( m_isSprinting )
+	{
+		me->ReleaseWalkButton();
+		m_isSprinting = false;
+	}
+
+	// Store ladder information for HL2 ladder movement system
+	m_ladderInfo = ladder;
+	m_ladderDismountGoal = dismountGoal;
+	m_isGoingUpLadder = false;
+	m_ladderState = APPROACHING_DESCENDING_LADDER;
+	
+	// Initialize oscillation prevention
+	m_lastLadderZ = me->GetAbsOrigin().z;
+	m_ladderDirectionChangeTime = 0.0f;
+	m_ladderDirectionChanges = 0;
+	
+	// Position bot correctly for ladder mounting
+	IBody *body = GetBot()->GetBodyInterface();
+	if ( body )
+	{
+		// Line up to descend - use improved approach angle
+		Vector mountSpot = ladder->m_top + ladder->GetNormal() * (0.5f * body->GetHullWidth());
+		mountSpot.z = GetBot()->GetEntity()->GetAbsOrigin().z;
+		
+		// Face towards the ladder for descent with smooth transition
+		body->AimHeadTowards( ladder->m_bottom, IBody::MANDATORY, 0.5f, NULL, "Approaching ladder for descent" );
+	}
+	
+	// Call the base PlayerLocomotion implementation
+	BaseClass::DescendLadder( ladder, dismountGoal );
+}
+
+//-----------------------------------------------------------------------------------------
+// Handle HL2 ladder movement system for bots
+bool CHL2MPBotLocomotion::HandleLadderMovement( CHL2MPBot *me )
+{
+	if ( !me || !m_ladderInfo )
+	{
+		return false;
+	}
+	
+	// Get current bot state
+	Vector botPos = me->GetAbsOrigin();
+	bool isOnLadder = (me->GetMoveType() == MOVETYPE_LADDER);
+	
+	// Check if we need to switch to ladder movement type
+	if ( !isOnLadder )
+	{
+		// Calculate distance to ladder mount point and validate positioning
+		Vector mountPoint;
+		float mountDistance, heightDiff;
+		
+		if ( m_isGoingUpLadder )
+		{
+			// Climbing up - mount at bottom
+			mountPoint = m_ladderInfo->m_bottom;
+			mountDistance = (mountPoint - botPos).Length2D();
+			heightDiff = botPos.z - mountPoint.z;
+			
+			// Improved mounting: more generous thresholds for reliability
+			if ( mountDistance < 64.0f && heightDiff > -48.0f && heightDiff < 48.0f )
+			{
+				// Set to ladder movement mode
+				me->SetMoveType( MOVETYPE_LADDER );
+				me->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+				me->SetGravity( 0.0f );
+				
+				// Store ladder normal for HL2 movement system
+				me->SetLadderNormal( m_ladderInfo->GetNormal() );
+				
+				// Set initial climbing state
+				m_ladderState = ASCENDING_LADDER;
+			}
+			else
+			{
+				// Still approaching - move toward mount point with enhanced control
+				me->PressForwardButton();
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Smooth approach with predictive targeting
+					Vector approachTarget = mountPoint + Vector( 0, 0, 8 );
+					body->AimHeadTowards( approachTarget, IBody::MANDATORY, 0.8f, NULL, "Approaching ladder mount" );
+				}
+			}
+		}
+		else
+		{
+			// Climbing down - mount at top
+			mountPoint = m_ladderInfo->m_top;
+			mountDistance = (mountPoint - botPos).Length2D();
+			heightDiff = botPos.z - mountPoint.z;
+			
+			// Improved mounting: more generous thresholds for reliability
+			if ( mountDistance < 64.0f && heightDiff > -48.0f && heightDiff < 48.0f )
+			{
+				// Set to ladder movement mode
+				me->SetMoveType( MOVETYPE_LADDER );
+				me->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+				me->SetGravity( 0.0f );
+				
+				// Store ladder normal for HL2 movement system
+				me->SetLadderNormal( m_ladderInfo->GetNormal() );
+				
+				// Set initial descending state
+				m_ladderState = DESCENDING_LADDER;
+				
+				// Immediately look down for descent - critical for HL2 ladder system
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Look down steeply to ensure proper descent direction
+					Vector lookTarget = botPos - Vector( 0, 0, 150 ) + 10.0f * m_ladderInfo->GetNormal();
+					body->AimHeadTowards( lookTarget, IBody::MANDATORY, 0.2f, NULL, "Mounting ladder for descent" );
+				}
+			}
+			else
+			{
+				// Still approaching - move toward mount point with enhanced control
+				me->PressForwardButton();
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Smooth approach with predictive targeting
+					Vector approachTarget = mountPoint + Vector( 0, 0, 8 );
+					body->AimHeadTowards( approachTarget, IBody::MANDATORY, 0.8f, NULL, "Approaching ladder mount" );
+				}
+			}
+		}
+	}
+	else
+	{
+		// Already on ladder - handle movement
+		// Enhanced oscillation detection
+		float currentZ = botPos.z;
+		float deltaZ = currentZ - m_lastLadderZ;
+		m_lastLadderZ = currentZ;
+		
+		// Track direction changes for oscillation detection
+		if ( m_isGoingUpLadder && deltaZ < -2.0f && (gpGlobals->curtime - m_ladderDirectionChangeTime) > 0.3f )
+		{
+			m_ladderDirectionChanges++;
+			m_ladderDirectionChangeTime = gpGlobals->curtime;
+		}
+		else if ( !m_isGoingUpLadder && deltaZ > 2.0f && (gpGlobals->curtime - m_ladderDirectionChangeTime) > 0.3f )
+		{
+			m_ladderDirectionChanges++;
+			m_ladderDirectionChangeTime = gpGlobals->curtime;
+		}
+		
+		bool hasOscillationIssue = ((gpGlobals->curtime - m_ladderDirectionChangeTime) < 2.0f && m_ladderDirectionChanges >= 3);
+		
+		if ( m_isGoingUpLadder )
+		{
+			// Climbing up
+			float distanceToTop = m_ladderInfo->m_top.z - botPos.z;
+			if ( distanceToTop <= GetStepHeight() )
+			{
+				// Reached top - dismount with jump
+				me->SetMoveType( MOVETYPE_WALK );
+				me->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+				me->SetGravity( 1.0f );
+				
+				// Jump for smoother dismount
+				me->PressJumpButton( 0.5f );
+				
+				// Look straight ahead for dismounting
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Calculate horizontal look target away from ladder
+					Vector dismountTarget = botPos - 120.0f * m_ladderInfo->GetNormal();
+					dismountTarget.z = botPos.z; // Keep it horizontal
+					body->AimHeadTowards( dismountTarget, IBody::MANDATORY, 1.0f, NULL, "Dismounting ladder at top" );
+				}
+				
+				m_ladderInfo = NULL;
+				m_ladderState = NO_LADDER;
+				return false; // Done with ladder
+			}
+			else if ( distanceToTop < 64.0f )
+			{
+				// Near top - start looking ahead for dismount
+				me->PressForwardButton();
+				
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Transition from looking up to looking straight ahead
+					Vector dismountTarget = botPos - 80.0f * m_ladderInfo->GetNormal();
+					dismountTarget.z = botPos.z + 20.0f; // Slightly upward but mostly horizontal
+					body->AimHeadTowards( dismountTarget, IBody::MANDATORY, 1.0f, NULL, "Preparing to dismount ladder" );
+				}
+			}
+			else
+			{
+				// Keep climbing up - look up the ladder with optimized angles
+				me->PressForwardButton();
+				
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Look up at an optimal angle for climbing
+					Vector lookTarget = botPos + Vector( 0, 0, 120 ) - 30.0f * m_ladderInfo->GetNormal();
+					body->AimHeadTowards( lookTarget, IBody::MANDATORY, 0.6f, NULL, "Climbing up ladder" );
+				}
+			}
+		}
+		else
+		{
+			// Climbing down
+			float distanceToBottom = botPos.z - m_ladderInfo->m_bottom.z;
+			
+			// Enhanced dismount threshold to prevent oscillation
+			float dismountThreshold = GetStepHeight() * 2.5f;
+			if ( hasOscillationIssue )
+			{
+				dismountThreshold = GetStepHeight() * 4.0f;
+			}
+			
+			if ( distanceToBottom <= dismountThreshold )
+			{
+				// Reached bottom - dismount with jump
+				me->SetMoveType( MOVETYPE_WALK );
+				me->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+				me->SetGravity( 1.0f );
+				
+				// Jump for smoother dismount
+				me->PressJumpButton( 0.5f );
+				
+				// Look straight ahead for dismounting
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Calculate horizontal look target away from ladder
+					Vector dismountTarget = botPos - 120.0f * m_ladderInfo->GetNormal();
+					dismountTarget.z = botPos.z; // Keep it horizontal
+					body->AimHeadTowards( dismountTarget, IBody::MANDATORY, 1.0f, NULL, "Dismounting ladder at bottom" );
+				}
+				
+				m_ladderInfo = NULL;
+				m_ladderState = NO_LADDER;
+				
+				// Reset oscillation tracking
+				m_lastLadderZ = 0.0f;
+				m_ladderDirectionChangeTime = 0.0f;
+				m_ladderDirectionChanges = 0;
+				
+				return false; // Done with ladder
+			}
+			else if ( distanceToBottom < dismountThreshold + 32.0f )
+			{
+				// Near bottom - prepare for dismount but keep descending
+				me->PressForwardButton();
+				
+				// Start transitioning view angle to horizontal
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Less steep angle as we approach bottom
+					Vector lookTarget = botPos - Vector( 0, 0, 80 ) + 15.0f * m_ladderInfo->GetNormal();
+					body->AimHeadTowards( lookTarget, IBody::MANDATORY, 0.4f, NULL, "Preparing to dismount at bottom" );
+				}
+			}
+			else
+			{
+				// Keep climbing down - use optimized descent angles
+				me->PressForwardButton();
+				
+				// Look down with optimized angle for more reliable descent
+				IBody *body = GetBot()->GetBodyInterface();
+				if ( body )
+				{
+					// Optimal downward angle with smooth aim response
+					Vector lookTarget = botPos - Vector( 0, 0, 300 ) + 5.0f * m_ladderInfo->GetNormal();
+					body->AimHeadTowards( lookTarget, IBody::MANDATORY, 0.1f, NULL, "Climbing down ladder" );
+				}
+			}
+		}
+		
+		// Validate ladder state - if bot somehow got disconnected from ladder, reset
+		if ( !isOnLadder )
+		{
+			m_ladderInfo = NULL;
+			m_ladderState = NO_LADDER;
+			
+			// Reset oscillation tracking
+			m_lastLadderZ = 0.0f;
+			m_ladderDirectionChangeTime = 0.0f;
+			m_ladderDirectionChanges = 0;
+			return false;
+		}
+		
+		// Force dismount if oscillation is severe
+		if ( hasOscillationIssue && m_ladderDirectionChanges >= 4 )
+		{
+			// Force dismount with jump
+			me->SetMoveType( MOVETYPE_WALK );
+			me->SetMoveCollide( MOVECOLLIDE_DEFAULT );
+			me->SetGravity( 1.0f );
+			
+			// Jump to get away from problematic ladder
+			me->PressJumpButton( 0.7f );
+			
+			m_ladderInfo = NULL;
+			m_ladderState = NO_LADDER;
+			
+			// Reset oscillation tracking
+			m_lastLadderZ = 0.0f;
+			m_ladderDirectionChangeTime = 0.0f;
+			m_ladderDirectionChanges = 0;
+			return false;
+		}
+	}
+	
+	return true; // Ladder movement is active
+}
+
+//-----------------------------------------------------------------------------------------
+bool CHL2MPBotLocomotion::IsUsingLadder( void ) const
+{
+	// Use the PlayerLocomotion implementation
+	return BaseClass::IsUsingLadder();
+}
+
+//-----------------------------------------------------------------------------------------
+bool CHL2MPBotLocomotion::IsAscendingOrDescendingLadder( void ) const
+{
+	// Use the PlayerLocomotion implementation
+	return BaseClass::IsAscendingOrDescendingLadder();
 }

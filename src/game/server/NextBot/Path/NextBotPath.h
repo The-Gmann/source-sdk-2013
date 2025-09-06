@@ -7,6 +7,10 @@
 #define _NEXT_BOT_PATH_H_
 
 #include "NextBotInterface.h"
+#include "nav.h"
+#include "nav_area.h"
+#include "nav_ladder.h"
+#include "nav_mesh.h"
 
 #include "tier0/vprof.h"
 
@@ -16,6 +20,7 @@
 class INextBot;
 class CNavArea;
 class CNavLadder;
+class CFuncElevator;
 
 
 //---------------------------------------------------------------------------------------------------------------
@@ -219,7 +224,7 @@ public:
 		if ( count == 1 )
 		{
 			BuildTrivialPath( bot, subjectPos );
-			return pathResult;
+			return true;
 		}
 
 		// assemble path
@@ -229,12 +234,32 @@ public:
 			--count;
 			m_path[ count ].area = area;
 			m_path[ count ].how = area->GetParentHow();
-			m_path[ count ].type = ON_GROUND;
+			
+			// Set segment type based on traversal type to ensure proper initialization
+			switch( m_path[ count ].how )
+			{
+				case GO_LADDER_UP:
+					m_path[ count ].type = LADDER_UP;
+					break;
+					
+				case GO_LADDER_DOWN:
+					m_path[ count ].type = LADDER_DOWN;
+					break;
+					
+				case GO_ELEVATOR_UP:
+				case GO_ELEVATOR_DOWN:
+					m_path[ count ].type = ON_GROUND; // Elevators handled separately
+					break;
+					
+				default:
+					m_path[ count ].type = ON_GROUND;
+					break;
+			}
 		}
 
 		if ( pathResult || includeGoalIfPathFails )
 		{
-			// append actual subject position
+			// append actual goal position
 			m_path[ m_segmentCount ].area = closestArea;
 			m_path[ m_segmentCount ].pos = subjectPos;
 			m_path[ m_segmentCount ].ladder = NULL;
@@ -548,7 +573,27 @@ public:
 			--count;
 			m_path[ count ].area = area;
 			m_path[ count ].how = area->GetParentHow();
-			m_path[ count ].type = ON_GROUND;
+			
+			// Set segment type based on traversal type to ensure proper initialization
+			switch( m_path[ count ].how )
+			{
+				case GO_LADDER_UP:
+					m_path[ count ].type = LADDER_UP;
+					break;
+					
+				case GO_LADDER_DOWN:
+					m_path[ count ].type = LADDER_DOWN;
+					break;
+					
+				case GO_ELEVATOR_UP:
+				case GO_ELEVATOR_DOWN:
+					m_path[ count ].type = ON_GROUND; // Elevators handled separately
+					break;
+					
+				default:
+					m_path[ count ].type = ON_GROUND;
+					break;
+			}
 		}
 
 		// append actual goal position
