@@ -20,11 +20,6 @@ public:
 		m_isSprinting = false;
 		m_sprintStartTime = 0.0f;
 		m_lastSprintButtonPress = 0.0f;
-		
-		// Initialize oscillation prevention variables
-		m_lastLadderZ = 0.0f;
-		m_ladderDirectionChangeTime = 0.0f;
-		m_ladderDirectionChanges = 0;
 	}
 
 	virtual ~CHL2MPBotLocomotion() { }
@@ -41,17 +36,8 @@ public:
 	virtual bool IsAreaTraversable( const CNavArea *baseArea ) const;	// return true if given area can be used for navigation
 	virtual bool IsEntityTraversable( CBaseEntity *obstacle, TraverseWhenType when = EVENTUALLY ) const;
 
-	// Ladder navigation overrides
-	virtual void ClimbLadder( const CNavLadder *ladder, const CNavArea *dismountGoal );		// climb the given ladder to the top and dismount
-	virtual void DescendLadder( const CNavLadder *ladder, const CNavArea *dismountGoal );	// descend the given ladder to the bottom and dismount
-	virtual bool IsUsingLadder( void ) const;				// we are moving to get on, ascending/descending, and/or dismounting a ladder
-	virtual bool IsAscendingOrDescendingLadder( void ) const;	// we are actually on the ladder right now, either climbing up or down
-
 	// Sprint decision making
 	bool ShouldSprint( CHL2MPBot *me ) const;			// determine if bot should sprint based on tactical situation
-	
-	// Ladder movement helper
-	bool HandleLadderMovement( CHL2MPBot *me );			// handle HL2 ladder movement system
 
 protected:
 	virtual void AdjustPosture( const Vector &moveGoal ) { }	// never crouch to navigate
@@ -60,26 +46,6 @@ protected:
 	bool m_isSprinting;
 	float m_sprintStartTime;
 	float m_lastSprintButtonPress;
-	
-	// Ladder state tracking variables (from PlayerLocomotion base class)
-	const CNavLadder *m_ladderInfo;
-	const CNavArea *m_ladderDismountGoal;
-	bool m_isGoingUpLadder;
-	CountdownTimer m_ladderTimer;
-	float m_lastLadderZ;				// Track last Z position to prevent oscillation
-	float m_ladderDirectionChangeTime;	// Time of last direction change
-	int m_ladderDirectionChanges;		// Count direction changes to detect oscillation
-	enum LadderState
-	{
-		NO_LADDER = 0,
-		APPROACHING_ASCENDING_LADDER,
-		APPROACHING_DESCENDING_LADDER,
-		ASCENDING_LADDER,
-		DESCENDING_LADDER,
-		DISMOUNTING_LADDER_TOP,
-		DISMOUNTING_LADDER_BOTTOM
-	};
-	LadderState m_ladderState;
 };
 
 inline float CHL2MPBotLocomotion::GetMaxJumpHeight( void ) const

@@ -114,33 +114,13 @@ ActionResult< CHL2MPBot >	CHL2MPBotAttack::Update( CHL2MPBot *me, float interval
 
 				if ( isUsingCloseRangeWeapon )
 				{
-					// Use fastest route for close-range weapons - prefer ladders for tactical positioning
 					CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
 					m_path.Compute( me, threat->GetLastKnownPosition(), cost );
 				}
 				else
 				{
-					// Check if we need elevation advantage for ranged combat
-					Vector myPos = me->GetAbsOrigin();
-					Vector threatPos = threat->GetLastKnownPosition();
-					float heightDiff = threatPos.z - myPos.z;
-								
-					// If enemy is higher OR for tactical advantage, use ladders aggressively
-					if ( heightDiff > 32.0f ) // Lower threshold for tactical positioning
-					{
-						CHL2MPBotPathCost cost( me, FASTEST_ROUTE ); // Will aggressively prefer ladders
-						m_path.Compute( me, threat->GetLastKnownPosition(), cost );
-					}
-					else
-					{
-						// Try fastest route first for better pathfinding, fallback to default
-						CHL2MPBotPathCost cost( me, FASTEST_ROUTE );
-						if ( !m_path.Compute( me, threat->GetLastKnownPosition(), cost ) )
-						{
-							CHL2MPBotPathCost fallbackCost( me, DEFAULT_ROUTE );
-							m_path.Compute( me, threat->GetLastKnownPosition(), fallbackCost );
-						}
-					}
+					CHL2MPBotPathCost cost( me, DEFAULT_ROUTE );
+					m_path.Compute( me, threat->GetLastKnownPosition(), cost );
 				}
 			}
 		}

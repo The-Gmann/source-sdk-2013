@@ -4,18 +4,15 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 
 #include "cbase.h"
-#include "NextBotPath.h"
-#include "fmtstr.h"
-#include "nav_pathfind.h"
+
 #include "nav_mesh.h"
-#include "nav_area.h"
-#include "nav_ladder.h"
+#include "fmtstr.h"
+
+#include "NextBotPath.h"
+#include "NextBotInterface.h"
+#include "NextBotLocomotionInterface.h"
+#include "NextBotBodyInterface.h"
 #include "NextBotUtil.h"
-#include "in_buttons.h"
-#include "movevars_shared.h"
-#include "npcevent.h"
-#include "IEffects.h"
-#include "vprof.h"
 
 #include "tier0/vprof.h"
 
@@ -25,26 +22,6 @@
 ConVar NextBotPathDrawIncrement( "nb_path_draw_inc", "100", FCVAR_CHEAT );
 ConVar NextBotPathDrawSegmentCount( "nb_path_draw_segment_count", "100", FCVAR_CHEAT );
 ConVar NextBotPathSegmentInfluenceRadius( "nb_path_segment_influence_radius", "100", FCVAR_CHEAT );
-
-inline Path::SegmentType TraversalTypeToSegmentType( NavTraverseType how )
-{
-	switch( how )
-	{
-		case GO_LADDER_UP:
-			return Path::LADDER_UP;
-			
-		case GO_LADDER_DOWN:
-			return Path::LADDER_DOWN;
-			
-		case GO_ELEVATOR_UP:
-		case GO_ELEVATOR_DOWN:
-			return Path::ON_GROUND; // Elevators handled separately
-			
-		default:
-			return Path::ON_GROUND;
-	}
-}
-
 
 //--------------------------------------------------------------------------------------------------------------
 Path::Path( void )
@@ -78,34 +55,56 @@ bool Path::ComputePathDetails( INextBot *bot, const Vector &start )
 	// inflate hull width slightly as a safety margin
 	const float hullWidth = ( body ) ? body->GetHullWidth() + 5.0f : 1.0f;
 
-	// Assemble path
-	Segment *to = &m_path[0];
-	to->pos = start;
-	to->ladder = NULL;
-	to->type = ON_GROUND; // Start position is always on ground
-
-	// compute path positions
-	for( int i=0; i<m_segmentCount-1; ++i )
+	// set first path position
+	if ( m_path[0].area->Contains( start ) )
 	{
-		Segment *from = &m_path[ i ];
-		to = &m_path[ i+1 ];
+		m_path[0].pos = start;
+	}
+	else
+	{
+		// start in first area's center
+		m_path[0].pos = m_path[0].area->GetCenter();
+	}	
+	m_path[0].ladder = NULL;
+	m_path[0].how = NUM_TRAVERSE_TYPES;
+	m_path[0].type = ON_GROUND;
 
-		to->ladder = NULL;
-
-		// Convert traversal type to segment type if not already set properly
-		Path::SegmentType expectedType = TraversalTypeToSegmentType( to->how );
-		if ( to->type != expectedType )
+	// set positions along the path
+	for( int i=1; i<m_segmentCount; ++i )
+	{
+		Segment *from = &m_path[ i-1 ];
+		Segment *to = &m_path[ i ];
+		
+		if ( to->how <= GO_WEST )		// walk along the floor to the next area
 		{
-			to->type = expectedType;
-		}
+			to->ladder = NULL;
 
-		if ( to->how <= GO_WEST )
-		{
-			// compute path position
+			from->area->ComputePortal( to->area, (NavDirType)to->how, &to->m_portalCenter, &to->m_portalHalfWidth );
+
+			// compute next point
 			ComputeAreaCrossing( bot, from->area, from->pos, to->area, (NavDirType)to->how, &to->pos );
-			
-			// check if this is a "jump down" transition
-			if ( mover && to->area->GetCenter().z < from->area->GetCenter().z - stepHeight )
+
+			// we need to walk out of "from" area, so keep Z where we can reach it
+			to->pos.z = from->area->GetZ( to->pos );
+
+			// if this is a "jump down" connection, we must insert an additional point on the path
+			//float expectedHeightDrop = from->area->GetZ( from->pos ) - to->area->GetZ( to->pos );
+
+			// measure the drop distance relative to the actual slope of the ground
+			Vector fromPos = from->pos;
+			fromPos.z = from->area->GetZ( fromPos );
+
+			Vector toPos = to->pos;
+			toPos.z = to->area->GetZ( toPos );
+
+			Vector groundNormal;
+			from->area->ComputeNormal( &groundNormal );
+
+			Vector alongPath = toPos - fromPos;
+
+			float expectedHeightDrop = -DotProduct( alongPath, groundNormal );
+
+			if ( expectedHeightDrop > mover->GetStepHeight() )
 			{
 				// NOTE: We can't know this is a drop-down yet, because of subtle interactions
 				// between nav area links and "portals" and "area crossings"
@@ -124,7 +123,7 @@ bool Path::ComputePathDetails( INextBot *bot, const Vector &start )
 				for( pushDist = 0.0f; pushDist <= maxPushDist; pushDist += inc )
 				{
 					Vector pos = to->pos + Vector( pushDist * dir.x, pushDist * dir.y, 0.0f );
-					Vector lowerPos = Vector( pos.x, pos.y, to->area->GetCenter().z );
+					Vector lowerPos = Vector( pos.x, pos.y, toPos.z );
 					
 					trace_t result;
 					NextBotTraceFilterIgnoreActors filter( bot->GetEntity(), COLLISION_GROUP_NONE );
